@@ -30,7 +30,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Authentication Method",
-   "options": "SQL Server Authentication\nWindows Authentication",
+   "options": "SQL Server Authentication\nWindows Authentication (WIP)",
    "reqd": 1
   },
   {
@@ -55,7 +55,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-14 17:07:26.674681",
+ "modified": "2026-05-14 17:26:40.752845",
  "modified_by": "Administrator",
  "module": "Database",
  "name": "Remote Database",
