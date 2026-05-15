@@ -1,5 +1,11 @@
 {
- "actions": [],
+ "actions": [
+  {
+   "action": "bullwheel.database.SQLServer.test_connection",
+   "action_type": "Server Action",
+   "label": "Test Connection"
+  }
+ ],
  "allow_rename": 1,
  "autoname": "prompt",
  "creation": "2026-05-14 16:46:27.969612",
@@ -55,7 +61,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-15 15:51:34.022217",
+ "modified": "2026-05-15 16:11:33.870799",
  "modified_by": "Administrator",
  "module": "Database",
  "name": "SQL Server",
