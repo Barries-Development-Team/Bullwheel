@@ -17,7 +17,7 @@
   {
    "fieldname": "database_section",
    "fieldtype": "Section Break",
-   "label": "Database Connection"
+   "label": "SQL Server Connection Information"
   },
   {
    "fieldname": "server_name",
@@ -55,10 +55,10 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-14 17:26:40.752845",
+ "modified": "2026-05-15 15:51:34.022217",
  "modified_by": "Administrator",
  "module": "Database",
- "name": "Remote Database",
+ "name": "SQL Server",
  "naming_rule": "Set by user",
  "owner": "Administrator",
  "permissions": [

@@ -13,9 +13,9 @@ IGNORE_TEST_RECORD_DEPENDENCIES = []  # eg. ["User"]
 
 
 
-class IntegrationTestRemoteDatabase(IntegrationTestCase):
+class IntegrationTestSQLServer(IntegrationTestCase):
 	"""
-	Integration tests for RemoteDatabase.
+	Integration tests for SQLServer.
 	Use this class for testing interactions between multiple components.
 	"""
 
