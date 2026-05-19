@@ -14,6 +14,7 @@
  "field_order": [
   "database_section",
   "server_name",
+  "database_name",
   "authentication_method",
   "username",
   "password",
@@ -56,12 +57,18 @@
    "fieldname": "trust_server_certificate",
    "fieldtype": "Check",
    "label": "Trust Server Certificate"
+  },
+  {
+   "fieldname": "database_name",
+   "fieldtype": "Data",
+   "label": "Database Name",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-15 16:11:33.870799",
+ "modified": "2026-05-18 12:43:05.577899",
  "modified_by": "Administrator",
  "module": "Database",
  "name": "SQL Server",
