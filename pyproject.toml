@@ -1,7 +1,7 @@
 [project]
 name = "bullwheel"
 authors = [
-    { name = "Barrie's Ski and Sports", email = "bullwheel@barriessports.com"}
+    { name = "Bonnevile Ridge LLC", email = "bullwheel@barriessports.com"}
 ]
 description = "Management Software for Barrie's Ski and Sports"
 requires-python = ">=3.14"

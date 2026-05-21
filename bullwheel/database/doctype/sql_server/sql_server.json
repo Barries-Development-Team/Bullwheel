@@ -1,7 +1,7 @@
 {
  "actions": [
   {
-   "action": "bullwheel.database.SQLServer.test_connection",
+   "action": "bullwheel.database.doctype.sql_server.sql_server.SQLServer.test_connection",
    "action_type": "Server Action",
    "label": "Test Connection"
   }
@@ -68,7 +68,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-18 12:43:05.577899",
+ "modified": "2026-05-19 12:29:19.556067",
  "modified_by": "Administrator",
  "module": "Database",
  "name": "SQL Server",
