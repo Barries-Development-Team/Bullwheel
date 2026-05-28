@@ -23,7 +23,7 @@
   {
    "fieldname": "server_name",
    "fieldtype": "Data",
-   "label": "Server Name",
+   "label": "Server Address",
    "reqd": 1
   },
   {
@@ -62,7 +62,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-28 15:50:40.072576",
+ "modified": "2026-05-28 16:06:59.017537",
  "modified_by": "Administrator",
  "module": "Database",
  "name": "SQL Server",
