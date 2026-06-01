@@ -136,29 +136,28 @@ cd /workspace/frappe-bench
 
 ## SQL Server DocType
 
-A DocType named **`SQL Server`** has been created in the `barries` app. It represents a configured SQL Server connection and serves as the source of configuration data for the database handler.
+A DocType named **`SQL Server`** lives in the **Bullwheel** app at `bullwheel/database/doctype/sql_server/`. It represents a configured SQL Server connection and is the source of credentials for the `MSSQLDatabase` handler.
 
-### Fields
+### Fields (Bullwheel app — current)
 
 | Fieldname | Fieldtype | Notes |
 |---|---|---|
-| `server` | Data | IP address or hostname |
-| `username` | Data | SQL Server login username |
-| `password` | Password | Frappe encrypts automatically at rest |
-| `database` | Data | Target database name |
+| `server_name` | Data | IP address or hostname (required) |
+| `database_name` | Data | Target database name (required) |
+| `authentication_method` | Select | "SQL Server Authentication" or "Windows Authentication (WIP)" (required) |
+| `username` | Data | Shown only when SQL Server Authentication is selected |
+| `password` | Password | Frappe encrypts automatically at rest; shown only when SQL Server Authentication is selected |
+| `trust_server_certificate` | Check | Whether to trust the server certificate |
 
+> **Note:** The CLAUDE.md snippet below (in the MSSQLDatabase section) references the older `barries` app field names (`server`, `database`). In the current Bullwheel DocType they are `server_name` and `database_name`. The `test_connection` whitelisted function in `sql_server.py` already uses the correct names.
 
-### DocType Action Configuration
+### Whitelisted Method
 
-The action is defined in the DocType editor under the **Actions** table:
+`test_connection` is a module-level `@frappe.whitelist()` function in `bullwheel/database/doctype/sql_server/sql_server.py` — **not** a method on the `SQLServer` Document class. It is called from the DocType form button via:
 
-| Field | Value |
-|---|---|
-| Label | `Test Connection` |
-| Action Type | `Server Action` |
-| Action | `barries.barries.doctype.sql_server.sql_server.SQLServer.test_connection` |
-
-> **Important:** The Action field requires the **full dotted path** to the method in Frappe v16. Using just `test_connection` produces the error: `Failed to get method for command test_connection with 'test_connection'`.
+```
+bullwheel.database.doctype.sql_server.sql_server.test_connection
+```
 
 ### Bench Commands After Changes
 
@@ -175,13 +174,14 @@ The action is defined in the DocType editor under the **Actions** table:
 The core database handler is implemented in:
 
 ```
-barries/
-└── barries/
+bullwheel/
+└── bullwheel/
     └── database/
-        ├── __init__.py       ← Registry / factory
-        ├── base.py           ← (Decided against — see note below)
-        ├── mssql.py          ← MSSQLDatabase class
-        └── exceptions.py     ← Custom exception hierarchy
+        ├── __init__.py       ← Empty (no registry in Bullwheel — instantiate directly)
+        ├── SQLServer.py      ← MSSQLDatabase class
+        ├── exceptions.py     ← Custom exception hierarchy
+        └── doctype/
+            └── sql_server/   ← SQL Server DocType
 ```
 
 ### Design Decisions
@@ -554,21 +554,54 @@ These conventions were explicitly requested by Carter and should be maintained g
 
 ---
 
-## Outstanding Items / Next Steps
+## Ascend RMS — SQL Server Schema (Partial)
 
-The following were in progress or implied at the end of the conversation:
+These column names were discovered when building the product search page. Update as more of the schema is explored.
 
-- `test_connection` DocType action was confirmed working after fixing the full dotted path in the Actions table
-- `MSSQLDatabase` handler implementation is complete and documented
-- The `barries` app's `database/` module structure is defined but individual files beyond `mssql.py` (`__init__.py`, `exceptions.py`) have not been fully written out — they exist as code snippets in conversation only
-- `pymssql` needs to be added to `barries/requirements.txt` to survive container rebuilds
+| Logical Field | SQL Column Name | Notes |
+|---|---|---|
+| Product table | `Products` | Top-level table name |
+| Description | `Description` | Primary item name / search field |
+| SKU (Ascend internal) | `[Store UPC]` | Bracket-quoted — contains a space |
+| UPC | `UPC` | Standard barcode |
+| Manufacturer Part No. | `MfgrPartNo` | |
+| Brand, Color, Size, Location, Keyword, Gender, Year, Season, Style Name, Style Number, Price, Quantity | `Brand`, `Color`, `Size`, `Location`, `Keyword`, `Gender`, `Year`, `Season`, `StyleName`, `StyleNumber`, `Price`, `Quantity` | Unverified — placeholders |
+
+> The `RESULT_COLUMNS` list in `ascend_products.py` uses `"[Store UPC] AS SKU"` to alias the bracket-quoted column back to `SKU` so the frontend dict key is clean.
 
 ---
 
-## Files Produced This Session
+## Ascend Products Page
 
-| File | Description |
-|---|---|
-| `SQLServer.py` | Full refactored `MSSQLDatabase` class |
-| `MSSQLDatabase.md` | Public API documentation for `MSSQLDatabase` |
-| `agent_context.md` | This file |
+**Files:**
+- `bullwheel/ascend/page/ascend_products/ascend_products.py` — backend API
+- `bullwheel/ascend/page/ascend_products/ascend_products.js` — page UI
+
+### Backend (`ascend_products.py`)
+
+Schema constants (`PRODUCT_TABLE`, `FIELD_MAP`, `DEFAULT_SEARCH_COLUMNS`, `RESULT_COLUMNS`) are defined at the top of the file — the only section that needs updating as the Ascend schema is confirmed.
+
+Whitelisted method: `search_products(server_name, search_text, search_field="default")`
+- Full path: `bullwheel.ascend.page.ascend_products.ascend_products.search_products`
+- `search_field="default"` → OR LIKE across `DEFAULT_SEARCH_COLUMNS` (Description, [Store UPC], UPC)
+- Specific field → single-column LIKE via `FIELD_MAP`
+- Uses `MSSQLDatabase` context manager; returns `list[dict]`
+
+### Frontend (`ascend_products.js`)
+
+Three `page.add_field()` controls in the page toolbar:
+1. **Server** — `fieldtype: 'Link'`, `options: 'SQL Server'` — auto-completes against SQL Server DocType records
+2. **Search Field** — `fieldtype: 'Select'` — Default or any individual Ascend field
+3. **Search** — `fieldtype: 'Data'` — free text; Enter key triggers search
+
+`page.set_primary_action('Search', ...)` calls `perform_search(page)`.
+
+Results rendered as a Bootstrap `table table-bordered table-hover` in `$(page.main)`. Result dict keys match `RESULT_COLUMNS` column aliases (e.g., `SKU` from the `AS SKU` alias).
+
+---
+
+## Outstanding Items / Next Steps
+
+- **Ascend schema verification** — confirm the placeholder column names in `ascend_products.py` against the actual `Products` table in Ascend RMS. Especially: `StyleName`, `StyleNumber`, `Keyword`, `Location`, `Gender`, `Year`, `Season`, `Price`, `Quantity`, `Brand`, `Color`, `Size`.
+- **Result row limit** — `search_products` currently returns all matching rows. Consider adding a `TOP N` limit once the real query volume is known.
+- **`pymssql` in requirements.txt** — verify `pymssql` is listed in `bullwheel/requirements.txt` so it survives container rebuilds.
