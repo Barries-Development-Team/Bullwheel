@@ -2,216 +2,115 @@
 // All Rights Reserved
 // Unauthorized copying or distribution of this file is prohibited.
 
-frappe.provide("barries");
+// Result Columns must exactly match the names of columns returned by the SQL Query, as defined in ascend_products.py
+const RESULT_COLUMNS = ['Description', 'SKU', 'UPC', 'Brand', 'Price', 'Quantity', 'Location'];
 
-frappe.pages["product-search"].on_page_load = function (wrapper) {
-	const page = frappe.ui.make_app_page({
+frappe.pages['ascend-products'].on_page_load = function(wrapper) {
+	var page = frappe.ui.make_app_page({
 		parent: wrapper,
-		title: __("Product Search"),
-		single_column: true,
+		title: 'Ascend Product Search',
+		single_column: true
 	});
 
-	wrapper.product_search = new barries.ProductSearch(page);
+	page.add_field({
+		label: 'Server',
+		fieldtype: 'Link',
+		fieldname: 'server_name',
+		options: 'SQL Server',
+	});
+
+	page.add_field({
+		label: 'Search Field',
+		fieldtype: 'Select',
+		fieldname: 'search_field',
+		options: [
+			'Default (Description, SKU, UPC)',
+			'Description',
+			'Price',
+			'Quantity',
+			'UPC',
+			'SKU',
+			'Manufacturer Part Number',
+			'Keyword',
+			'Location',
+			'Brand',
+			'Color',
+			'Size',
+			'Style Name',
+			'Style Number',
+			'Gender',
+			'Year',
+			'Season',
+		].join('\n'),
+		default: 'Default (Description, SKU, UPC)',
+	});
+
+	let search_text_field = page.add_field({
+		label: 'Search',
+		fieldtype: 'Data',
+		fieldname: 'search_text',
+	});
+
+	page.set_primary_action('Search', () => perform_search(page), 'search');
+
+	$(page.main).append('<div class="product-results" style="padding: 1rem;"></div>');
+
+	search_text_field.$input.on('keydown', function(event) {
+		if (event.key === 'Enter') perform_search(page);
+	});
 };
 
-barries.ProductSearch = class ProductSearch {
-	constructor(page) {
-		this.page = page;
-		this.servers = [];
-		this.build_layout();
-		this.bind_events();
-		this.load_config();
+function perform_search(page) {
+	let server_name = page.fields_dict['server_name'].get_value();
+	let search_text = page.fields_dict['search_text'].get_value();
+	let search_field_label = page.fields_dict['search_field'].get_value();
+
+	if (!server_name) {
+		frappe.msgprint({ message: 'Please select a server.', title: 'Missing Field', indicator: 'orange' });
+		return;
+	}
+	if (!search_text) {
+		frappe.msgprint({ message: 'Please enter a search term.', title: 'Missing Field', indicator: 'orange' });
+		return;
 	}
 
-	build_layout() {
-		// A small style block keyed to this page so the result list reads as a
-		// clean, native-looking list without fighting Frappe's desk styling.
-		this.page.main.append(`
-			<style>
-				.product-search-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px; }
-				.product-search-controls .control-block { display: flex; flex-direction: column; gap: 4px; }
-				.product-search-controls .control-label { font-size: var(--text-sm); color: var(--text-muted); }
-				.product-search-controls .term-block { flex: 1 1 260px; }
-				.product-search-status { color: var(--text-muted); font-size: var(--text-sm); margin-bottom: 8px; min-height: 20px; }
-				.product-search-results { border-top: 1px solid var(--border-color); }
-				.product-item { padding: 12px 4px; border-bottom: 1px solid var(--border-color); }
-				.product-item-title { font-weight: 600; }
-				.product-item-meta { color: var(--text-muted); font-size: var(--text-sm); margin-top: 2px; }
-				.product-item-meta .sep { margin: 0 6px; opacity: 0.5; }
-			</style>
-		`);
+	let search_field = search_field_label === 'Default (Description, SKU, UPC)'
+		? 'default'
+		: search_field_label;
 
-		this.$body = $(`
-			<div class="product-search">
-				<div class="product-search-controls">
-					<div class="control-block term-block">
-						<span class="control-label">${__("Search term")}</span>
-						<input type="text" class="form-control search-term"
-							placeholder="${__("Description, SKU, UPC…")}">
-					</div>
-					<div class="control-block field-block">
-						<span class="control-label">${__("Search field")}</span>
-						<select class="form-control search-field"></select>
-					</div>
-					<div class="control-block server-block" style="display:none;">
-						<span class="control-label">${__("SQL Server")}</span>
-						<select class="form-control search-server"></select>
-					</div>
-					<div class="control-block">
-						<button class="btn btn-primary btn-sm search-button">
-							${__("Search")}
-						</button>
-					</div>
-				</div>
-				<div class="product-search-status"></div>
-				<div class="product-search-results"></div>
-			</div>
-		`).appendTo(this.page.main);
+	frappe.call({
+		method: 'bullwheel.ascend.page.ascend_products.ascend_products.search_products',
+		args: {
+			server_name: server_name,
+			search_text: search_text,
+			search_field: search_field,
+		},
+		callback: function(response) {
+			render_results(page, response.message || []);
+		},
+	});
+}
 
-		this.$term = this.$body.find(".search-term");
-		this.$field = this.$body.find(".search-field");
-		this.$serverBlock = this.$body.find(".server-block");
-		this.$server = this.$body.find(".search-server");
-		this.$button = this.$body.find(".search-button");
-		this.$status = this.$body.find(".product-search-status");
-		this.$results = this.$body.find(".product-search-results");
+function render_results(page, results) {
+	let container = $(page.main).find('.product-results');
+
+	if (!results.length) {
+		container.html('<p class="text-muted">No products found.</p>');
+		return;
 	}
 
-	bind_events() {
-		this.$button.on("click", () => this.search());
-		this.$term.on("keydown", (event) => {
-			if (event.key === "Enter") {
-				this.search();
-			}
-		});
-	}
+	let header_html = RESULT_COLUMNS.map(column => `<th>${column}</th>`).join('');
 
-	load_config() {
-		frappe
-			.xcall("barries.barries.api.inventory.get_search_config")
-			.then((config) => this.apply_config(config))
-			.catch(() => this.set_status(__("Could not load search configuration.")));
-	}
+	let rows_html = results.map(row => {
+		let cells = RESULT_COLUMNS.map(column => `<td>${row[column] ?? ''}</td>`).join('');
+		return `<tr>${cells}</tr>`;
+	}).join('');
 
-	apply_config(config) {
-		const fields = (config && config.fields) || [];
-		this.$field.empty();
-		fields.forEach((field) => {
-			this.$field.append(
-				$("<option>").val(field.value).text(field.label)
-			);
-		});
-
-		this.servers = (config && config.servers) || [];
-		if (this.servers.length > 1) {
-			this.$server.empty();
-			this.servers.forEach((name) => {
-				this.$server.append($("<option>").val(name).text(name));
-			});
-			this.$serverBlock.show();
-		} else {
-			this.$serverBlock.hide();
-		}
-
-		if (this.servers.length === 0) {
-			this.$button.prop("disabled", true);
-			this.set_status(
-				__("No SQL Server connection is configured. Create a SQL Server record first.")
-			);
-		} else {
-			this.$term.focus();
-		}
-	}
-
-	search() {
-		const term = (this.$term.val() || "").trim();
-		if (!term) {
-			this.$term.focus();
-			return;
-		}
-
-		const field = this.$field.val();
-		const server_name = this.servers.length > 1 ? this.$server.val() : null;
-
-		this.set_status(__("Searching…"));
-		this.$results.empty();
-		this.$button.prop("disabled", true);
-
-		frappe
-			.xcall("barries.barries.api.inventory.search_products", {
-				search_term: term,
-				field: field,
-				server_name: server_name,
-			})
-			.then((rows) => this.render_results(rows || [], term))
-			.catch(() => this.set_status(__("Search failed.")))
-			.finally(() => this.$button.prop("disabled", false));
-	}
-
-	render_results(rows, term) {
-		this.$results.empty();
-
-		if (!rows.length) {
-			this.set_status(__('No products found for "{0}".', [term]));
-			return;
-		}
-
-		this.set_status(__("{0} result(s) for \"{1}\".", [rows.length, term]));
-
-		rows.forEach((row) => {
-			this.$results.append(this.render_item(row));
-		});
-	}
-
-	render_item(row) {
-		const meta = [];
-		this.add_meta(meta, __("Price"), this.format_price(row.price));
-		this.add_meta(meta, __("Qty"), row.quantity);
-		this.add_meta(meta, __("SKU"), row.sku);
-		this.add_meta(meta, __("UPC"), row.upc);
-		this.add_meta(meta, __("Brand"), row.brand);
-		this.add_meta(meta, __("Location"), row.location);
-		this.add_meta(meta, __("Size"), row.size);
-		this.add_meta(meta, __("Color"), row.color);
-
-		const $item = $('<div class="product-item">');
-		$item.append(
-			$('<div class="product-item-title">').text(
-				row.description || __("(no description)")
-			)
-		);
-		if (meta.length) {
-			const $meta = $('<div class="product-item-meta">');
-			meta.forEach((part, index) => {
-				if (index > 0) {
-					$meta.append($('<span class="sep">').text("·"));
-				}
-				$meta.append(document.createTextNode(part));
-			});
-			$item.append($meta);
-		}
-		return $item;
-	}
-
-	add_meta(list, label, value) {
-		if (value === null || value === undefined || value === "") {
-			return;
-		}
-		list.push(`${label}: ${value}`);
-	}
-
-	format_price(value) {
-		if (value === null || value === undefined || value === "") {
-			return value;
-		}
-		const numeric = Number(value);
-		if (Number.isNaN(numeric)) {
-			return value;
-		}
-		return format_currency(numeric);
-	}
-
-	set_status(message) {
-		this.$status.text(message);
-	}
-};
+	container.html(`
+		<p class="text-muted">${results.length} result${results.length !== 1 ? 's' : ''} found</p>
+		<table class="table table-bordered table-hover">
+			<thead><tr>${header_html}</tr></thead>
+			<tbody>${rows_html}</tbody>
+		</table>
+	`);
+}
