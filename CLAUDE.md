@@ -423,7 +423,67 @@ Store the SKU as a **Data** field. Attach client-side autocomplete in the grid u
 - **Choose Option A** if products will be referenced throughout Bullwheel (picklists, swaps, receiving, automated listings). Virtual DocType pays compounding dividends via `fetch_from` and native Link UX.
 - **Choose Option B** if product references only ever live in this one child table, or if implementation complexity is a constraint.
 
-**Status: decision pending as of 2026-06-02.**
+**Status: Option A selected (2026-06-02).** The `Ascend Product` virtual DocType has been scaffolded in the `Ascend` module (`is_virtual = 1`, `autoname = field:ascend_database_id`, `title_field = description`). See the field mapping section below.
+
+---
+
+## Ascend Product Virtual DocType — Field Mapping
+
+The **`Ascend Product`** DocType (module: `Ascend`, `is_virtual = 1`) maps a subset of the Ascend RMS `Products` table to Frappe fields. Not every SQL column has a corresponding field — only the columns relevant to Bullwheel operations are surfaced. The controller's `load_from_db` / `get_list` methods translate between the SQL column names and the Frappe fieldnames using the mapping below.
+
+**Key DocType properties:**
+- `autoname = field:ascend_database_id` → the Frappe `name` (primary key) is the Ascend `ID` column
+- `title_field = description`
+- `ascend_database_id` is marked `unique`
+
+### Mapped Fields
+
+**Product Details section**
+
+| DocType Fieldname | Fieldtype | Ascend SQL Column | Notes |
+|---|---|---|---|
+| `description` | Data | `Description` | Title field; primary search column |
+| `keyword` | Data | `Keyword` | |
+| `category` | Data | *(unresolved)* | ⚠ No direct `Category` column in `Products`. Candidate: `Division` — **unconfirmed**, needs verification against Ascend |
+| `quantity` | Int | `Quantity` | On-hand count |
+| `brand` | Data | `Brand` | |
+| `color` | Data | `Color` | |
+| `size` | Data | `Size` | |
+| `sytle_number` | Data | `StyleNumber` | ⚠ Fieldname is misspelled `sytle_number` (label "Sytle Number"). SQL column is correctly spelled `StyleNumber`. The mapping dict must bridge the typo. Consider renaming the field to `style_number` for consistency |
+| `style_name` | Data | `StyleName` | |
+| `gender` | Data | `Gender` | |
+| `season` | Data | `Season` | |
+| `year` | Data | `Year` | |
+
+**Pricing section**
+
+| DocType Fieldname | Fieldtype | Ascend SQL Column | Notes |
+|---|---|---|---|
+| `price` | Currency | `Price` | |
+| `estimated_cost` | Currency | `EstCost` | |
+| `average_cost` | Currency | `AvgCost` | |
+
+**ID's and Barcodes section**
+
+| DocType Fieldname | Fieldtype | Ascend SQL Column | Notes |
+|---|---|---|---|
+| `ascend_database_id` | Data (unique) | `ID` | Primary key / `name` via autoname; the stable identifier for `load_from_db` lookups |
+| `store_sku` | Data | `Store UPC` | ⚠ Column contains a space — must be bracket-quoted as `[Store UPC]` in all SQL |
+| `upc` | Data | `UPC` | Standard barcode |
+| `manufacturers_part_number` | Data | `MfgrPartNo` | |
+
+### Unmapped `Products` Columns
+
+These columns exist in the Ascend `Products` table but are intentionally **not** surfaced as DocType fields. Listed here for reference if any are needed later:
+
+`ReorderLevel`, `Maximum`, `Commission`, `Location`, `Other`, `Division`, `eCommerce`, `Min2`, `Max2`, `NoLabel`, `NonInventory`, `ApptLength`, `DateCreated`, `DateModified`, `Hide`, `DolCom`, `Comments`, `DateQtyChng`, `PrintLabelsByDivision`, `DateReconciled`, `LastCost`, `HasPendingDelta`
+
+### Implementation Notes
+
+- The field-to-column mapping should live as a single dict (e.g. `FIELD_TO_COLUMN`) at the top of the DocType controller so `load_from_db` and `get_list` share one source of truth. This mirrors the schema-constants pattern already used in `ascend_products.py`.
+- `[Store UPC]` requires bracket-quoting; build SELECT lists with `[Store UPC] AS store_sku` to keep result dict keys aligned with fieldnames.
+- Two items need resolution before the mapping is final: the `category` column source, and the `sytle_number` → `style_number` rename.
+- `Currency` fields (`price`, `estimated_cost`, `average_cost`) map from SQL `money`/`decimal` columns — confirm no precision loss when casting through `pymssql`.
 
 ---
 
@@ -432,5 +492,7 @@ Store the SKU as a **Data** field. Attach client-side autocomplete in the grid u
 - **Ascend schema verification** — confirm the placeholder column names in `ascend_products.py` against the actual `Products` table in Ascend RMS. Especially: `StyleName`, `StyleNumber`, `Keyword`, `Location`, `Gender`, `Year`, `Season`, `Price`, `Quantity`, `Brand`, `Color`, `Size`.
 - **Result row limit** — `search_products` currently returns all matching rows. Consider adding a `TOP N` limit once the real query volume is known.
 - **`pymssql` in requirements.txt** — verify `pymssql` is listed in `bullwheel/requirements.txt` so it survives container rebuilds.
-- **Product reference decision** — choose between Virtual DocType (Option A) or Data field + custom autocomplete (Option B) for the Location Inventory child table's `product` field.
-- **Warehouse Location implementation** — implement combined server-side `validate()` and client-side `onchange` handler once product reference approach is decided.
+- **Product reference decision** — ✅ Resolved: Option A (Virtual DocType). `Ascend Product` scaffolded; implement `load_from_db` / `get_list` / `get_count` against `MSSQLDatabase`.
+- **`category` column source** — `Ascend Product.category` has no confirmed `Products` column. Verify whether it maps to `Division` or another source.
+- **`sytle_number` rename** — fieldname is misspelled; rename to `style_number` and update the field-order/mapping dict.
+- **Warehouse Location implementation** — implement combined server-side `validate()` and client-side `onchange` handler now that the product reference approach is decided.

@@ -4,6 +4,7 @@
 # import frappe
 from frappe.model.document import Document
 from bullwheel.database.SQLServer import MSSQLDatabase
+from bullwheel.ascend.ascend_utilities import get_default_ascend_database
 
 
 class AscendProduct(Document):
@@ -22,10 +23,12 @@ class AscendProduct(Document):
 
 	@staticmethod
 	def get_list(filters=None, page_length=20, **kwargs):
-		database = frappe.db.get_single_value('Bullwheel Settings', 'default_database')
-		with MSSQLDatabase(
+		
+		with MSSQLDatabase(server_document=get_default_ascend_database()) as database:
+			products = database.get_all(table='Products',limit=page_length)
 
-		)
+		product_list = [product for product in products]
+
 
 	@staticmethod
 	def get_count(filters=None, **kwargs):
@@ -34,7 +37,3 @@ class AscendProduct(Document):
 	@staticmethod
 	def get_stats(**kwargs):
 		pass
-
-	def get_default_ascend_database():
-
-
