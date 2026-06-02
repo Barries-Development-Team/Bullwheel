@@ -5,4 +5,4 @@ import frappe
 
 def get_default_ascend_database():
 		default_database = frappe.db.get_single_value('Bullwheel Settings', 'default_database')
-		return frappe.db.get_doc("SQL Server", default_database)
+		return frappe.get_doc("SQL Server", default_database)

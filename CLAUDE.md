@@ -371,59 +371,9 @@ barries/
 
 ---
 
-## Product Reference Architecture (Decision Pending)
+## Product Reference Architecture
 
-The **Location Inventory** child DocType needs a `product` field that references products from the remote Ascend RMS MS SQL Server (~20,000 SKUs). These records do not exist in the Frappe/MariaDB database. Two viable paths were identified.
-
-### Why Standard Frappe Field Types Fall Short
-
-| Field Type | Problem |
-|---|---|
-| **Link** (standard) | Assumes target is a Frappe DocType in MariaDB — would require replicating 20k products |
-| **Select / Autocomplete** | Cannot hold thousands of dynamic options |
-| **Dynamic Link** | Solves polymorphic references across Frappe DocTypes, not external data |
-| **Data (unvalidated)** | Plain text; no autocomplete, no referential checking |
-
-### Option A: Virtual DocType + Link Field (Recommended for broad use)
-
-Create an `Ascend Product` DocType with `is_virtual = 1`. Implement controller methods (`get_list`, `get_count`, `load_from_db`) to fetch from SQL Server via `MSSQLDatabase`. The `product` field becomes a standard **Link** field pointing to `Ascend Product`.
-
-**Advantages:**
-- Products behave as native Frappe entities throughout the app
-- Link autocomplete works out of the box (routed to `get_list`)
-- `fetch_from` enables read-only columns (description, price, brand) in the inventory line to auto-populate
-- `frappe.get_doc("Ascend Product", sku)` works
-- Reusable across picklists, swaps, receiving, automated listings
-
-**Disadvantages:**
-- Requires careful implementation of virtual DocType controller methods (search widget's `txt`/`limit`/filter shape)
-- Link validation queries SQL Server on every save
-- Each autocomplete keystroke triggers a query — needs debouncing and `TOP`/limit
-- Some standard list-view features won't fully work with virtual data
-- Stable unique identifier needed as virtual `name` (likely `[Store UPC]`/SKU)
-
-### Option B: Data Field + Custom Autocomplete + Server-side Validation
-
-Store the SKU as a **Data** field. Attach client-side autocomplete in the grid using the existing `search_products` whitelisted method from `ascend_products.py`. Validate existence in Warehouse Location's `validate()` via `MSSQLDatabase`.
-
-**Advantages:**
-- Simpler; reuses existing `ascend_products` search infrastructure
-- Full control over query and autocomplete behavior
-- Lower risk; fewer Frappe framework edge cases
-
-**Disadvantages:**
-- Not Frappe-idiomatic; loses native Link UX
-- No `fetch_from` (can't auto-populate description/price)
-- No clickable product reference
-- Must hand-roll the autocomplete UI for grid fields
-- Less reusable if products are referenced elsewhere
-
-### Decision Framework
-
-- **Choose Option A** if products will be referenced throughout Bullwheel (picklists, swaps, receiving, automated listings). Virtual DocType pays compounding dividends via `fetch_from` and native Link UX.
-- **Choose Option B** if product references only ever live in this one child table, or if implementation complexity is a constraint.
-
-**Status: Option A selected (2026-06-02).** The `Ascend Product` virtual DocType has been scaffolded in the `Ascend` module (`is_virtual = 1`, `autoname = field:ascend_database_id`, `title_field = description`). See the field mapping section below.
+The `product` field on the Location Inventory child DocType is a standard Frappe **Link** field pointing to the `Ascend Product` virtual DocType. Products (~20,000 SKUs) live in the Ascend RMS SQL Server and are never replicated into MariaDB. The virtual DocType handler bridges them into native Frappe Link UX, enabling autocomplete and `fetch_from` auto-population. See the Ascend Product section below for the full field mapping and handler details.
 
 ---
 
@@ -453,7 +403,7 @@ The **`Ascend Product`** DocType (module: `Ascend`, `is_virtual = 1`) maps a sub
 | `style_name` | Data | `StyleName` | |
 | `gender` | Data | `Gender` | |
 | `season` | Data | `Season` | |
-| `year` | Data | `Year` | |
+| `year` | Data | `[Year]` | Bracket-quoted in SQL — avoids conflict with SQL Server's `YEAR()` function |
 
 **Pricing section**
 
@@ -478,21 +428,37 @@ These columns exist in the Ascend `Products` table but are intentionally **not**
 
 `ReorderLevel`, `Maximum`, `Commission`, `Location`, `Other`, `Division`, `eCommerce`, `Min2`, `Max2`, `NoLabel`, `NonInventory`, `ApptLength`, `DateCreated`, `DateModified`, `Hide`, `DolCom`, `Comments`, `DateQtyChng`, `PrintLabelsByDivision`, `DateReconciled`, `LastCost`, `HasPendingDelta`
 
-### Implementation Notes
+### Handler Implementation
 
-- The field-to-column mapping should live as a single dict (e.g. `FIELD_TO_COLUMN`) at the top of the DocType controller so `load_from_db` and `get_list` share one source of truth. This mirrors the schema-constants pattern already used in `ascend_products.py`.
-- `[Store UPC]` requires bracket-quoting; build SELECT lists with `[Store UPC] AS store_sku` to keep result dict keys aligned with fieldnames.
-- Two items need resolution before the mapping is final: the `category` column source, and the `sytle_number` → `style_number` rename.
-- `Currency` fields (`price`, `estimated_cost`, `average_cost`) map from SQL `money`/`decimal` columns — confirm no precision loss when casting through `pymssql`.
+**File:** `bullwheel/ascend/doctype/ascend_product/ascend_product.py`
+
+Three module-level constants defined above the class are the single source of truth shared by all handler methods:
+
+- `FIELD_TO_COLUMN` — maps each DocType fieldname to its SQL column name
+- `SELECT_CLAUSE` — pre-built `SELECT` string with `AS fieldname` aliases so result dicts use fieldnames directly
+- `SEARCH_COLUMNS` — `["Description", "[Store UPC]", "UPC"]` — columns searched by the Link autocomplete
+
+**`get_list(filters, page_length, start, txt, or_filters, **_)`**
+Fetches a paginated product list. Accepts search text via either a direct `txt` kwarg (some Frappe versions) or embedded in `or_filters` as a LIKE condition — the private `_extract_search_text` helper normalises both paths. Pagination uses SQL Server's `OFFSET … ROWS FETCH NEXT … ROWS ONLY` syntax (requires `ORDER BY ID`). Each returned dict has `name` set equal to `ascend_database_id`.
+
+**`get_count(filters, txt, or_filters, **_)`**
+Returns `COUNT(*)` with the same WHERE logic as `get_list`.
+
+**`load_from_db(self)`**
+Called by `frappe.get_doc("Ascend Product", id)` and by `fetch_from` auto-population on Link fields. Queries `WHERE ID = %s` using `self.name`, then calls `super(Document, self).__init__(product_dict)` to populate the document. Raises `frappe.DoesNotExistError` if the ID is not found.
+
+**`db_insert`, `db_update`, `delete`** — raise `NotImplementedError` (read-only virtual DocType).
+
+**Note:** `category` maps to `NULL AS category` in `SELECT_CLAUSE` until the correct `Products` column is confirmed.
 
 ---
 
 ## Outstanding Items / Next Steps
 
-- **Ascend schema verification** — confirm the placeholder column names in `ascend_products.py` against the actual `Products` table in Ascend RMS. Especially: `StyleName`, `StyleNumber`, `Keyword`, `Location`, `Gender`, `Year`, `Season`, `Price`, `Quantity`, `Brand`, `Color`, `Size`.
-- **Result row limit** — `search_products` currently returns all matching rows. Consider adding a `TOP N` limit once the real query volume is known.
+- ✅ **Product reference architecture** — Virtual DocType (Option A) selected and implemented. `Ascend Product` handler (`get_list`, `get_count`, `load_from_db`) live in `ascend_product.py`. Bug fixed in `ascend_utilities.py` (`frappe.db.get_doc` → `frappe.get_doc`).
+- **`category` column source** — `Ascend Product.category` maps to `NULL` in `SELECT_CLAUSE`. Verify whether `Division` or another `Products` column is the correct source, then update `FIELD_TO_COLUMN` and `SELECT_CLAUSE` in `ascend_product.py`.
+- **`sytle_number` rename** — DocType fieldname is misspelled (`sytle_number`). Rename to `style_number` via the DocType editor, update `field_order` in `ascend_product.json`, update the key in `FIELD_TO_COLUMN` and `SELECT_CLAUSE` in `ascend_product.py`, then run `fm migrate`.
+- **Ascend schema verification** — confirm `StyleName`, `StyleNumber`, `Keyword`, `Gender`, `[Year]`, `Season`, `EstCost`, `AvgCost` against the live `Products` table. Update `FIELD_TO_COLUMN` and `SELECT_CLAUSE` if any column names differ.
+- **Result row limit (`search_products`)** — `search_products` in the prototype page returns all matching rows. Add a `TOP N` limit once the real query volume is known.
 - **`pymssql` in requirements.txt** — verify `pymssql` is listed in `bullwheel/requirements.txt` so it survives container rebuilds.
-- **Product reference decision** — ✅ Resolved: Option A (Virtual DocType). `Ascend Product` scaffolded; implement `load_from_db` / `get_list` / `get_count` against `MSSQLDatabase`.
-- **`category` column source** — `Ascend Product.category` has no confirmed `Products` column. Verify whether it maps to `Division` or another source.
-- **`sytle_number` rename** — fieldname is misspelled; rename to `style_number` and update the field-order/mapping dict.
-- **Warehouse Location implementation** — implement combined server-side `validate()` and client-side `onchange` handler now that the product reference approach is decided.
+- **Warehouse Location implementation** — implement combined server-side `validate()` and client-side `onchange` handler for the inventory child table.
