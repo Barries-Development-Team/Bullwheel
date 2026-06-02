@@ -436,7 +436,7 @@ Three module-level constants defined above the class are the single source of tr
 All three handler methods delegate to `AscendDatabase` (`bullwheel/ascend/AscendDatabase.py`). The controller holds the schema constants; the handler owns all query logic.
 
 **`get_list(filters, page_length, start, txt, or_filters, **_)`**
-Calls `AscendDatabase.get_list(...)` passing `PRODUCT_TABLE`, `SELECT_CLAUSE`, `"ID"`, `FIELD_TO_COLUMN`, and `SEARCH_COLUMNS`. Each returned dict has `name` set equal to `ascend_database_id`.
+Calls `AscendDatabase.get_list(...)` passing `PRODUCT_TABLE`, `SELECT_CLAUSE`, `"ID"`, `FIELD_TO_COLUMN`, and `SEARCH_COLUMNS`. Returns a list of `frappe._dict` objects, each with `name` set equal to `ascend_database_id`, conforming to Frappe's virtual DocType list standard.
 
 **`get_count(filters, txt, or_filters, **_)`**
 Calls `AscendDatabase.count_records(...)` with the same parameters.

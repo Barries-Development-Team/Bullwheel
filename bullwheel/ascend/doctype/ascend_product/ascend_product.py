@@ -77,8 +77,7 @@ class AscendProduct(Document):
 		if not product:
 			raise frappe.DoesNotExistError(f"Ascend Product '{self.name}' not found.")
 
-		product["name"] = product["ascend_database_id"]
-		super(Document, self).__init__(product)
+		super(Document, self).__init__(frappe._dict({**product, "name": product["ascend_database_id"]}))
 
 	def db_update(self, *args, **kwargs):
 		raise NotImplementedError
@@ -87,7 +86,7 @@ class AscendProduct(Document):
 		raise NotImplementedError
 
 	@staticmethod
-	def get_list(filters=None, page_length=20, start=0, txt=None, or_filters=None, **_):
+	def get_list(filters=None, page_length=20, start=0, txt=None, or_filters=None, **_) -> list:
 		"""Fetch a paginated, optionally filtered list of products from the Ascend Products table."""
 		with AscendDatabase(get_default_ascend_database()) as ascend:
 			products = ascend.get_list(
@@ -100,10 +99,10 @@ class AscendProduct(Document):
 				or_filters=or_filters,
 			)
 
-		for product in products:
-			product["name"] = product["ascend_database_id"]
-
-		return products
+		return [
+			frappe._dict({**product, "name": product["ascend_database_id"]})
+			for product in products
+		]
 
 	@staticmethod
 	def get_count(filters=None, txt=None, or_filters=None, **_):

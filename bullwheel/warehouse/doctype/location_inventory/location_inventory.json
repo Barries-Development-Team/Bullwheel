@@ -18,9 +18,10 @@
   },
   {
    "fieldname": "product",
-   "fieldtype": "Select",
+   "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Product",
+   "options": "Ascend Product",
    "reqd": 1
   },
   {
@@ -36,7 +37,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-06-02 11:52:05.060047",
+ "modified": "2026-06-02 15:11:14.608114",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Location Inventory",
