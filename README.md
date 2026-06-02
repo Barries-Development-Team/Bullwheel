@@ -1,3 +1,5 @@
+### THIS IS ALL VERY OUTDATED
+
 ### Bullwheel
 
 Management Software for Barrie\'s Ski and Sports
