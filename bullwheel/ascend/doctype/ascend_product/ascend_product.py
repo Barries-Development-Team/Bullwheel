@@ -3,7 +3,7 @@
 
 import frappe
 from frappe.model.document import Document
-from bullwheel.database.SQLServer import MSSQLDatabase
+from bullwheel.ascend.AscendDatabase import AscendDatabase
 from bullwheel.ascend.ascend_utilities import get_default_ascend_database
 
 
@@ -13,10 +13,12 @@ PRODUCT_TABLE = "Products"
 SEARCH_COLUMNS = ["Description", "[Store UPC]", "UPC"]
 
 # Maps DocType fieldname -> SQL Server column name.
+# "name" maps the Frappe meta-field to the table's primary key for filter resolution.
 # [Store UPC] requires bracket-quoting because the column name contains a space.
 # `category` has no confirmed Products column — mapped to NULL until resolved.
 # `sytle_number` preserves the existing misspelling in the DocType JSON.
 FIELD_TO_COLUMN = {
+	"name":                      "ID",
 	"ascend_database_id":        "ID",
 	"description":               "Description",
 	"keyword":                   "Keyword",
@@ -69,19 +71,13 @@ class AscendProduct(Document):
 
 	def load_from_db(self):
 		"""Load a single Ascend Product from SQL Server by its ID and populate this document."""
-		with MSSQLDatabase(server_document=get_default_ascend_database()) as database:
-			result = database.sql(
-				f"SELECT {SELECT_CLAUSE} FROM {PRODUCT_TABLE} WHERE ID = %s",
-				[self.name],
-				as_dict=True,
-			)
+		with AscendDatabase(get_default_ascend_database()) as ascend:
+			product = ascend.get_record(PRODUCT_TABLE, SELECT_CLAUSE, "ID", self.name)
 
-		if not result:
+		if not product:
 			raise frappe.DoesNotExistError(f"Ascend Product '{self.name}' not found.")
 
-		product = result[0]
 		product["name"] = product["ascend_database_id"]
-
 		super(Document, self).__init__(product)
 
 	def db_update(self, *args, **kwargs):
@@ -91,38 +87,18 @@ class AscendProduct(Document):
 		raise NotImplementedError
 
 	@staticmethod
-	def _extract_search_text(txt, or_filters):
-		"""Return the raw search string from either a direct txt arg or Frappe's or_filters list."""
-		if txt:
-			return txt
-		if or_filters:
-			for filter_condition in or_filters:
-				if len(filter_condition) >= 4 and filter_condition[2].lower() == "like":
-					return filter_condition[3].strip("%")
-		return None
-
-	@staticmethod
 	def get_list(filters=None, page_length=20, start=0, txt=None, or_filters=None, **_):
 		"""Fetch a paginated, optionally filtered list of products from the Ascend Products table."""
-		search_text = AscendProduct._extract_search_text(txt, or_filters)
-
-		query = f"SELECT {SELECT_CLAUSE} FROM {PRODUCT_TABLE}"
-		values = []
-
-		if search_text:
-			query += (
-				" WHERE Description LIKE %s"
-				" OR [Store UPC] LIKE %s"
-				" OR UPC LIKE %s"
+		with AscendDatabase(get_default_ascend_database()) as ascend:
+			products = ascend.get_list(
+				PRODUCT_TABLE, SELECT_CLAUSE, "ID", FIELD_TO_COLUMN,
+				filters=filters,
+				search_columns=SEARCH_COLUMNS,
+				page_length=page_length,
+				start=start,
+				txt=txt,
+				or_filters=or_filters,
 			)
-			pattern = f"%{search_text}%"
-			values = [pattern, pattern, pattern]
-
-		query += " ORDER BY ID OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
-		values += [start or 0, page_length or 20]
-
-		with MSSQLDatabase(server_document=get_default_ascend_database()) as database:
-			products = database.sql(query, values, as_dict=True)
 
 		for product in products:
 			product["name"] = product["ascend_database_id"]
@@ -131,26 +107,16 @@ class AscendProduct(Document):
 
 	@staticmethod
 	def get_count(filters=None, txt=None, or_filters=None, **_):
-		"""Return the total number of products matching the current search text."""
-		search_text = AscendProduct._extract_search_text(txt, or_filters)
-
-		query = f"SELECT COUNT(*) FROM {PRODUCT_TABLE}"
-		values = []
-
-		if search_text:
-			query += (
-				" WHERE Description LIKE %s"
-				" OR [Store UPC] LIKE %s"
-				" OR UPC LIKE %s"
+		"""Return the total number of products matching the current filters or search text."""
+		with AscendDatabase(get_default_ascend_database()) as ascend:
+			return ascend.count_records(
+				PRODUCT_TABLE, FIELD_TO_COLUMN,
+				filters=filters,
+				search_columns=SEARCH_COLUMNS,
+				txt=txt,
+				or_filters=or_filters,
 			)
-			pattern = f"%{search_text}%"
-			values = [pattern, pattern, pattern]
-
-		with MSSQLDatabase(server_document=get_default_ascend_database()) as database:
-			result = database.sql(query, values)
-
-		return result[0][0] if result else 0
 
 	@staticmethod
-	def get_stats(**kwargs):
+	def get_stats(**_):
 		pass

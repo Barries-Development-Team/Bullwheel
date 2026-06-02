@@ -15,7 +15,7 @@
   "brand",
   "color",
   "size",
-  "sytle_number",
+  "style_number",
   "style_name",
   "gender",
   "season",
@@ -112,11 +112,6 @@
    "label": "Style Name"
   },
   {
-   "fieldname": "sytle_number",
-   "fieldtype": "Data",
-   "label": "Sytle Number"
-  },
-  {
    "fieldname": "gender",
    "fieldtype": "Data",
    "label": "Gender"
@@ -145,13 +140,19 @@
    "fieldname": "pricing_section",
    "fieldtype": "Section Break",
    "label": "Pricing"
+  },
+  {
+   "fieldname": "style_number",
+   "fieldtype": "Data",
+   "label": "Style Number"
   }
  ],
  "grid_page_length": 50,
+ "in_create": 1,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-02 12:09:03.660533",
+ "modified": "2026-06-02 14:24:01.653685",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
@@ -159,7 +160,6 @@
  "owner": "Administrator",
  "permissions": [
   {
-   "create": 1,
    "delete": 1,
    "email": 1,
    "export": 1,
