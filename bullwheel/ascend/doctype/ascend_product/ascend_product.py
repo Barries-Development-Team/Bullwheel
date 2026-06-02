@@ -64,6 +64,35 @@ SELECT_CLAUSE = (
 )
 
 
+@frappe.whitelist()
+def ascend_product_search(_doctype, txt, _searchfield, start, page_length, _filters, as_dict=False):
+	"""Custom Link field search registered via standard_queries hook.
+
+	Bypasses frappe.get_list so that search_widget's as_list/relevance_sorter
+	pipeline — which is incompatible with virtual DocType results — is never reached.
+	Returns tuples (id, description, store_sku) when as_dict=False, frappe._dict
+	objects when as_dict=True.
+	"""
+	_ = _doctype, _searchfield, _filters  # required positional args from the standard_queries contract
+
+	with AscendDatabase(get_default_ascend_database()) as ascend:
+		products = ascend.get_list(
+			PRODUCT_TABLE, SELECT_CLAUSE, "ID", FIELD_TO_COLUMN,
+			search_columns=SEARCH_COLUMNS,
+			page_length=int(page_length),
+			start=int(start),
+			txt=txt,
+		)
+
+	if as_dict:
+		return [frappe._dict({**product, "name": product["ascend_database_id"]}) for product in products]
+
+	return [
+		(product["ascend_database_id"], product["description"] or "", product["store_sku"] or "")
+		for product in products
+	]
+
+
 class AscendProduct(Document):
 
 	def db_insert(self, *args, **kwargs):
