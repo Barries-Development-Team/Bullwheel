@@ -3,6 +3,7 @@
 import frappe
 import pymssql
 from frappe.utils import CallbackManager, recursive_defaultdict
+from frappe.utils.password import get_decrypted_password
 
 from bullwheel.database.exceptions import ConnectionError, QueryError, TransactionError
 
@@ -25,16 +26,13 @@ class MSSQLDatabase:
 
 	def __init__(
 		self,
-		server: str,
-		username: str,
-		password: str,
-		database: str,
+		server_document,
 		timeout: int = 10,
 	):
-		self.server = server
-		self.username = username
-		self.password = password
-		self.current_database = database
+		self.server = server_document.server_name
+		self.username = server_document.username
+		self.password = get_decrypted_password("SQL Server", server_document.name, fieldname="password")
+		self.current_database = server_document.database_name
 		self.timeout = timeout
 		self.connection = None
 		self.cursor = None
@@ -268,7 +266,7 @@ class MSSQLDatabase:
 			self.connect()
 			self.sql("SELECT 1")
 			return True
-		except ConnectionError, QueryError:
+		except (ConnectionError, QueryError):
 			return False
 		finally:
 			self.close()

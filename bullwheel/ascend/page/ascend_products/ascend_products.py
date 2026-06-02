@@ -3,7 +3,6 @@
 # Unauthorized copying or distribution of this file is prohibited.
 
 import frappe
-from frappe.utils.password import get_decrypted_password
 
 from bullwheel.database.SQLServer import MSSQLDatabase
 
@@ -42,15 +41,9 @@ RESULT_COLUMNS = ["Description", "[Store UPC] AS SKU", "UPC", "Brand", "Price", 
 def search_products(server_name: str, search_text: str, search_field: str = "default") -> list:
     """Query the Ascend RMS product table and return matching records for the
     given search text, optionally restricted to a specific column."""
-    document = frappe.get_doc("SQL Server", server_name)
-    password = get_decrypted_password("SQL Server", server_name, fieldname="password")
+    server_document = frappe.get_doc("SQL Server", server_name)
 
-    with MSSQLDatabase(
-        server=document.server_name,
-        username=document.username,
-        password=password,
-        database=document.database_name,
-    ) as database:
+    with MSSQLDatabase(server_document) as database:
         columns = ", ".join(RESULT_COLUMNS)
 
         if search_field == "default":
