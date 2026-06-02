@@ -296,8 +296,141 @@ Results rendered as a Bootstrap `table table-bordered table-hover` in `$(page.ma
 
 ---
 
+## Warehouse Location DocType
+
+The **Warehouse Location** DocType lives in the `barries` module and represents physical locations in the warehouse. It uses a parent-child hierarchy with an `is_group` checkbox.
+
+- **Group locations** (e.g., "Basement, Aisle B") are containers for child locations. They cannot directly hold inventory.
+- **Leaf locations** (e.g., "Bin 234, Shelf 123") can hold inventory via a child table `inventory_items` (SKU + quantity pairs).
+
+### Inventory Terminology
+
+When discussing what's stored in a location, preferred terms are:
+- **Inventory composition** / **inventory mix** — specific products/SKUs and quantities
+- **Bin contents** / **location contents** — what's physically stored at a specific bin
+- **On-hand inventory** — actual physical stock present (vs. system records)
+
+### Hierarchy Validation
+
+`depends_on` controls field *visibility* only — it does not delete data. Enforcing the group/leaf constraint requires code-based validation.
+
+**Recommended approach: combine server-side validation with a client-side `onchange` handler.**
+
+Server-side (`warehouse_location.py`):
+
+```python
+from frappe.model.document import Document
+
+class WarehouseLocation(Document):
+    def validate(self):
+        # Groups cannot hold inventory directly
+        if self.is_group and self.inventory_items:
+            self.inventory_items = []
+            frappe.msgprint("Inventory cleared: Group locations cannot hold items directly")
+
+        # Leaves cannot have children
+        if not self.is_group:
+            child_count = frappe.db.count('Warehouse Location',
+                                           filters={'parent_location': self.name})
+            if child_count > 0:
+                frappe.throw(f"Cannot uncheck 'Is Group': This location has {child_count} child location(s)")
+
+        # Parent must be a group
+        if self.parent_location:
+            parent = frappe.get_doc('Warehouse Location', self.parent_location)
+            if not parent.is_group:
+                frappe.throw(f"Parent location '{self.parent_location}' must be a group location")
+```
+
+Client-side (`warehouse_location.js`) — for immediate UX feedback:
+
+```javascript
+frappe.ui.form.on('Warehouse Location', {
+    is_group: function(frm) {
+        if (frm.doc.is_group && frm.doc.inventory_items.length) {
+            frm.clear_table('inventory_items');
+            frm.refresh_field('inventory_items');
+            frappe.msgprint("Inventory cleared for group location");
+        }
+    }
+});
+```
+
+The `validate()` method is automatically invoked by Frappe before save, submit, or amend — no extra wiring is required.
+
+**File locations:**
+
+```
+barries/
+└── doctype/
+    └── warehouse_location/
+        ├── warehouse_location.py      ← validate() method here
+        ├── warehouse_location.json    ← DocType definition
+        └── warehouse_location.js     ← client-side onchange handler
+```
+
+---
+
+## Product Reference Architecture (Decision Pending)
+
+The **Location Inventory** child DocType needs a `product` field that references products from the remote Ascend RMS MS SQL Server (~20,000 SKUs). These records do not exist in the Frappe/MariaDB database. Two viable paths were identified.
+
+### Why Standard Frappe Field Types Fall Short
+
+| Field Type | Problem |
+|---|---|
+| **Link** (standard) | Assumes target is a Frappe DocType in MariaDB — would require replicating 20k products |
+| **Select / Autocomplete** | Cannot hold thousands of dynamic options |
+| **Dynamic Link** | Solves polymorphic references across Frappe DocTypes, not external data |
+| **Data (unvalidated)** | Plain text; no autocomplete, no referential checking |
+
+### Option A: Virtual DocType + Link Field (Recommended for broad use)
+
+Create an `Ascend Product` DocType with `is_virtual = 1`. Implement controller methods (`get_list`, `get_count`, `load_from_db`) to fetch from SQL Server via `MSSQLDatabase`. The `product` field becomes a standard **Link** field pointing to `Ascend Product`.
+
+**Advantages:**
+- Products behave as native Frappe entities throughout the app
+- Link autocomplete works out of the box (routed to `get_list`)
+- `fetch_from` enables read-only columns (description, price, brand) in the inventory line to auto-populate
+- `frappe.get_doc("Ascend Product", sku)` works
+- Reusable across picklists, swaps, receiving, automated listings
+
+**Disadvantages:**
+- Requires careful implementation of virtual DocType controller methods (search widget's `txt`/`limit`/filter shape)
+- Link validation queries SQL Server on every save
+- Each autocomplete keystroke triggers a query — needs debouncing and `TOP`/limit
+- Some standard list-view features won't fully work with virtual data
+- Stable unique identifier needed as virtual `name` (likely `[Store UPC]`/SKU)
+
+### Option B: Data Field + Custom Autocomplete + Server-side Validation
+
+Store the SKU as a **Data** field. Attach client-side autocomplete in the grid using the existing `search_products` whitelisted method from `ascend_products.py`. Validate existence in Warehouse Location's `validate()` via `MSSQLDatabase`.
+
+**Advantages:**
+- Simpler; reuses existing `ascend_products` search infrastructure
+- Full control over query and autocomplete behavior
+- Lower risk; fewer Frappe framework edge cases
+
+**Disadvantages:**
+- Not Frappe-idiomatic; loses native Link UX
+- No `fetch_from` (can't auto-populate description/price)
+- No clickable product reference
+- Must hand-roll the autocomplete UI for grid fields
+- Less reusable if products are referenced elsewhere
+
+### Decision Framework
+
+- **Choose Option A** if products will be referenced throughout Bullwheel (picklists, swaps, receiving, automated listings). Virtual DocType pays compounding dividends via `fetch_from` and native Link UX.
+- **Choose Option B** if product references only ever live in this one child table, or if implementation complexity is a constraint.
+
+**Status: decision pending as of 2026-06-02.**
+
+---
+
 ## Outstanding Items / Next Steps
 
 - **Ascend schema verification** — confirm the placeholder column names in `ascend_products.py` against the actual `Products` table in Ascend RMS. Especially: `StyleName`, `StyleNumber`, `Keyword`, `Location`, `Gender`, `Year`, `Season`, `Price`, `Quantity`, `Brand`, `Color`, `Size`.
 - **Result row limit** — `search_products` currently returns all matching rows. Consider adding a `TOP N` limit once the real query volume is known.
 - **`pymssql` in requirements.txt** — verify `pymssql` is listed in `bullwheel/requirements.txt` so it survives container rebuilds.
+- **Product reference decision** — choose between Virtual DocType (Option A) or Data field + custom autocomplete (Option B) for the Location Inventory child table's `product` field.
+- **Warehouse Location implementation** — implement combined server-side `validate()` and client-side `onchange` handler once product reference approach is decided.
