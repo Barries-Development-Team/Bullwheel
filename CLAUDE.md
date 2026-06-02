@@ -278,7 +278,7 @@ These conventions were explicitly requested by Carter and should be maintained g
 
 ## Ascend RMS — SQL Server Schema (Partial)
 
-These column names were discovered when building the product search page. Update as more of the schema is explored.
+These column names were discovered during development. The authoritative field mapping now lives in `FIELD_TO_COLUMN` in `ascend_product.py`. Update both this table and that dict as more of the schema is confirmed.
 
 | Logical Field | SQL Column Name | Notes |
 |---|---|---|
@@ -288,37 +288,6 @@ These column names were discovered when building the product search page. Update
 | UPC | `UPC` | Standard barcode |
 | Manufacturer Part No. | `MfgrPartNo` | |
 | Brand, Color, Size, Location, Keyword, Gender, Year, Season, Style Name, Style Number, Price, Quantity | `Brand`, `Color`, `Size`, `Location`, `Keyword`, `Gender`, `Year`, `Season`, `StyleName`, `StyleNumber`, `Price`, `Quantity` | Unverified — placeholders |
-
-> The `RESULT_COLUMNS` list in `ascend_products.py` uses `"[Store UPC] AS SKU"` to alias the bracket-quoted column back to `SKU` so the frontend dict key is clean.
-
----
-
-## Ascend Products Page
-
-**Files:**
-- `bullwheel/ascend/page/ascend_products/ascend_products.py` — backend API
-- `bullwheel/ascend/page/ascend_products/ascend_products.js` — page UI
-
-### Backend (`ascend_products.py`)
-
-Schema constants (`PRODUCT_TABLE`, `FIELD_MAP`, `DEFAULT_SEARCH_COLUMNS`, `RESULT_COLUMNS`) are defined at the top of the file — the only section that needs updating as the Ascend schema is confirmed.
-
-Whitelisted method: `search_products(server_name, search_text, search_field="default")`
-- Full path: `bullwheel.ascend.page.ascend_products.ascend_products.search_products`
-- `search_field="default"` → OR LIKE across `DEFAULT_SEARCH_COLUMNS` (Description, [Store UPC], UPC)
-- Specific field → single-column LIKE via `FIELD_MAP`
-- Uses `MSSQLDatabase` context manager; returns `list[dict]`
-
-### Frontend (`ascend_products.js`)
-
-Three `page.add_field()` controls in the page toolbar:
-1. **Server** — `fieldtype: 'Link'`, `options: 'SQL Server'` — auto-completes against SQL Server DocType records
-2. **Search Field** — `fieldtype: 'Select'` — Default or any individual Ascend field
-3. **Search** — `fieldtype: 'Data'` — free text; Enter key triggers search
-
-`page.set_primary_action('Search', ...)` calls `perform_search(page)`.
-
-Results rendered as a Bootstrap `table table-bordered table-hover` in `$(page.main)`. Result dict keys match `RESULT_COLUMNS` column aliases (e.g., `SKU` from the `AS SKU` alias).
 
 ---
 
@@ -489,6 +458,5 @@ Calls `AscendDatabase.get_record(PRODUCT_TABLE, SELECT_CLAUSE, "ID", self.name)`
 - **`category` column source** — `Ascend Product.category` maps to `NULL` in `SELECT_CLAUSE`. Verify whether `Division` or another `Products` column is the correct source, then update `FIELD_TO_COLUMN` and `SELECT_CLAUSE` in `ascend_product.py`.
 - **`sytle_number` rename** — DocType fieldname is misspelled (`sytle_number`). Rename to `style_number` via the DocType editor, update `field_order` in `ascend_product.json`, update the key in `FIELD_TO_COLUMN` and `SELECT_CLAUSE` in `ascend_product.py`, then run `fm migrate`.
 - **Ascend schema verification** — confirm `StyleName`, `StyleNumber`, `Keyword`, `Gender`, `[Year]`, `Season`, `EstCost`, `AvgCost` against the live `Products` table. Update `FIELD_TO_COLUMN` and `SELECT_CLAUSE` if any column names differ.
-- **Result row limit (`search_products`)** — `search_products` in the prototype page returns all matching rows. Add a `TOP N` limit once the real query volume is known.
 - **`pymssql` in requirements.txt** — verify `pymssql` is listed in `bullwheel/requirements.txt` so it survives container rebuilds.
 - **Warehouse Location implementation** — implement combined server-side `validate()` and client-side `onchange` handler for the inventory child table.
