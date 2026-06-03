@@ -16,7 +16,7 @@ SEARCH_COLUMNS = ["Description", "[Store UPC]", "UPC"]
 # [Store UPC] requires bracket-quoting because the column name contains a space.
 # `category` has no confirmed Products column — mapped to NULL until resolved.
 # `sytle_number` preserves the existing misspelling in the DocType JSON.
-FIELD_TO_COLUMN = {
+FIELD_TO_COLUMN = { 
 	"name":                      "ID",
 	"ascend_database_id":        "ID",
 	"description":               "Description",
@@ -114,8 +114,11 @@ class AscendProduct(Document):
 		raise NotImplementedError
 
 	@staticmethod
-	def get_list(filters=None, page_length=20, start=0, txt=None, or_filters=None, **_) -> list:
+	def get_list(filters=None, page_length=20, start=0, txt=None, or_filters=None, **kwargs) -> list[frappe._dict]:
 		"""Fetch a paginated, optionally filtered list of products from the Ascend Products table."""
+
+		order_by = kwargs['order_by']
+
 		with AscendDatabase(get_default_ascend_database()) as ascend:
 			products = ascend.get_list(
 				PRODUCT_TABLE, SELECT_CLAUSE, "ID", FIELD_TO_COLUMN,
@@ -127,10 +130,7 @@ class AscendProduct(Document):
 				or_filters=or_filters,
 			)
 
-		return [
-			frappe._dict({**product, "name": product["ascend_database_id"]})
-			for product in products
-		]
+		return [frappe._dict({**product, "name": product["ascend_database_id"]}) for product in products]
 
 	@staticmethod
 	def get_count(filters=None, txt=None, or_filters=None, **_):

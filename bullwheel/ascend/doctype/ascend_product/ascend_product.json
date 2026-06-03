@@ -1,6 +1,5 @@
 {
  "actions": [],
- "allow_rename": 1,
  "autoname": "field:ascend_database_id",
  "creation": "2026-06-02 11:53:29.648589",
  "doctype": "DocType",
@@ -39,7 +38,9 @@
   {
    "fieldname": "description",
    "fieldtype": "Data",
-   "label": "Description"
+   "in_list_view": 1,
+   "label": "Description",
+   "unique": 1
   },
   {
    "fieldname": "keyword",
@@ -79,6 +80,7 @@
   {
    "fieldname": "store_sku",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Store SKU"
   },
   {
@@ -134,6 +136,7 @@
   {
    "fieldname": "quantity",
    "fieldtype": "Int",
+   "in_list_view": 1,
    "label": "Quantity"
   },
   {
@@ -152,7 +155,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-02 15:20:11.792097",
+ "modified": "2026-06-03 13:07:25.210551",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",

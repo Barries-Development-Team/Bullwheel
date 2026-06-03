@@ -5,6 +5,10 @@
 import frappe
 from bullwheel.database.SQLServer import MSSQLDatabase
 
+from typing import Literal
+
+_ORDERS = Literal['ASC','DESC'] # Ordering options for queries.
+
 def get_default_ascend_database():
 		default_database = frappe.db.get_single_value('Bullwheel Settings', 'default_database')
 		return frappe.get_doc("SQL Server", default_database)
@@ -66,17 +70,23 @@ class AscendDatabase:
 		start=0,
 		txt=None,
 		or_filters=None,
+		order_by=None,
+		order: _ORDERS = 'ASC' # 'ASC' or 'DESC
 	):
 		"""Fetch a paginated, optionally filtered list of records.
 		Pagination uses SQL Server's OFFSET...FETCH syntax. Returns a list of
 		fieldname-keyed dicts."""
+
+		if order_by is None: # Order by id_column by default
+			order_by = id_column
+
 		where_clause, values = self._build_where_clause(
 			field_to_column, filters, search_columns, txt, or_filters
 		)
 		query = (
 			f"SELECT {select_clause} FROM {table}"
 			f"{where_clause}"
-			f" ORDER BY {id_column} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
+			f" ORDER BY {order_by} {order} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
 		)
 		values += [start or 0, page_length or 20]
 		return self._database.sql(query, values, as_dict=True)
