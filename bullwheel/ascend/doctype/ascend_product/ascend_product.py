@@ -3,8 +3,7 @@
 
 import frappe
 from frappe.model.document import Document
-from bullwheel.ascend.AscendDatabase import AscendDatabase
-from bullwheel.ascend.ascend_utilities import get_default_ascend_database
+from bullwheel.ascend.AscendDatabase import AscendDatabase, get_default_ascend_database
 
 
 PRODUCT_TABLE = "Products"

@@ -2,8 +2,12 @@
 # All Rights Reserved
 # Unauthorized copying or distribution of this file is prohibited.
 
+import frappe
 from bullwheel.database.SQLServer import MSSQLDatabase
 
+def get_default_ascend_database():
+		default_database = frappe.db.get_single_value('Bullwheel Settings', 'default_database')
+		return frappe.get_doc("SQL Server", default_database)
 
 class AscendDatabase:
 	"""
