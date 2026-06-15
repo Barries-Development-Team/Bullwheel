@@ -1,0 +1,68 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:ascend_uuid",
+ "creation": "2026-06-15 16:52:53.614453",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "name1",
+  "parent_category",
+  "rental",
+  "ascend_uuid"
+ ],
+ "fields": [
+  {
+   "fieldname": "name1",
+   "fieldtype": "Data",
+   "label": "Name"
+  },
+  {
+   "fieldname": "parent_category",
+   "fieldtype": "Data",
+   "label": "Parent Category"
+  },
+  {
+   "default": "0",
+   "fieldname": "rental",
+   "fieldtype": "Check",
+   "label": "Rental"
+  },
+  {
+   "fieldname": "ascend_uuid",
+   "fieldtype": "Data",
+   "label": "Ascend UUID",
+   "unique": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_virtual": 1,
+ "links": [],
+ "modified": "2026-06-15 16:57:34.951714",
+ "modified_by": "Administrator",
+ "module": "Ascend",
+ "name": "Product Category",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "name1"
+}
