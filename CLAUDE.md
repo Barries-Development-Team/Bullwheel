@@ -196,7 +196,7 @@ with AscendDatabase(get_default_ascend_database()) as ascend:
     )
 ```
 
-**Virtual DocType controllers** (e.g. `ascend_product.py`) hold their own schema constants (`FIELD_TO_COLUMN`, `SELECT_CLAUSE`, `SEARCH_COLUMNS`) and call through to `AscendDatabase`. The controller methods become thin wrappers — all query logic lives in the handler.
+**Virtual DocType controllers** (e.g. `ascend_product.py`) now inherit from `AbstractVirtualDocType` (the Virtual DocType Framework — see its own section below) and declare only a single `SCHEMA_CONFIG` dict plus `TABLE_NAME` and `PRIMARY_KEY_COLUMN`. The base class derives `FIELD_TO_COLUMN`, the `SELECT` clause, and `SEARCH_COLUMNS` from `SCHEMA_CONFIG` and inherits all query logic (including correct list-view sorting). Controllers no longer hand-write these constants or the `get_list`/`get_count`/`load_from_db` methods.
 
 **Available `AscendDatabase` methods:**
 
@@ -427,28 +427,52 @@ These columns exist in the Ascend `Products` table but are intentionally **not**
 
 **File:** `bullwheel/ascend/doctype/ascend_product/ascend_product.py`
 
-Three module-level constants defined above the class are the single source of truth shared by all handler methods:
+`AscendProduct` now inherits from `AbstractVirtualDocType` and is the **reference implementation** of the Virtual DocType Framework. The entire controller is:
 
-- `FIELD_TO_COLUMN` — maps each DocType fieldname to its SQL column name
-- `SELECT_CLAUSE` — pre-built `SELECT` string with `AS fieldname` aliases so result dicts use fieldnames directly
-- `SEARCH_COLUMNS` — `["Description", "[Store UPC]", "UPC"]` — columns searched by the Link autocomplete
+- `TABLE_NAME = "Products"`, `PRIMARY_KEY_COLUMN = "ID"`
+- a single `SCHEMA_CONFIG` dict (one entry per field: `sql_column`, `fieldtype`, `display`, `searchable`)
+- one line binding the search hook: `ascend_product_search = AscendProduct.make_search_function(display_fields=["description", "store_sku"])`
 
-All three handler methods delegate to `AscendDatabase` (`bullwheel/ascend/AscendDatabase.py`). The controller holds the schema constants; the handler owns all query logic.
+`FIELD_TO_COLUMN`, the `SELECT` clause, and `SEARCH_COLUMNS` (`["Description", "[Store UPC]", "UPC"]`) are **derived** from `SCHEMA_CONFIG` by the base class — they are no longer hand-written. `get_list`, `get_count`, `load_from_db`, and the read-only guards are all inherited. `get_list` resolves the list view's `order_by` to a real SQL `ORDER BY` (the prior sorting bug is fixed for every subclass).
 
-**`get_list(filters, page_length, start, txt, or_filters, **_)`**
-Calls `AscendDatabase.get_list(...)` passing `PRODUCT_TABLE`, `SELECT_CLAUSE`, `"ID"`, `FIELD_TO_COLUMN`, and `SEARCH_COLUMNS`. Returns a list of `frappe._dict` objects, each with `name` set equal to `ascend_database_id`, conforming to Frappe's virtual DocType list standard.
+The framework still maps `name → ID` (so Frappe's meta-field resolves in filters) and still projects `category` as `NULL` until its `Products` column is confirmed.
 
-**`get_count(filters, txt, or_filters, **_)`**
-Calls `AscendDatabase.count_records(...)` with the same parameters.
+**Resolved during the framework refactor:** the controller previously keyed its constants on the misspelled `sytle_number` while the DocType JSON field is `style_number` — a latent mismatch that meant the style number never populated. `SCHEMA_CONFIG` now uses `style_number` (→ `StyleNumber`), matching the JSON.
 
-**`load_from_db(self)`**
-Calls `AscendDatabase.get_record(PRODUCT_TABLE, SELECT_CLAUSE, "ID", self.name)`. Raises `frappe.DoesNotExistError` if the ID is not found.
+---
 
-**`db_insert`, `db_update`, `delete`** — raise `NotImplementedError` (read-only virtual DocType).
+## Virtual DocType Framework
 
-**`FIELD_TO_COLUMN`** includes `"name": "ID"` so that Frappe's meta-field `name` resolves correctly in filter translation without special-case logic.
+A reusable framework for building read-only virtual DocTypes over Ascend SQL Server tables. It eliminates the per-controller boilerplate (`get_list`/`get_count`/`load_from_db`, hand-written `FIELD_TO_COLUMN`/`SELECT_CLAUSE`/`SEARCH_COLUMNS`, separate search hooks, and the recurring sorting bug). A new DocType needs only a `SCHEMA_CONFIG` dict and a three-attribute controller.
 
-**Note:** `category` maps to `NULL AS category` in `SELECT_CLAUSE` until the correct `Products` column is confirmed.
+**Step-by-step guide:** `bullwheel/ascend/VIRTUAL_DOCTYPE_DEVELOPMENT.md`
+
+**Files:**
+
+| File | Role |
+|---|---|
+| `ascend/virtual_doctype_base.py` | `AbstractVirtualDocType` — inherit this. Derives constants from `SCHEMA_CONFIG`, inherits `load_from_db`/`get_list`/`get_count`, wires `order_by` through to SQL, and provides read-only guards + `make_search_function`. |
+| `ascend/schema_config_builder.py` | Pure converters: `build_field_to_column`, `build_select_clause`, `build_search_columns`, `build_json_schema`, `find_primary_key_field`, `validate_schema_config`. No DB access. |
+| `ascend/schema_introspection.py` | `introspect_table_schema` (queries `INFORMATION_SCHEMA.COLUMNS` via `MSSQLDatabase`), `suggest_schema_config`, `format_schema_table`. |
+| `ascend/search_hook_helper.py` | `create_virtual_doctype_search` — generates the Link-autocomplete function registered under `standard_queries`. |
+| `commands.py` | Bench CLI: `bench --site <site> introspect-schema --table <Table> [--suggest]`. |
+
+**`SCHEMA_CONFIG`** — single source of truth, one entry per fieldname:
+
+```python
+SCHEMA_CONFIG = {
+    "description": {"sql_column": "Description", "fieldtype": "Data", "display": "primary", "searchable": True},
+    # sql_column: bracket-quote names with spaces ([Store UPC]); None => SELECT NULL
+    # display:    "hidden" | "primary" | "secondary" | None  (list/autocomplete exposure)
+    # searchable: include in the OR LIKE Link autocomplete
+}
+```
+
+Exactly one entry must map `sql_column` to `PRIMARY_KEY_COLUMN`; that field becomes Frappe's `name`.
+
+**Sorting fix:** `AbstractVirtualDocType.get_list` parses Frappe's `order_by` (backtick-aware, so DocType names with spaces like `` `tabAscend Product` `` work), maps the fieldname to its SQL column, and passes `order_by`/`order` to `AscendDatabase` — which has always supported them but was never wired through. Unmapped fields (e.g. the default `creation`) fall back to ordering by the primary key.
+
+**Tests:** `ascend/test_schema_config_builder.py` (11 builder tests) and `ascend/test_virtual_doctype_base.py` (6 order-by/derivation tests). Both are fast `UnitTestCase`s with no DB dependency. Run: `bench --site <site> run-tests --app bullwheel`.
 
 ---
 
@@ -456,7 +480,7 @@ Calls `AscendDatabase.get_record(PRODUCT_TABLE, SELECT_CLAUSE, "ID", self.name)`
 
 - ✅ **Product reference architecture** — Virtual DocType (Option A) selected and implemented. `Ascend Product` handler (`get_list`, `get_count`, `load_from_db`) live in `ascend_product.py`. Bug fixed in `ascend_utilities.py` (`frappe.db.get_doc` → `frappe.get_doc`).
 - **`category` column source** — `Ascend Product.category` maps to `NULL` in `SELECT_CLAUSE`. Verify whether `Division` or another `Products` column is the correct source, then update `FIELD_TO_COLUMN` and `SELECT_CLAUSE` in `ascend_product.py`.
-- **`sytle_number` rename** — DocType fieldname is misspelled (`sytle_number`). Rename to `style_number` via the DocType editor, update `field_order` in `ascend_product.json`, update the key in `FIELD_TO_COLUMN` and `SELECT_CLAUSE` in `ascend_product.py`, then run `fm migrate`.
+- ✅ **`sytle_number` rename (controller side)** — `SCHEMA_CONFIG` now keys on `style_number` (→ `StyleNumber`), matching the DocType JSON field. The JSON already uses `style_number`. If the field label still reads "Sytle Number", fix it in the DocType editor and run `fm migrate`.
 - **Ascend schema verification** — confirm `StyleName`, `StyleNumber`, `Keyword`, `Gender`, `[Year]`, `Season`, `EstCost`, `AvgCost` against the live `Products` table. Update `FIELD_TO_COLUMN` and `SELECT_CLAUSE` if any column names differ.
 - **`pymssql` in requirements.txt** — verify `pymssql` is listed in `bullwheel/requirements.txt` so it survives container rebuilds.
 - **Warehouse Location implementation** — implement combined server-side `validate()` and client-side `onchange` handler for the inventory child table.
