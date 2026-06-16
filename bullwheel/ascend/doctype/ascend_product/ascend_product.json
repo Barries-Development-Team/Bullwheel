@@ -40,17 +40,20 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Description",
+   "read_only": 1,
    "unique": 1
   },
   {
    "fieldname": "keyword",
    "fieldtype": "Data",
-   "label": "Keyword"
+   "label": "Keyword",
+   "read_only": 1
   },
   {
    "fieldname": "brand",
    "fieldtype": "Data",
-   "label": "Brand"
+   "label": "Brand",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_czad",
@@ -59,12 +62,14 @@
   {
    "fieldname": "price",
    "fieldtype": "Currency",
-   "label": "Price"
+   "label": "Price",
+   "read_only": 1
   },
   {
    "fieldname": "estimated_cost",
    "fieldtype": "Currency",
-   "label": "Estimated Cost"
+   "label": "Estimated Cost",
+   "read_only": 1
   },
   {
    "fieldname": "ids_and_barcodes_section",
@@ -75,69 +80,83 @@
    "fieldname": "ascend_database_id",
    "fieldtype": "Data",
    "label": "Ascend Database ID",
+   "read_only": 1,
    "unique": 1
   },
   {
    "fieldname": "store_sku",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Store SKU"
+   "label": "Store SKU",
+   "read_only": 1
   },
   {
    "fieldname": "upc",
    "fieldtype": "Data",
-   "label": "UPC"
+   "label": "UPC",
+   "read_only": 1
   },
   {
    "fieldname": "manufacturers_part_number",
    "fieldtype": "Data",
-   "label": "Manufacturer's Part Number"
+   "label": "Manufacturer's Part Number",
+   "read_only": 1
   },
   {
    "fieldname": "category",
-   "fieldtype": "Data",
-   "label": "Category"
+   "fieldtype": "Link",
+   "label": "Category",
+   "options": "Product Category",
+   "read_only": 1
   },
   {
    "fieldname": "color",
    "fieldtype": "Data",
-   "label": "Color"
+   "label": "Color",
+   "read_only": 1
   },
   {
    "fieldname": "size",
    "fieldtype": "Data",
-   "label": "Size"
+   "label": "Size",
+   "read_only": 1
   },
   {
    "fieldname": "style_name",
    "fieldtype": "Data",
-   "label": "Style Name"
+   "label": "Style Name",
+   "read_only": 1
   },
   {
    "fieldname": "gender",
    "fieldtype": "Data",
-   "label": "Gender"
+   "label": "Gender",
+   "read_only": 1
   },
   {
    "fieldname": "season",
    "fieldtype": "Data",
-   "label": "Season"
+   "label": "Season",
+   "read_only": 1
   },
   {
    "fieldname": "year",
    "fieldtype": "Data",
-   "label": "Year"
+   "label": "Year",
+   "read_only": 1
   },
   {
    "fieldname": "average_cost",
    "fieldtype": "Currency",
-   "label": "Average Cost"
+   "label": "Average Cost",
+   "read_only": 1
   },
   {
    "fieldname": "quantity",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Quantity"
+   "label": "Quantity",
+   "read_only": 1
   },
   {
    "fieldname": "pricing_section",
@@ -147,7 +166,8 @@
   {
    "fieldname": "style_number",
    "fieldtype": "Data",
-   "label": "Style Number"
+   "label": "Style Number",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
@@ -155,7 +175,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-03 13:07:25.210551",
+ "modified": "2026-06-16 17:12:35.965984",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",

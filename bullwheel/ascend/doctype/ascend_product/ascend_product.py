@@ -33,7 +33,7 @@ class AscendProduct(AbstractVirtualDocType):
 		"ascend_database_id":        {"sql_column": "ID",            "fieldtype": "Data",     "display": "hidden",    "searchable": False},
 		"description":               {"sql_column": "Description",   "fieldtype": "Data",     "display": "primary",   "searchable": True},
 		"keyword":                   {"sql_column": "Keyword",       "fieldtype": "Data",     "display": None,        "searchable": False},
-		"category":                  {"sql_column": None,            "fieldtype": "Data",     "display": None,        "searchable": False},
+	"category":              	    {"sql_column": "TopicID",            "fieldtype": "Link",     "display": None,        "searchable": False},
 		"quantity":                  {"sql_column": "Quantity",      "fieldtype": "Int",      "display": "secondary", "searchable": False},
 		"brand":                     {"sql_column": "Brand",         "fieldtype": "Data",     "display": None,        "searchable": False},
 		"color":                     {"sql_column": "Color",         "fieldtype": "Data",     "display": None,        "searchable": False},
