@@ -1,45 +1,66 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "field:ascend_uuid",
+ "autoname": "field:database_id",
  "creation": "2026-06-15 16:52:53.614453",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "name1",
+  "category_name",
   "parent_category",
+  "serialized",
   "rental",
-  "ascend_uuid"
+  "database_id",
+  "parent_id"
  ],
  "fields": [
   {
-   "fieldname": "name1",
-   "fieldtype": "Data",
-   "label": "Name"
-  },
-  {
    "fieldname": "parent_category",
    "fieldtype": "Data",
-   "label": "Parent Category"
+   "label": "Parent Category",
+   "read_only": 1
   },
   {
    "default": "0",
    "fieldname": "rental",
    "fieldtype": "Check",
-   "label": "Rental"
+   "label": "Rental",
+   "read_only": 1
   },
   {
-   "fieldname": "ascend_uuid",
+   "fieldname": "category_name",
    "fieldtype": "Data",
-   "label": "Ascend UUID",
+   "label": "Name",
+   "read_only": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "database_id",
+   "fieldtype": "Data",
+   "label": "Database ID",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "serialized",
+   "fieldtype": "Check",
+   "label": "Serialized",
+   "read_only": 1
+  },
+  {
+   "fieldname": "parent_id",
+   "fieldtype": "Link",
+   "label": "Parent ID",
+   "options": "Product Category",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-15 16:57:34.951714",
+ "modified": "2026-06-16 16:29:33.954107",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Product Category",
@@ -64,5 +85,5 @@
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],
- "title_field": "name1"
+ "title_field": "category_name"
 }

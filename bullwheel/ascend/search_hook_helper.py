@@ -30,6 +30,7 @@ Then register the dotted path in hooks.py:
 import frappe
 
 from bullwheel.ascend.AscendDatabase import AscendDatabase, get_default_ascend_database
+from bullwheel.ascend.schema_config_builder import normalize_record
 
 
 def create_virtual_doctype_search(
@@ -71,6 +72,8 @@ def create_virtual_doctype_search(
 				start=int(start),
 				txt=txt,
 			)
+
+		records = [normalize_record(record) for record in records]
 
 		if as_dict:
 			return [frappe._dict({**record, "name": record[primary_key_field]}) for record in records]

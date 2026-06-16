@@ -32,6 +32,7 @@ from bullwheel.ascend.schema_config_builder import (
 	build_search_columns,
 	build_select_clause,
 	find_primary_key_field,
+	normalize_record,
 )
 from bullwheel.ascend.search_hook_helper import create_virtual_doctype_search
 
@@ -82,6 +83,18 @@ class AbstractVirtualDocType(Document):
 			setattr(cls, attribute_name, builder())
 		return cls.__dict__[attribute_name]
 
+	@classmethod
+	def _to_document_dict(cls, record):
+		"""Convert a raw SQL result row into a frappe._dict suitable for a virtual document.
+
+		Normalizes SQL Server types into Frappe-friendly primitives (notably GUID
+		`uniqueidentifier` columns, which pymssql returns as uuid.UUID objects) and
+		sets the `name` meta-field from the primary key field. Used by both
+		load_from_db and get_list so the two paths stay consistent.
+		"""
+		record = normalize_record(record)
+		return frappe._dict({**record, "name": record[cls.primary_key_field()]})
+
 	# ─── Read Operations ──────────────────────────────────────────────────────
 
 	def load_from_db(self):
@@ -94,8 +107,7 @@ class AbstractVirtualDocType(Document):
 		if not record:
 			raise frappe.DoesNotExistError(f"{self.doctype} '{self.name}' not found.")
 
-		primary_key_field = self.primary_key_field()
-		super(Document, self).__init__(frappe._dict({**record, "name": record[primary_key_field]}))
+		super(Document, self).__init__(self._to_document_dict(record))
 
 	@classmethod
 	def get_list(cls, filters=None, page_length=20, start=0, txt=None, or_filters=None, **kwargs):
@@ -123,8 +135,7 @@ class AbstractVirtualDocType(Document):
 				order=order_direction,
 			)
 
-		primary_key_field = cls.primary_key_field()
-		return [frappe._dict({**record, "name": record[primary_key_field]}) for record in records]
+		return [cls._to_document_dict(record) for record in records]
 
 	@classmethod
 	def get_count(cls, filters=None, txt=None, or_filters=None, **_):

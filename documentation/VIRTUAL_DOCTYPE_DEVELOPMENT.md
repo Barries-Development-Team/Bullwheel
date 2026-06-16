@@ -158,6 +158,27 @@ exactly one field. Bracket-quoting is stripped before the column comparison.
 
 ---
 
+## Gotchas & Known Limitations
+
+**GUID / `uniqueidentifier` primary keys — handled automatically.** Many Ascend
+tables key on a SQL Server `uniqueidentifier` (e.g. `Categories.ID`). pymssql
+returns those columns as Python `uuid.UUID` objects, which Frappe cannot use as
+identifiers (a UUID `name` or Link value raises `Unsupported filters type: UUID`
+in the query builder). The base class normalizes every record through
+`normalize_record`, converting UUID values to strings, so `name`, Link fields,
+and filters all work. **No action needed** — just be aware the `name` will be the
+lowercase, hyphenated GUID string.
+
+**Do NOT enable "Show Title in Link Fields" on a virtual DocType.** That setting
+makes Frappe resolve link titles via `frappe.db.get_value(doctype, name, title_field)`,
+and core's query engine has **no virtual-doctype routing** — it runs the query
+against a `tab<DocType>` table that doesn't exist for virtual DocTypes, raising
+`Table '...' doesn't exist`. Leave the setting off (it is off by default). The
+framework's `display` config already gives Link autocomplete a friendly label, so
+users still see a description rather than a raw GUID when picking a value. (If a
+saved Link field shows the raw GUID name in the form, that is the cost of this
+core limitation, not a framework bug.)
+
 ## Why this shape
 
 - **Single source of truth** — one `SCHEMA_CONFIG` drives the field map, SELECT

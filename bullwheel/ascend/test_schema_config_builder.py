@@ -10,6 +10,8 @@ handling, bracket-quote preservation, primary-key resolution, search-column
 extraction, and SCHEMA_CONFIG validation.
 """
 
+import uuid
+
 from frappe.tests import UnitTestCase
 
 from bullwheel.ascend.schema_config_builder import (
@@ -18,6 +20,7 @@ from bullwheel.ascend.schema_config_builder import (
 	build_search_columns,
 	build_select_clause,
 	find_primary_key_field,
+	normalize_record,
 	validate_schema_config,
 )
 
@@ -91,6 +94,21 @@ class UnitTestSchemaConfigBuilder(UnitTestCase):
 		discovered = ["ID", "Description", "Store UPC", "Quantity"]
 		# Valid: every non-NULL column (bracket-stripped) exists in the table.
 		self.assertTrue(validate_schema_config(SAMPLE_CONFIG, PRIMARY_KEY_COLUMN, discovered))
+
+	def test_normalize_record_stringifies_uuids(self):
+		# SQL Server uniqueidentifier columns arrive from pymssql as uuid.UUID objects.
+		identifier = uuid.UUID("12345678-1234-5678-1234-567812345678")
+		parent = uuid.UUID("87654321-4321-8765-4321-876543218765")
+		normalized = normalize_record({"name": identifier, "parent_id": parent, "qty": 5, "topic": "Skis"})
+		self.assertEqual(normalized["name"], "12345678-1234-5678-1234-567812345678")
+		self.assertEqual(normalized["parent_id"], "87654321-4321-8765-4321-876543218765")
+		self.assertIsInstance(normalized["name"], str)
+		# Non-UUID values pass through untouched.
+		self.assertEqual(normalized["qty"], 5)
+		self.assertEqual(normalized["topic"], "Skis")
+
+	def test_normalize_record_preserves_none(self):
+		self.assertEqual(normalize_record({"category": None})["category"], None)
 
 	def test_validate_schema_config_detects_unknown_column(self):
 		typo_config = {

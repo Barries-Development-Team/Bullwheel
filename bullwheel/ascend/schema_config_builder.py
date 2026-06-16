@@ -31,8 +31,29 @@ one dict into every derived constant the framework needs:
 `searchable` controls whether the column joins the OR LIKE autocomplete search.
 """
 
+import uuid
+
 # Allowed values for the `display` key in a SCHEMA_CONFIG entry.
 VALID_DISPLAY_VALUES = (None, "hidden", "primary", "secondary")
+
+
+def normalize_record(record):
+	"""Coerce a SQL result row into Frappe-friendly primitive values.
+
+	pymssql returns SQL Server `uniqueidentifier` (GUID) columns as Python
+	`uuid.UUID` objects. Frappe requires *string* identifiers: the `name`
+	meta-field, Link field values, and filter values must all be strings — passing
+	a UUID into Frappe's query builder raises "Unsupported filters type: UUID", and
+	a UUID `name` breaks Link autocomplete and document loading.
+
+	Returns a new dict with every `uuid.UUID` value converted to its string form
+	(lowercase, hyphenated; SQL Server compares `uniqueidentifier` case-insensitively,
+	so the value still round-trips for lookups). Other values are left unchanged.
+	"""
+	return {
+		fieldname: (str(value) if isinstance(value, uuid.UUID) else value)
+		for fieldname, value in record.items()
+	}
 
 
 def build_field_to_column(schema_config, primary_key_column):

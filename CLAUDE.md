@@ -445,7 +445,7 @@ The framework still maps `name → ID` (so Frappe's meta-field resolves in filte
 
 A reusable framework for building read-only virtual DocTypes over Ascend SQL Server tables. It eliminates the per-controller boilerplate (`get_list`/`get_count`/`load_from_db`, hand-written `FIELD_TO_COLUMN`/`SELECT_CLAUSE`/`SEARCH_COLUMNS`, separate search hooks, and the recurring sorting bug). A new DocType needs only a `SCHEMA_CONFIG` dict and a three-attribute controller.
 
-**Step-by-step guide:** `bullwheel/ascend/VIRTUAL_DOCTYPE_DEVELOPMENT.md`
+**Step-by-step guide:** `documentation/VIRTUAL_DOCTYPE_DEVELOPMENT.md`
 
 **Files:**
 
@@ -469,6 +469,10 @@ SCHEMA_CONFIG = {
 ```
 
 Exactly one entry must map `sql_column` to `PRIMARY_KEY_COLUMN`; that field becomes Frappe's `name`.
+
+**GUID primary keys:** SQL Server `uniqueidentifier` columns come back from pymssql as `uuid.UUID` objects. The base class runs every record through `normalize_record` (in `schema_config_builder.py`), stringifying UUIDs so `name`, Link values, and filters work. Without this, a UUID-keyed virtual DocType raises `Unsupported filters type: UUID`.
+
+**Gotcha — do NOT enable "Show Title in Link Fields" on a virtual DocType.** It makes Frappe call `frappe.db.get_value` against a non-existent `tab<DocType>` table (core's query engine has no virtual-doctype routing) → `Table doesn't exist`. Leave it off; the `display` config already gives Link autocomplete a friendly label. See `VIRTUAL_DOCTYPE_DEVELOPMENT.md` § Gotchas.
 
 **Sorting fix:** `AbstractVirtualDocType.get_list` parses Frappe's `order_by` (backtick-aware, so DocType names with spaces like `` `tabAscend Product` `` work), maps the fieldname to its SQL column, and passes `order_by`/`order` to `AscendDatabase` — which has always supported them but was never wired through. Unmapped fields (e.g. the default `creation`) fall back to ordering by the primary key.
 
