@@ -119,6 +119,8 @@ class AbstractVirtualDocType(Document):
 		"""
 		order_column, order_direction = cls._resolve_order_by(kwargs.get("order_by"))
 
+
+
 		with AscendDatabase(get_default_ascend_database()) as ascend:
 			records = ascend.get_list(
 				cls.TABLE_NAME,
