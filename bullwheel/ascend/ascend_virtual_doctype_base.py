@@ -21,6 +21,15 @@ def get_default_ascend_database():
 		default_database = frappe.db.get_single_value('Bullwheel Settings', 'default_database')
 		return frappe.get_doc("SQL Server", default_database)
 
+def _extract_search_text(txt, or_filters):
+		"""Return the raw search string from either a direct txt arg or Frappe's or_filters list."""
+		if txt:
+			return txt
+		if or_filters:
+			for filter_condition in or_filters:
+				if len(filter_condition) >= 4 and filter_condition[2].lower() == "like":
+					return filter_condition[3].strip("%")
+		return None
 
 def _build_where_clause(field_to_column, filters, search_columns, txt, or_filters):
 	"""Build a parameterized SQL WHERE clause from Frappe list-view filters and search text.
@@ -61,7 +70,7 @@ def _build_where_clause(field_to_column, filters, search_columns, txt, or_filter
 				conditions.append(f"{column} {sql_operator} %s")
 				values.append(value)
 
-	search_text = AscendDatabase._extract_search_text(txt, or_filters)
+	search_text = _extract_search_text(txt, or_filters)
 	if search_text and search_columns:
 		search_conditions = " OR ".join(f"{column} LIKE %s" for column in search_columns)
 		conditions.append(f"({search_conditions})")
@@ -160,7 +169,7 @@ class VirtualDoctypeBase(Document):
 			order_by = cls.primary_key_field()
 
 		where_clause, values = _build_where_clause(
-			field_to_column, filters, search_columns, txt, or_filters
+			cls.field_to_column(), filters, cls.search_columns(), txt, or_filters
 		)
 		query = (
 			f"SELECT {cls.select_clause()} FROM {cls.TABLE_NAME}"
@@ -177,6 +186,24 @@ class VirtualDoctypeBase(Document):
 			)
 
 		return [cls._to_document_dict(record) for record in results]
+	
+	@classmethod
+	def get_count(cls, filters=None, txt=None, or_filters=None, **_):
+		"""Return the number of records matching the current filters or search text."""
+		
+		where_clause, values = _build_where_clause(
+			cls.field_to_column, filters, cls.search_columns, txt, or_filters
+		)
+		query = f"SELECT COUNT(*) FROM {cls.TABLE_NAME}{where_clause}"
+		with MSSQLDatabase(get_default_ascend_database()) as ascend:
+			result = ascend.sql(query=query, values=values)
+
+		return result[0][0] if result else 0
+	
+	@staticmethod
+	def get_stats(**_):
+		"""No sidebar stats for Ascend virtual DocTypes."""
+		pass
 			 
 	# ─── Order-By Resolution ──────────────────────────────────────────────────
 
