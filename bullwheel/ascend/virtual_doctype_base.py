@@ -17,6 +17,31 @@ from bullwheel.ascend.schema_config_builder import (
 
 # ─── Static Helper Functions ───────────────────────────────────────
 
+def _build_join_clause(join_config):
+	"""Build a SQL JOIN string from a JOIN_CONFIG list.
+
+	Each entry in `join_config` describes one JOIN clause:
+	    {"join": "LEFT JOIN", "table": "Categories", "alias": "cat", "on": "Products.TopicID = cat.ID"}
+
+	`alias` is optional. Returns an empty string when `join_config` is None or empty.
+	All entries are concatenated with a single space separator.
+	"""
+	if not join_config:
+		return ""
+	parts = []
+	for join_entry in join_config:
+		join_type = join_entry.get("join", "JOIN")
+		table = join_entry["table"]
+		alias = join_entry.get("alias", "")
+		on_condition = join_entry["on"]
+		part = f"{join_type} {table}"
+		if alias:
+			part += f" AS {alias}"
+		part += f" ON {on_condition}"
+		parts.append(part)
+	return " ".join(parts)
+
+
 def get_default_ascend_database():
 		default_database = frappe.db.get_single_value('Bullwheel Settings', 'default_database')
 		return frappe.get_doc("SQL Server", default_database)
@@ -84,10 +109,10 @@ def _build_where_clause(field_to_column, filters, search_columns, txt, or_filter
 class AbstractVirtualDocType(Document):
 
 	# ─── Subclass Contract — override these ───────────────────────────────────
-	TABLE_NAME: str = None           # Ascend SQL table name, e.g. Products"
-	JOIN_CLAUSES: str = None	# Complete Join clause(s) as string.
-	# PRIMARY_KEY_COLUMN: str = None  # SQL primary key column name, e.g. "ID"
-	SCHEMA_CONFIG: dict = None      # fieldname -> {alias.sql_column, fieldtype (eval), display (eval), searchable (eval)}
+	TABLE_NAME: str = None        # Ascend SQL table name, e.g. "Products"
+	PRIMARY_KEY_COLUMN: str = None  # SQL primary key column name, e.g. "ID" (always unqualified)
+	JOIN_CONFIG: list = None      # List of JOIN descriptors — see _build_join_clause for the dict shape
+	SCHEMA_CONFIG: dict = None    # fieldname -> {sql_column, fieldtype, display, searchable}
 
 	# ─── Derived Constants (lazily built & cached per subclass) ───────────────
 
@@ -110,6 +135,15 @@ class AbstractVirtualDocType(Document):
 	def primary_key_field(cls):
 		"""Return (and cache) the fieldname mapped to the primary key column."""
 		return cls._derived("_primary_key_field", lambda: find_primary_key_field(cls.SCHEMA_CONFIG, cls.PRIMARY_KEY_COLUMN))
+
+	@classmethod
+	def join_clause(cls):
+		"""Return (and cache) the SQL JOIN string built from JOIN_CONFIG.
+
+		Returns an empty string when JOIN_CONFIG is None, so callers can safely
+		check truthiness or concatenate without special-casing the no-join case.
+		"""
+		return cls._derived("_join_clause", lambda: _build_join_clause(cls.JOIN_CONFIG))
 
 	@classmethod
 	def _derived(cls, attribute_name, builder):
@@ -138,10 +172,11 @@ class AbstractVirtualDocType(Document):
 
 	def load_from_db(self):
 		"""Load a single record from SQL Server by primary key and populate this document."""
-		query = f'SELECT {self.select_clause()} FROM {self.TABLE_NAME}'
-		if self.JOIN_CLAUSES is not None:
-			query += f' {self.JOIN_CLAUSES}'
-		query += f' WHERE {self.TABLE_NAME}.{self.PRIMARY_KEY_COLUMN} = %s'
+		join = self.join_clause()
+		query = f"SELECT {self.select_clause()} FROM {self.TABLE_NAME}"
+		if join:
+			query += f" {join}"
+		query += f" WHERE {self.TABLE_NAME}.{self.PRIMARY_KEY_COLUMN} = %s"
 
 		with MSSQLDatabase(get_default_ascend_database()) as ascend:
 			result = ascend.sql(
@@ -168,11 +203,13 @@ class AbstractVirtualDocType(Document):
 		if order_by is None: # Order by id_column by default
 			order_by = cls.primary_key_field()
 
+		join = cls.join_clause()
 		where_clause, values = _build_where_clause(
 			cls.field_to_column(), filters, cls.search_columns(), txt, or_filters
 		)
 		query = (
 			f"SELECT {cls.select_clause()} FROM {cls.TABLE_NAME}"
+			f"{' ' + join if join else ''}"
 			f"{where_clause}"
 			f" ORDER BY {order_by} {order_direction} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
 		)
@@ -190,11 +227,15 @@ class AbstractVirtualDocType(Document):
 	@classmethod
 	def get_count(cls, filters=None, txt=None, or_filters=None, **_):
 		"""Return the number of records matching the current filters or search text."""
-		
+		join = cls.join_clause()
 		where_clause, values = _build_where_clause(
 			cls.field_to_column(), filters, cls.search_columns(), txt, or_filters
 		)
-		query = f"SELECT COUNT(*) FROM {cls.TABLE_NAME}{where_clause}"
+		query = (
+			f"SELECT COUNT(*) FROM {cls.TABLE_NAME}"
+			f"{' ' + join if join else ''}"
+			f"{where_clause}"
+		)
 		with MSSQLDatabase(get_default_ascend_database()) as ascend:
 			result = ascend.sql(query=query, values=values)
 

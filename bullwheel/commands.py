@@ -23,16 +23,22 @@ from frappe.exceptions import SiteNotSpecifiedError
 	help="SQL Server DocType record name. Defaults to Bullwheel Settings -> default_database.",
 )
 @click.option("--suggest", is_flag=True, default=False, help="Also print a starter SCHEMA_CONFIG dict.")
+@click.option(
+	"--join-table",
+	"join_tables",
+	multiple=True,
+	help="Additional table to introspect for JOIN configs. Repeatable: --join-table Categories --join-table Vendors.",
+)
 @pass_context
-def introspect_schema(context, table_name, server_name=None, suggest=False):
+def introspect_schema(context, table_name, server_name=None, suggest=False, join_tables=()):
 	"""Discover the columns of an Ascend SQL Server table.
 
 	Queries INFORMATION_SCHEMA.COLUMNS for the given table and prints a table of
-	column names, types, lengths, and nullability — the input a developer needs to
-	declare a SCHEMA_CONFIG for a new virtual DocType. With --suggest, also prints a
-	scaffold SCHEMA_CONFIG to copy into the controller.
+	column names, types, lengths, and nullability. With --suggest, also prints a
+	scaffold SCHEMA_CONFIG. Use --join-table to also print columns from joined tables
+	when writing a SCHEMA_CONFIG for a DocType that uses JOIN_CONFIG.
 	"""
-	from bullwheel.ascend.AscendDatabase import get_default_ascend_database
+	from bullwheel.ascend.virtual_doctype_base import get_default_ascend_database
 	from bullwheel.ascend.schema_introspection import (
 		format_schema_table,
 		introspect_table_schema,
@@ -50,6 +56,11 @@ def introspect_schema(context, table_name, server_name=None, suggest=False):
 
 		click.echo(f"\nTable '{table_name}' on server '{server_document.name}' — {len(schema)} columns\n")
 		click.echo(format_schema_table(schema))
+
+		for join_table in join_tables:
+			join_schema = introspect_table_schema(server_document, join_table)
+			click.echo(f"\nJoined table '{join_table}' — {len(join_schema)} columns\n")
+			click.echo(format_schema_table(join_schema))
 
 		if suggest and schema:
 			click.echo("\n# Starter SCHEMA_CONFIG — review and edit before use:\n")
