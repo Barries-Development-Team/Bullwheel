@@ -136,24 +136,24 @@ class AbstractVirtualDocType(Document):
 
 	# ─── Read Operations ──────────────────────────────────────────────────────
 
-	@classmethod
 	def load_from_db(self):
 		"""Load a single record from SQL Server by primary key and populate this document."""
 		query = f'SELECT {self.select_clause()} FROM {self.TABLE_NAME}'
 		if self.JOIN_CLAUSES is not None:
 			query += f' {self.JOIN_CLAUSES}'
-		query += f' WHERE {self.TABLE_NAME}.ID = %s'
+		query += f' WHERE {self.TABLE_NAME}.{self.PRIMARY_KEY_COLUMN} = %s'
 
 		with MSSQLDatabase(get_default_ascend_database()) as ascend:
 			result = ascend.sql(
 				query=query,
-				values=(self.id) # Field storing primary key.
+				values=(self.name,),
+				as_dict=True
 			)
 
 		if not result:
 			raise frappe.DoesNotExistError(f"{self.doctype} '{self.name}' not found.")
 
-		super(Document, self).__init__(self._to_document_dict(result))
+		super(Document, self).__init__(self._to_document_dict(result[0]))
 
 	@classmethod
 	def get_list(cls, filters=None, page_length=20, start=0, txt=None, or_filters=None, **kwargs):
