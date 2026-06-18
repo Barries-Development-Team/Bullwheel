@@ -30,10 +30,10 @@ class AscendProduct(AbstractVirtualDocType):
 	# `category` has no confirmed Products column — NULL placeholder until resolved.
 	# `[Store UPC]` and `[Year]` are bracket-quoted (space / reserved-word).
 	SCHEMA_CONFIG = {
-		"ascend_database_id":        {"sql_column": "ID",            "fieldtype": "Data",     "display": "hidden",    "searchable": False},
+		"ascend_database_id":        {"sql_column": "Products.ID",            "fieldtype": "Data",     "display": "hidden",    "searchable": False},
 		"description":               {"sql_column": "Description",   "fieldtype": "Data",     "display": "primary",   "searchable": True},
 		"keyword":                   {"sql_column": "Keyword",       "fieldtype": "Data",     "display": None,        "searchable": False},
-	"category":              	    {"sql_column": "TopicID",            "fieldtype": "Link",     "display": None,        "searchable": False},
+	"category":              	    {"sql_column": "cat.Topic",            "fieldtype": "Link",     "display": None,        "searchable": False},
 		"quantity":                  {"sql_column": "Quantity",      "fieldtype": "Int",      "display": "secondary", "searchable": False},
 		"brand":                     {"sql_column": "Brand",         "fieldtype": "Data",     "display": None,        "searchable": False},
 		"color":                     {"sql_column": "Color",         "fieldtype": "Data",     "display": None,        "searchable": False},
@@ -50,6 +50,15 @@ class AscendProduct(AbstractVirtualDocType):
 		"upc":                       {"sql_column": "UPC",           "fieldtype": "Data",     "display": None,        "searchable": True},
 		"manufacturers_part_number": {"sql_column": "MfgrPartNo",    "fieldtype": "Data",     "display": None,        "searchable": False},
 	}
+
+	JOIN_CONFIG = [
+    {
+        "join":  "LEFT JOIN",                          # JOIN type
+        "table": "Categories",                         # Table to join
+        "alias": "cat",                                # Optional alias
+        "on":    "Products.TopicID = cat.ID",          # Full ON condition
+    }
+]
 
 
 # Link-field autocomplete hook. Registered in hooks.py under standard_queries as
