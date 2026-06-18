@@ -16,8 +16,7 @@ bullwheel/ascend/
 ├── virtual_doctype_base.py   AbstractVirtualDocType — inherit this
 ├── schema_config_builder.py  SCHEMA_CONFIG -> FIELD_TO_COLUMN / SELECT / SEARCH / JSON
 ├── schema_introspection.py   discover SQL Server columns + suggest a config
-├── search_hook_helper.py     generate the Link-autocomplete search function
-└── AscendDatabase.py         the query layer (unchanged; the base class drives it)
+└── search_hook_helper.py     generate the Link-autocomplete search function
 ```
 
 One `SCHEMA_CONFIG` dict on your controller is the single source of truth. The
@@ -94,6 +93,80 @@ That's the whole controller. `load_from_db`, `get_list`, `get_count`, sorting,
 and the read-only guards are all inherited. `make_search_function`'s
 `display_fields` are the fieldnames shown after the id in each autocomplete row.
 
+## Step 3b — Working with JOINs (optional)
+
+When a field's value lives in a related table (e.g. resolving a category name from a
+`Categories` table via a foreign key on `Products`), add a `JOIN_CONFIG` class
+attribute alongside `SCHEMA_CONFIG`. Each list entry describes one SQL JOIN:
+
+```python
+JOIN_CONFIG = [
+    {
+        "join":  "LEFT JOIN",                          # JOIN type
+        "table": "Categories",                         # Table to join
+        "alias": "cat",                                # Optional alias
+        "on":    "Products.TopicID = cat.ID",          # Full ON condition
+    }
+]
+```
+
+Renders as: `LEFT JOIN Categories AS cat ON Products.TopicID = cat.ID`
+
+Multiple entries are concatenated in order, so you can chain as many JOINs as needed.
+
+### Column qualification
+
+With a JOIN in place, use dot notation (`table.column` or `alias.column`) in
+`sql_column` whenever two tables share a column name — including the primary key:
+
+```python
+SCHEMA_CONFIG = {
+    "ascend_database_id": {"sql_column": "Products.ID",     "fieldtype": "Data", "display": "hidden",  "searchable": False},
+    "description":        {"sql_column": "Products.Description", "fieldtype": "Data", "display": "primary", "searchable": True},
+    "category":           {"sql_column": "cat.Topic",        "fieldtype": "Data", "display": None,      "searchable": False},
+}
+```
+
+**`PRIMARY_KEY_COLUMN` is always unqualified** (`"ID"`, never `"Products.ID"`).
+The `WHERE` clause in `load_from_db` qualifies it automatically as
+`Products.ID = %s`. Qualify only the `sql_column` in `SCHEMA_CONFIG` so the
+`SELECT` clause is unambiguous.
+
+If the joined tables have no overlapping column names, qualification is optional
+but still recommended for readability.
+
+### Discovering joined-table columns
+
+Use `--join-table` (repeatable) on the CLI to inspect the columns available from
+each joined table before writing the config:
+
+```bash
+bench --site <site> introspect-schema --table Products --join-table Categories
+```
+
+### Validating a JOIN config
+
+Pass the joined-table columns as `additional_discovered_columns` to catch typos
+in qualified `sql_column` references early:
+
+```python
+from bullwheel.ascend.virtual_doctype_base import get_default_ascend_database
+from bullwheel.ascend.schema_introspection import introspect_table_schema, introspect_join_schemas
+from bullwheel.ascend.schema_config_builder import validate_schema_config
+
+server = get_default_ascend_database()
+primary_schema  = introspect_table_schema(server, "Products")
+joined_schema   = introspect_join_schemas(server, JOIN_CONFIG)
+
+validate_schema_config(SCHEMA_CONFIG, "ID", primary_schema.keys(), joined_schema.keys())
+```
+
+Unqualified columns are validated against the primary table; qualified
+`table.column` references are validated against the joined tables. Omitting
+`additional_discovered_columns` skips validation for qualified columns.
+
+---
+
 ## Step 4 — Create the DocType JSON
 
 Create the DocType in the editor (`is_virtual = 1`), or scaffold its `fields`
@@ -144,7 +217,7 @@ at the DocType autocompletes.
 surface early instead of as SQL errors:
 
 ```python
-from bullwheel.ascend.AscendDatabase import get_default_ascend_database
+from bullwheel.ascend.virtual_doctype_base import get_default_ascend_database
 from bullwheel.ascend.schema_introspection import introspect_table_schema
 from bullwheel.ascend.schema_config_builder import validate_schema_config
 

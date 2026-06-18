@@ -169,7 +169,7 @@ bullwheel.database.doctype.sql_server.sql_server.test_connection
 
 ## Database Architecture
 
-Bullwheel uses a two-layer database architecture for external SQL Server connections:
+Bullwheel connects to external SQL Server instances through a single-layer architecture:
 
 ```
 bullwheel/
@@ -179,39 +179,24 @@ bullwheel/
     │   ├── exceptions.py         ← Custom exception hierarchy
     │   └── doctype/sql_server/   ← SQL Server DocType (stores credentials)
     └── ascend/
-        └── AscendDatabase.py     ← AscendDatabase — Ascend-specific query layer
+        └── AscendDatabase.py     ← Legacy — to be removed
 ```
 
-**Layer 1 — `MSSQLDatabase` (`database/SQLServer.py`)**
-The low-level connection and execution primitive. Owns: connection lifecycle (`connect`, `close`, `__enter__`/`__exit__`), raw query execution (`sql`), transaction management (`commit`, `rollback`, `begin`), and health check (`test_connection`). Does not contain any query-building logic — callers write their own SQL or delegate to the layer above.
+**`MSSQLDatabase` (`database/SQLServer.py`)**
+The connection and execution primitive. Owns: connection lifecycle (`connect`, `close`, `__enter__`/`__exit__`), raw query execution (`sql`), transaction management (`commit`, `rollback`, `begin`), and health check (`test_connection`). The Virtual DocType Framework uses it directly for all Ascend queries — controllers write no SQL and do not interact with `MSSQLDatabase` directly.
 
-**Layer 2 — `AscendDatabase` (`ascend/AscendDatabase.py`)**
-The Ascend RMS query layer. Wraps `MSSQLDatabase` and provides high-level methods that understand Ascend-specific conventions: field-to-column mapping, bracket-quoted column names (`[Store UPC]`), Frappe filter formats (`filters`/`or_filters`/`txt`), `OFFSET…FETCH` pagination, and OR LIKE search across configurable columns. Use as a context manager:
+**Virtual DocType controllers** (e.g. `ascend_product.py`) inherit from `AbstractVirtualDocType` and declare only a `SCHEMA_CONFIG` dict plus `TABLE_NAME` and `PRIMARY_KEY_COLUMN`. The base class derives `FIELD_TO_COLUMN`, the `SELECT` clause, and `SEARCH_COLUMNS` from `SCHEMA_CONFIG` and owns all query logic (`get_list`, `get_count`, `load_from_db`).
 
 ```python
-with AscendDatabase(get_default_ascend_database()) as ascend:
-    products = ascend.get_list(
-        PRODUCT_TABLE, SELECT_CLAUSE, "ID", FIELD_TO_COLUMN,
-        filters=filters, search_columns=SEARCH_COLUMNS, ...
-    )
+with MSSQLDatabase(get_default_ascend_database()) as ascend:
+    results = ascend.sql(query=query, values=values, as_dict=True)
 ```
 
-**Virtual DocType controllers** (e.g. `ascend_product.py`) now inherit from `AbstractVirtualDocType` (the Virtual DocType Framework — see its own section below) and declare only a single `SCHEMA_CONFIG` dict plus `TABLE_NAME` and `PRIMARY_KEY_COLUMN`. The base class derives `FIELD_TO_COLUMN`, the `SELECT` clause, and `SEARCH_COLUMNS` from `SCHEMA_CONFIG` and inherits all query logic (including correct list-view sorting). Controllers no longer hand-write these constants or the `get_list`/`get_count`/`load_from_db` methods.
-
-**Available `AscendDatabase` methods:**
-
-| Method | Purpose |
-|---|---|
-| `get_record(table, select_clause, id_column, record_id)` | Single record by primary key |
-| `get_list(table, select_clause, id_column, field_to_column, ...)` | Paginated, filtered list |
-| `count_records(table, field_to_column, ...)` | Count with same filter logic |
-| `record_exists(table, id_column, record_id)` | Boolean existence check |
-
-**`_build_where_clause`** handles both dict-format and list-format Frappe filters, operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `NOT LIKE`, `IN`, `NOT IN`, and appends OR LIKE search across `search_columns` when text is present.
+**`_build_where_clause`** (in `virtual_doctype_base.py`) handles both dict-format and list-format Frappe filters, operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `NOT LIKE`, `IN`, `NOT IN`, and appends OR LIKE search across `search_columns` when text is present.
 
 ### Design Note
 
-`MSSQLDatabase` originally contained high-level query methods (`get_value`, `get_all`, `exists`, `count`, `insert`, `set_value`, `delete`) modeled after `frappe.db`. These were removed because their equality-only `_build_where_clause` could not serve real Ascend queries (no LIKE, no OR, no bracket-quoted columns, no OFFSET pagination). Their intent was moved to `AscendDatabase` with a proper implementation.
+`MSSQLDatabase` originally contained high-level query methods (`get_value`, `get_all`, `exists`, `count`, `insert`, `set_value`, `delete`) modeled after `frappe.db`. These were removed because their equality-only filter logic could not serve real Ascend queries (no LIKE, no OR, no bracket-quoted columns, no OFFSET pagination). A second layer, `AscendDatabase`, was introduced but has since been eliminated — all query-building logic now lives in `AbstractVirtualDocType` in `virtual_doctype_base.py`.
 
 ### `exceptions.py`
 
@@ -241,16 +226,11 @@ Empty — no registry in Bullwheel. Callers instantiate `MSSQLDatabase` directly
 
 The constructor accepts a `SQL Server` Frappe document and an optional `timeout`. Password decryption is handled internally via `get_decrypted_password` so callers never touch credentials directly.
 
-Application code should not call `MSSQLDatabase` directly — use `AscendDatabase` instead. `MSSQLDatabase` is used internally by `AscendDatabase.__enter__`.
+The Virtual DocType Framework (`AbstractVirtualDocType`) uses `MSSQLDatabase` directly for all Ascend queries.
 
 ```python
-# Direct MSSQLDatabase usage (internal / low-level only)
 with MSSQLDatabase(server_document) as database:
     results = database.sql("SELECT ...", values, as_dict=True)
-
-# Preferred — use AscendDatabase for all Ascend queries
-with AscendDatabase(get_default_ascend_database()) as ascend:
-    results = ascend.get_list(TABLE, SELECT_CLAUSE, "ID", FIELD_TO_COLUMN, ...)
 ```
 
 ---
@@ -474,7 +454,7 @@ Exactly one entry must map `sql_column` to `PRIMARY_KEY_COLUMN`; that field beco
 
 **Gotcha — do NOT enable "Show Title in Link Fields" on a virtual DocType.** It makes Frappe call `frappe.db.get_value` against a non-existent `tab<DocType>` table (core's query engine has no virtual-doctype routing) → `Table doesn't exist`. Leave it off; the `display` config already gives Link autocomplete a friendly label. See `VIRTUAL_DOCTYPE_DEVELOPMENT.md` § Gotchas.
 
-**Sorting fix:** `AbstractVirtualDocType.get_list` parses Frappe's `order_by` (backtick-aware, so DocType names with spaces like `` `tabAscend Product` `` work), maps the fieldname to its SQL column, and passes `order_by`/`order` to `AscendDatabase` — which has always supported them but was never wired through. Unmapped fields (e.g. the default `creation`) fall back to ordering by the primary key.
+**Sorting fix:** `AbstractVirtualDocType.get_list` parses Frappe's `order_by` (backtick-aware, so DocType names with spaces like `` `tabAscend Product` `` work), maps the fieldname to its SQL column via `field_to_column()`, and injects it directly into the SQL query. Unmapped fields (e.g. the default `creation`) fall back to ordering by `primary_key_field()`.
 
 **Tests:** `ascend/test_schema_config_builder.py` (11 builder tests) and `ascend/test_virtual_doctype_base.py` (6 order-by/derivation tests). Both are fast `UnitTestCase`s with no DB dependency. Run: `bench --site <site> run-tests --app bullwheel`.
 
@@ -485,6 +465,7 @@ Exactly one entry must map `sql_column` to `PRIMARY_KEY_COLUMN`; that field beco
 - ✅ **Product reference architecture** — Virtual DocType (Option A) selected and implemented. `Ascend Product` handler (`get_list`, `get_count`, `load_from_db`) live in `ascend_product.py`. Bug fixed in `ascend_utilities.py` (`frappe.db.get_doc` → `frappe.get_doc`).
 - **`category` column source** — `Ascend Product.category` maps to `NULL` in `SELECT_CLAUSE`. Verify whether `Division` or another `Products` column is the correct source, then update `FIELD_TO_COLUMN` and `SELECT_CLAUSE` in `ascend_product.py`.
 - ✅ **`sytle_number` rename (controller side)** — `SCHEMA_CONFIG` now keys on `style_number` (→ `StyleNumber`), matching the DocType JSON field. The JSON already uses `style_number`. If the field label still reads "Sytle Number", fix it in the DocType editor and run `fm migrate`.
+- **Remove `AscendDatabase.py`** — `ascend/AscendDatabase.py` is legacy code, superseded by query logic in `AbstractVirtualDocType`. Delete the file once no remaining imports reference it.
 - **Ascend schema verification** — confirm `StyleName`, `StyleNumber`, `Keyword`, `Gender`, `[Year]`, `Season`, `EstCost`, `AvgCost` against the live `Products` table. Update `FIELD_TO_COLUMN` and `SELECT_CLAUSE` if any column names differ.
 - **`pymssql` in requirements.txt** — verify `pymssql` is listed in `bullwheel/requirements.txt` so it survives container rebuilds.
 - **Warehouse Location implementation** — implement combined server-side `validate()` and client-side `onchange` handler for the inventory child table.

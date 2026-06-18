@@ -2,31 +2,11 @@
 # All Rights Reserved
 # Unauthorized copying or distribution of this file is prohibited.
 
-"""Reusable base class for Ascend RMS virtual DocTypes.
-
-`AbstractVirtualDocType` removes the boilerplate that every Ascend virtual
-DocType controller used to repeat — `load_from_db`, `get_list`, `get_count`, the
-read-only guards, connection management, and constant wiring. A concrete
-controller only declares three class attributes:
-
-    class AscendProduct(AbstractVirtualDocType):
-        TABLE_NAME = "Products"
-        PRIMARY_KEY_COLUMN = "ID"
-        SCHEMA_CONFIG = { ... }
-
-Everything else — FIELD_TO_COLUMN, SELECT_CLAUSE, SEARCH_COLUMNS, list ordering —
-is derived from SCHEMA_CONFIG via schema_config_builder. Crucially, `get_list`
-passes the list view's `order_by` through to AscendDatabase, so clicking a
-column header sorts correctly (the prior per-controller bug, fixed here once for
-every subclass).
-"""
-
 import re
 
 import frappe
 from frappe.model.document import Document
-
-from bullwheel.ascend.AscendDatabase import AscendDatabase, get_default_ascend_database
+from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.ascend.schema_config_builder import (
 	build_field_to_column,
 	build_search_columns,
@@ -34,21 +14,105 @@ from bullwheel.ascend.schema_config_builder import (
 	find_primary_key_field,
 	normalize_record,
 )
-from bullwheel.ascend.search_hook_helper import create_virtual_doctype_search
+
+# ─── Static Helper Functions ───────────────────────────────────────
+
+def _build_join_clause(join_config):
+	"""Build a SQL JOIN string from a JOIN_CONFIG list.
+
+	Each entry in `join_config` describes one JOIN clause:
+	    {"join": "LEFT JOIN", "table": "Categories", "alias": "cat", "on": "Products.TopicID = cat.ID"}
+
+	`alias` is optional. Returns an empty string when `join_config` is None or empty.
+	All entries are concatenated with a single space separator.
+	"""
+	if not join_config:
+		return ""
+	parts = []
+	for join_entry in join_config:
+		join_type = join_entry.get("join", "JOIN")
+		table = join_entry["table"]
+		alias = join_entry.get("alias", "")
+		on_condition = join_entry["on"]
+		part = f"{join_type} {table}"
+		if alias:
+			part += f" AS {alias}"
+		part += f" ON {on_condition}"
+		parts.append(part)
+	return " ".join(parts)
+
+
+def get_default_ascend_database():
+		default_database = frappe.db.get_single_value('Bullwheel Settings', 'default_database')
+		return frappe.get_doc("SQL Server", default_database)
+
+def _extract_search_text(txt, or_filters):
+		"""Return the raw search string from either a direct txt arg or Frappe's or_filters list."""
+		if txt:
+			return txt
+		if or_filters:
+			for filter_condition in or_filters:
+				if len(filter_condition) >= 4 and filter_condition[2].lower() == "like":
+					return filter_condition[3].strip("%")
+		return None
+
+def _build_where_clause(field_to_column, filters, search_columns, txt, or_filters):
+	"""Build a parameterized SQL WHERE clause from Frappe list-view filters and search text.
+
+	Handles both dict-format ({fieldname: value}) and list-format
+	([[doctype, fieldname, operator, value]]) filters. Supported operators:
+	=, !=, <, <=, >, >=, LIKE, NOT LIKE, IN, NOT IN. Fieldnames are resolved
+	to SQL column names via field_to_column. Unrecognised fieldnames are skipped.
+
+	When search text is present (from txt or or_filters), appends an OR LIKE
+	condition across all search_columns.
+	"""
+	conditions = []
+	values = []
+
+	if filters:
+		filter_list = (
+			[[None, fieldname, "=", value] for fieldname, value in filters.items()]
+			if isinstance(filters, dict)
+			else filters
+		)
+		for filter_item in filter_list:
+			fieldname = filter_item[1]
+			operator = filter_item[2]
+			value = filter_item[3]
+
+			column = field_to_column.get(fieldname)
+			if not column:
+				continue
+
+			sql_operator = operator.upper()
+
+			if sql_operator in ("IN", "NOT IN"):
+				placeholders = ", ".join(["%s"] * len(value))
+				conditions.append(f"{column} {sql_operator} ({placeholders})")
+				values.extend(value)
+			else:
+				conditions.append(f"{column} {sql_operator} %s")
+				values.append(value)
+
+	search_text = _extract_search_text(txt, or_filters)
+	if search_text and search_columns:
+		search_conditions = " OR ".join(f"{column} LIKE %s" for column in search_columns)
+		conditions.append(f"({search_conditions})")
+		pattern = f"%{search_text}%"
+		values.extend([pattern] * len(search_columns))
+
+	where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+	return where_clause, values
 
 
 class AbstractVirtualDocType(Document):
-	"""Base controller for read-only virtual DocTypes backed by an Ascend SQL table.
-
-	Subclasses must override TABLE_NAME, PRIMARY_KEY_COLUMN, and SCHEMA_CONFIG.
-	All query logic is inherited; the derived SQL constants are built lazily from
-	SCHEMA_CONFIG and cached per subclass.
-	"""
 
 	# ─── Subclass Contract — override these ───────────────────────────────────
-	TABLE_NAME: str = None          # Ascend SQL table name, e.g. "Products"
-	PRIMARY_KEY_COLUMN: str = None  # SQL primary key column name, e.g. "ID"
-	SCHEMA_CONFIG: dict = None      # fieldname -> {sql_column, fieldtype, display, searchable}
+	TABLE_NAME: str = None        # Ascend SQL table name, e.g. "Products"
+	PRIMARY_KEY_COLUMN: str = None  # SQL primary key column name, e.g. "ID" (always unqualified)
+	JOIN_CONFIG: list = None      # List of JOIN descriptors — see _build_join_clause for the dict shape
+	SCHEMA_CONFIG: dict = None    # fieldname -> {sql_column, fieldtype, display, searchable}
 
 	# ─── Derived Constants (lazily built & cached per subclass) ───────────────
 
@@ -71,6 +135,15 @@ class AbstractVirtualDocType(Document):
 	def primary_key_field(cls):
 		"""Return (and cache) the fieldname mapped to the primary key column."""
 		return cls._derived("_primary_key_field", lambda: find_primary_key_field(cls.SCHEMA_CONFIG, cls.PRIMARY_KEY_COLUMN))
+
+	@classmethod
+	def join_clause(cls):
+		"""Return (and cache) the SQL JOIN string built from JOIN_CONFIG.
+
+		Returns an empty string when JOIN_CONFIG is None, so callers can safely
+		check truthiness or concatenate without special-casing the no-join case.
+		"""
+		return cls._derived("_join_clause", lambda: _build_join_clause(cls.JOIN_CONFIG))
 
 	@classmethod
 	def _derived(cls, attribute_name, builder):
@@ -99,15 +172,23 @@ class AbstractVirtualDocType(Document):
 
 	def load_from_db(self):
 		"""Load a single record from SQL Server by primary key and populate this document."""
-		with AscendDatabase(get_default_ascend_database()) as ascend:
-			record = ascend.get_record(
-				self.TABLE_NAME, self.select_clause(), self.PRIMARY_KEY_COLUMN, self.name
+		join = self.join_clause()
+		query = f"SELECT {self.select_clause()} FROM {self.TABLE_NAME}"
+		if join:
+			query += f" {join}"
+		query += f" WHERE {self.TABLE_NAME}.{self.PRIMARY_KEY_COLUMN} = %s"
+
+		with MSSQLDatabase(get_default_ascend_database()) as ascend:
+			result = ascend.sql(
+				query=query,
+				values=(self.name,),
+				as_dict=True
 			)
 
-		if not record:
+		if not result:
 			raise frappe.DoesNotExistError(f"{self.doctype} '{self.name}' not found.")
 
-		super(Document, self).__init__(self._to_document_dict(record))
+		super(Document, self).__init__(self._to_document_dict(result[0]))
 
 	@classmethod
 	def get_list(cls, filters=None, page_length=20, start=0, txt=None, or_filters=None, **kwargs):
@@ -117,44 +198,56 @@ class AbstractVirtualDocType(Document):
 		Frappe fieldname to its SQL column) so column-header sorting works. Returns
 		a list of frappe._dict rows, each with `name` set to the primary key value.
 		"""
-		order_column, order_direction = cls._resolve_order_by(kwargs.get("order_by"))
+		order_by, order_direction = cls._resolve_order_by(kwargs.get("order_by"))
 
-		with AscendDatabase(get_default_ascend_database()) as ascend:
-			records = ascend.get_list(
-				cls.TABLE_NAME,
-				cls.select_clause(),
-				cls.PRIMARY_KEY_COLUMN,
-				cls.field_to_column(),
-				filters=filters,
-				search_columns=cls.search_columns(),
-				page_length=page_length,
-				start=start,
-				txt=txt,
-				or_filters=or_filters,
-				order_by=order_column,
-				order=order_direction,
+		if order_by is None: # Order by id_column by default
+			order_by = cls.primary_key_field()
+
+		join = cls.join_clause()
+		where_clause, values = _build_where_clause(
+			cls.field_to_column(), filters, cls.search_columns(), txt, or_filters
+		)
+		query = (
+			f"SELECT {cls.select_clause()} FROM {cls.TABLE_NAME}"
+			f"{' ' + join if join else ''}"
+			f"{where_clause}"
+			f" ORDER BY {order_by} {order_direction} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
+		)
+		values += [start or 0, page_length or 20]
+
+		with MSSQLDatabase(get_default_ascend_database()) as ascend:
+			results = ascend.sql(
+				query=query,
+				values=values,
+				as_dict=True
 			)
 
-		return [cls._to_document_dict(record) for record in records]
-
+		return [cls._to_document_dict(record) for record in results]
+	
 	@classmethod
 	def get_count(cls, filters=None, txt=None, or_filters=None, **_):
 		"""Return the number of records matching the current filters or search text."""
-		with AscendDatabase(get_default_ascend_database()) as ascend:
-			return ascend.count_records(
-				cls.TABLE_NAME,
-				cls.field_to_column(),
-				filters=filters,
-				search_columns=cls.search_columns(),
-				txt=txt,
-				or_filters=or_filters,
-			)
+		join = cls.join_clause()
+		where_clause, values = _build_where_clause(
+			cls.field_to_column(), filters, cls.search_columns(), txt, or_filters
+		)
+		query = (
+			f"SELECT COUNT(*) FROM {cls.TABLE_NAME}"
+			f"{' ' + join if join else ''}"
+			f"{where_clause}"
+		)
+		with MSSQLDatabase(get_default_ascend_database()) as ascend:
+			result = ascend.sql(query=query, values=values)
 
+		return result[0][0] if result else 0
+	
 	@staticmethod
 	def get_stats(**_):
 		"""No sidebar stats for Ascend virtual DocTypes."""
 		pass
 
+	# ─── Search Function Hook ─────────────────────────────────────────────
+	'''
 	@classmethod
 	def make_search_function(cls, display_fields):
 		"""Build a Link-field search hook for this DocType using its derived constants.
@@ -172,6 +265,59 @@ class AbstractVirtualDocType(Document):
 			search_columns=cls.search_columns(),
 			display_fields=display_fields,
 		)
+	
+	def create_virtual_doctype_search(
+		table_name,
+		primary_key_column,
+		primary_key_field,
+		select_clause,
+		field_to_column,
+		search_columns,
+		display_fields,
+	):
+	"""Build a whitelisted Link-field search function for a virtual DocType.
+
+	The returned function matches Frappe's `standard_queries` contract and queries
+	Ascend database directly, bypassing the search_widget pipeline. It returns
+	`(name, *display_field_values)` tuples for autocomplete, or `frappe._dict`
+	rows (with `name` populated) when called with `as_dict=True`.
+
+	Arguments mirror the derived constants produced from a SCHEMA_CONFIG:
+		primary_key_column — SQL column name of the primary key (e.g. "ID")
+		primary_key_field  — Frappe fieldname holding that key (e.g. "ascend_database_id")
+		display_fields     — fieldnames shown after the id in autocomplete tuples
+	"""
+
+	@frappe.whitelist()
+	def virtual_doctype_search(_doctype, txt, _searchfield, start, page_length, _filters, as_dict=False):
+		# _doctype, _searchfield, _filters are required positional args from the
+		# standard_queries contract but are not needed for the Ascend query.
+		_ = _doctype, _searchfield, _filters
+
+		with AscendDatabase(get_default_ascend_database()) as ascend:
+			records = ascend.get_list(
+				table_name,
+				select_clause,
+				primary_key_column,
+				field_to_column,
+				search_columns=search_columns,
+				page_length=int(page_length),
+				start=int(start),
+				txt=txt,
+			)
+
+		records = [normalize_record(record) for record in records]
+
+		if as_dict:
+			return [frappe._dict({**record, "name": record[primary_key_field]}) for record in records]
+
+		return [
+			(record[primary_key_field], *(record.get(field) or "" for field in display_fields))
+			for record in records
+		]
+
+	return virtual_doctype_search
+	'''
 
 	# ─── Order-By Resolution ──────────────────────────────────────────────────
 
@@ -214,8 +360,12 @@ class AbstractVirtualDocType(Document):
 
 		sql_column = cls.field_to_column().get(fieldname)
 		return sql_column, direction
-
+		  
+	
 	# ─── Read-Only Guards ─────────────────────────────────────────────────────
+	
+	'''The following methods are required for Virtual Doctypes, however they are not implemented in order to maintain
+	the read-only nature of the Ascend Virtual Doctypes.'''
 
 	def db_insert(self, *args, **kwargs):
 		raise NotImplementedError(f"{self.doctype} is read-only.")

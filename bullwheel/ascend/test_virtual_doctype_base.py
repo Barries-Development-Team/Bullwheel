@@ -2,13 +2,10 @@
 # All Rights Reserved
 # Unauthorized copying or distribution of this file is prohibited.
 
-"""Unit tests for AbstractVirtualDocType's order_by resolution.
+"""Unit tests for AbstractVirtualDocType's derived constants and query helpers.
 
-Sorting was the recurring bug the framework fixes: list-view column-header
-clicks must translate Frappe's order_by string into the right SQL column and
-direction. These tests lock that translation down, including the awkward case of
-a DocType name containing a space (`tabAscend Product`), which breaks naive
-whitespace parsing.
+Covers order_by resolution (sorting was the recurring bug the framework fixes)
+and JOIN clause construction from JOIN_CONFIG.
 """
 
 from frappe.tests import UnitTestCase
@@ -17,7 +14,7 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
 class _SampleVirtualDocType(AbstractVirtualDocType):
-	"""Minimal concrete subclass used only to exercise classmethods (never persisted)."""
+	"""Minimal concrete subclass — no JOINs, used for ordering and basic derived-constant tests."""
 
 	TABLE_NAME = "Products"
 	PRIMARY_KEY_COLUMN = "ID"
@@ -26,6 +23,35 @@ class _SampleVirtualDocType(AbstractVirtualDocType):
 		"description": {"sql_column": "Description", "fieldtype": "Data", "display": "primary", "searchable": True},
 		"quantity": {"sql_column": "Quantity", "fieldtype": "Int", "display": "secondary", "searchable": False},
 		"store_sku": {"sql_column": "[Store UPC]", "fieldtype": "Data", "display": "secondary", "searchable": True},
+	}
+
+
+class _JoinedVirtualDocType(AbstractVirtualDocType):
+	"""Concrete subclass with a JOIN_CONFIG — exercises join_clause() and qualified primary key."""
+
+	TABLE_NAME = "Products"
+	PRIMARY_KEY_COLUMN = "ID"
+	JOIN_CONFIG = [
+		{"join": "LEFT JOIN", "table": "Categories", "on": "Products.TopicID = Categories.ID"}
+	]
+	SCHEMA_CONFIG = {
+		"ascend_database_id": {"sql_column": "Products.ID",          "fieldtype": "Data", "display": "hidden",  "searchable": False},
+		"description":        {"sql_column": "Products.Description",  "fieldtype": "Data", "display": "primary", "searchable": True},
+		"category":           {"sql_column": "Categories.Topic",      "fieldtype": "Data", "display": None,      "searchable": False},
+	}
+
+
+class _AliasedJoinVirtualDocType(AbstractVirtualDocType):
+	"""Concrete subclass with an aliased JOIN — exercises the optional alias key."""
+
+	TABLE_NAME = "Products"
+	PRIMARY_KEY_COLUMN = "ID"
+	JOIN_CONFIG = [
+		{"join": "LEFT JOIN", "table": "Categories", "alias": "cat", "on": "Products.TopicID = cat.ID"}
+	]
+	SCHEMA_CONFIG = {
+		"ascend_database_id": {"sql_column": "Products.ID",   "fieldtype": "Data", "display": "hidden",  "searchable": False},
+		"category":           {"sql_column": "cat.Topic",     "fieldtype": "Data", "display": "primary", "searchable": False},
 	}
 
 
@@ -69,4 +95,47 @@ class UnitTestVirtualDocTypeBase(UnitTestCase):
 				"`tabAscend Product`.`quantity` desc, `tabAscend Product`.`description` asc"
 			),
 			("Quantity", "DESC"),
+		)
+
+
+class UnitTestJoinClause(UnitTestCase):
+	"""Unit tests for join_clause() construction from JOIN_CONFIG."""
+
+	def test_no_join_config_produces_empty_string(self):
+		self.assertEqual(_SampleVirtualDocType.join_clause(), "")
+
+	def test_join_clause_is_built_from_config(self):
+		self.assertEqual(
+			_JoinedVirtualDocType.join_clause(),
+			"LEFT JOIN Categories ON Products.TopicID = Categories.ID",
+		)
+
+	def test_join_clause_includes_alias_when_present(self):
+		self.assertEqual(
+			_AliasedJoinVirtualDocType.join_clause(),
+			"LEFT JOIN Categories AS cat ON Products.TopicID = cat.ID",
+		)
+
+	def test_qualified_primary_key_still_resolves(self):
+		# Products.ID in sql_column must match PRIMARY_KEY_COLUMN = "ID".
+		self.assertEqual(_JoinedVirtualDocType.primary_key_field(), "ascend_database_id")
+
+	def test_multiple_join_entries_concatenated(self):
+		class _MultiJoin(AbstractVirtualDocType):
+			TABLE_NAME = "Products"
+			PRIMARY_KEY_COLUMN = "ID"
+			JOIN_CONFIG = [
+				{"join": "LEFT JOIN",  "table": "Categories", "on": "Products.TopicID = Categories.ID"},
+				{"join": "INNER JOIN", "table": "Vendors",    "on": "Products.VendorID = Vendors.ID"},
+			]
+			SCHEMA_CONFIG = {
+				"ascend_database_id": {"sql_column": "Products.ID", "fieldtype": "Data", "display": "hidden", "searchable": False},
+				"category":           {"sql_column": "Categories.Topic", "fieldtype": "Data", "display": "primary", "searchable": False},
+				"vendor":             {"sql_column": "Vendors.Name",     "fieldtype": "Data", "display": None,      "searchable": False},
+			}
+
+		self.assertEqual(
+			_MultiJoin.join_clause(),
+			"LEFT JOIN Categories ON Products.TopicID = Categories.ID"
+			" INNER JOIN Vendors ON Products.VendorID = Vendors.ID",
 		)

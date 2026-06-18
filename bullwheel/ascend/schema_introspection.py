@@ -89,6 +89,25 @@ def suggest_schema_config(schema):
 	return config
 
 
+def introspect_join_schemas(server_document, join_config):
+	"""Introspect all tables referenced in a JOIN_CONFIG and return a merged column dict.
+
+	`join_config` is the same list of JOIN descriptor dicts used by `JOIN_CONFIG` on
+	a virtual DocType controller. Each entry's `"table"` key names a SQL Server table
+	to introspect. Returns a merged dict of `{column_name: info}` across all joined
+	tables, in the same shape as `introspect_table_schema`.
+
+	Pass the result as `additional_discovered_columns` to `validate_schema_config`
+	to enable column-existence checking for qualified `sql_column` references
+	(e.g. `"Categories.Topic"`).
+	"""
+	merged = {}
+	for join_entry in (join_config or []):
+		table = join_entry["table"]
+		merged.update(introspect_table_schema(server_document, table))
+	return merged
+
+
 def _columnname_to_fieldname(column_name):
 	"""Convert a SQL column name (e.g. "Store UPC", "MfgrPartNo") to a snake_case fieldname."""
 	import re

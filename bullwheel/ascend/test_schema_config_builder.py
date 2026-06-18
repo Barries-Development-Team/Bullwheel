@@ -15,6 +15,7 @@ import uuid
 from frappe.tests import UnitTestCase
 
 from bullwheel.ascend.schema_config_builder import (
+	_bare_column,
 	build_field_to_column,
 	build_json_schema,
 	build_search_columns,
@@ -118,3 +119,63 @@ class UnitTestSchemaConfigBuilder(UnitTestCase):
 		discovered = ["ID", "Description"]
 		with self.assertRaises(ValueError):
 			validate_schema_config(typo_config, "ID", discovered)
+
+	# ─── JOIN-aware tests ────────────────────────────────────────────────────────
+
+	def test_bare_column_strips_table_prefix(self):
+		self.assertEqual(_bare_column("Products.ID"), "id")
+		self.assertEqual(_bare_column("cat.Topic"), "topic")
+
+	def test_bare_column_strips_brackets(self):
+		self.assertEqual(_bare_column("[Store UPC]"), "store upc")
+		self.assertEqual(_bare_column("[Year]"), "year")
+
+	def test_bare_column_handles_unqualified(self):
+		self.assertEqual(_bare_column("Description"), "description")
+		self.assertEqual(_bare_column("ID"), "id")
+
+	def test_bare_column_handles_empty_and_none(self):
+		self.assertEqual(_bare_column(""), "")
+		self.assertEqual(_bare_column(None), "")
+
+	def test_find_primary_key_field_with_qualified_column(self):
+		# When the primary key field uses table-qualified sql_column, find_primary_key_field
+		# must still resolve it to the unqualified PRIMARY_KEY_COLUMN.
+		joined_config = {
+			"ascend_database_id": {"sql_column": "Products.ID", "fieldtype": "Data", "display": "hidden", "searchable": False},
+			"description":        {"sql_column": "Products.Description", "fieldtype": "Data", "display": "primary", "searchable": True},
+			"category":           {"sql_column": "Categories.Topic", "fieldtype": "Data", "display": None, "searchable": False},
+		}
+		self.assertEqual(find_primary_key_field(joined_config, "ID"), "ascend_database_id")
+
+	def test_validate_skips_qualified_columns_when_no_additional_columns_provided(self):
+		# Qualified sql_column references should not raise even if discovered_columns
+		# only covers the primary table.
+		joined_config = {
+			"ascend_database_id": {"sql_column": "Products.ID",          "fieldtype": "Data", "display": "hidden",  "searchable": False},
+			"description":        {"sql_column": "Products.Description",  "fieldtype": "Data", "display": "primary", "searchable": True},
+			"category":           {"sql_column": "Categories.Topic",      "fieldtype": "Data", "display": None,      "searchable": False},
+		}
+		# Only primary table columns passed — joined columns have no validator.
+		discovered = ["ID", "Description"]
+		self.assertTrue(validate_schema_config(joined_config, "ID", discovered))
+
+	def test_validate_checks_qualified_columns_against_additional_discovered_columns(self):
+		# When additional_discovered_columns is provided, qualified references are checked.
+		joined_config = {
+			"ascend_database_id": {"sql_column": "Products.ID",      "fieldtype": "Data", "display": "hidden",  "searchable": False},
+			"category":           {"sql_column": "Categories.Topik", "fieldtype": "Data", "display": None,      "searchable": False},  # typo
+		}
+		discovered = ["ID"]
+		additional = ["Topic", "ParentID"]  # correct column names from Categories
+		with self.assertRaises(ValueError):
+			validate_schema_config(joined_config, "ID", discovered, additional)
+
+	def test_validate_accepts_valid_qualified_columns_with_additional(self):
+		joined_config = {
+			"ascend_database_id": {"sql_column": "Products.ID",      "fieldtype": "Data", "display": "hidden",  "searchable": False},
+			"category":           {"sql_column": "Categories.Topic",  "fieldtype": "Data", "display": None,      "searchable": False},
+		}
+		discovered = ["ID"]
+		additional = ["Topic", "ParentID"]
+		self.assertTrue(validate_schema_config(joined_config, "ID", discovered, additional))

@@ -37,6 +37,19 @@ import uuid
 VALID_DISPLAY_VALUES = (None, "hidden", "primary", "secondary")
 
 
+def _bare_column(sql_column):
+	"""Extract the unqualified column name from a SQL column reference.
+
+	Handles table-qualified references (`Products.ID`, `cat.Topic`) and bracket-quoted
+	names (`[Store UPC]`, `[Year]`). Returns the lowercase column name only, so
+	`"Products.ID"`, `"[ID]"`, and `"ID"` all produce `"id"`. Used wherever a column
+	name needs to be compared without qualification or bracket decorators.
+	"""
+	if not sql_column:
+		return ""
+	return sql_column.split(".")[-1].strip("[]").lower()
+
+
 def normalize_record(record):
 	"""Coerce a SQL result row into Frappe-friendly primitive values.
 
@@ -103,16 +116,21 @@ def build_search_columns(schema_config):
 
 
 def find_primary_key_field(schema_config, primary_key_column):
-	"""Return the fieldname whose `sql_column` is the table's primary key column.
+	"""Return the fieldname whose `sql_column` resolves to the table's primary key column.
 
 	The result is the key used to populate Frappe's `name` meta-field from a query
 	result. Raises ValueError unless exactly one field maps to the primary key,
 	which keeps a misconfigured SCHEMA_CONFIG from silently producing nameless rows.
+
+	Comparison strips table prefixes and brackets so that a table-qualified column
+	(`"Products.ID"`) matches an unqualified `PRIMARY_KEY_COLUMN` (`"ID"`). This
+	is necessary when JOINs require disambiguating the SELECT clause.
 	"""
+	bare_primary = _bare_column(primary_key_column)
 	matches = [
 		fieldname
 		for fieldname, field_config in schema_config.items()
-		if field_config.get("sql_column") == primary_key_column
+		if _bare_column(field_config.get("sql_column", "")) == bare_primary
 	]
 	if len(matches) != 1:
 		raise ValueError(
@@ -156,24 +174,39 @@ def build_json_schema(schema_config):
 	return fields
 
 
-def validate_schema_config(schema_config, primary_key_column, discovered_columns=None):
+def validate_schema_config(
+	schema_config,
+	primary_key_column,
+	discovered_columns=None,
+	additional_discovered_columns=None,
+):
 	"""Validate a SCHEMA_CONFIG dict, raising ValueError on the first problem found.
 
 	Always checks structural correctness: every entry has the required keys, a
 	valid `display` value, and a boolean-ish `searchable`; and exactly one field
 	maps to `primary_key_column`.
 
-	When `discovered_columns` (the output of introspect_table_schema, or any
-	iterable of real SQL column names) is provided, also confirms every non-NULL
-	`sql_column` exists in the table — catching typos before they reach SQL Server.
-	Bracket-quoting (`[Store UPC]`) is stripped before comparison.
+	When `discovered_columns` (the output of `introspect_table_schema`, or any
+	iterable of real SQL column names) is provided, confirms every non-NULL,
+	unqualified `sql_column` exists in the primary table.
+
+	When `additional_discovered_columns` (a flat iterable of column names from
+	joined tables, e.g. from `introspect_join_schemas`) is provided, confirms
+	table-qualified `sql_column` references (those containing `.`) resolve to a
+	known column in the joined tables. Bracket-quoting is stripped before comparison.
+
+	Unqualified columns are checked against `discovered_columns` only.
+	Table-qualified columns (`table.column`) are checked against
+	`additional_discovered_columns` only; if that is not provided, qualified columns
+	are skipped (the developer is responsible for verifying joined-table column names).
 
 	Returns True when the config is valid.
 	"""
 	if not schema_config:
 		raise ValueError("SCHEMA_CONFIG is empty.")
 
-	known_columns = {column.lower() for column in discovered_columns} if discovered_columns else None
+	primary_columns = {_bare_column(col) for col in discovered_columns} if discovered_columns else None
+	joined_columns = {_bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
 
 	for fieldname, field_config in schema_config.items():
 		if "sql_column" not in field_config:
@@ -189,13 +222,21 @@ def validate_schema_config(schema_config, primary_key_column, discovered_columns
 			)
 
 		sql_column = field_config.get("sql_column")
-		if known_columns is not None and sql_column:
-			bare_column = sql_column.strip("[]").lower()
-			if bare_column not in known_columns:
-				raise ValueError(
-					f"Field '{fieldname}' maps to SQL column '{sql_column}', "
-					f"which was not found in the introspected table schema."
-				)
+		if sql_column:
+			is_qualified = "." in sql_column
+			bare = _bare_column(sql_column)
+			if is_qualified:
+				if joined_columns is not None and bare not in joined_columns:
+					raise ValueError(
+						f"Field '{fieldname}' maps to joined column '{sql_column}', "
+						f"which was not found in the introspected joined-table schema."
+					)
+			else:
+				if primary_columns is not None and bare not in primary_columns:
+					raise ValueError(
+						f"Field '{fieldname}' maps to SQL column '{sql_column}', "
+						f"which was not found in the introspected table schema."
+					)
 
 	# Reuse the primary-key uniqueness check (raises if not exactly one match).
 	find_primary_key_field(schema_config, primary_key_column)
