@@ -16,8 +16,7 @@ bullwheel/ascend/
 ├── virtual_doctype_base.py   AbstractVirtualDocType — inherit this
 ├── schema_config_builder.py  SCHEMA_CONFIG -> FIELD_TO_COLUMN / SELECT / SEARCH / JSON
 ├── schema_introspection.py   discover SQL Server columns + suggest a config
-├── search_hook_helper.py     generate the Link-autocomplete search function
-└── AscendDatabase.py         the query layer (unchanged; the base class drives it)
+└── search_hook_helper.py     generate the Link-autocomplete search function
 ```
 
 One `SCHEMA_CONFIG` dict on your controller is the single source of truth. The
@@ -144,7 +143,7 @@ at the DocType autocompletes.
 surface early instead of as SQL errors:
 
 ```python
-from bullwheel.ascend.AscendDatabase import get_default_ascend_database
+from bullwheel.ascend.virtual_doctype_base import get_default_ascend_database
 from bullwheel.ascend.schema_introspection import introspect_table_schema
 from bullwheel.ascend.schema_config_builder import validate_schema_config
 
