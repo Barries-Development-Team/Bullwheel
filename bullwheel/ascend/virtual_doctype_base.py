@@ -81,7 +81,7 @@ def _build_where_clause(field_to_column, filters, search_columns, txt, or_filter
 	return where_clause, values
 
 
-class VirtualDoctypeBase(Document):
+class AbstractVirtualDocType(Document):
 
 	# ─── Subclass Contract — override these ───────────────────────────────────
 	TABLE_NAME: str = None           # Ascend SQL table name, e.g. Products"
