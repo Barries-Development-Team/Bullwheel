@@ -1,6 +1,6 @@
 {
  "actions": [],
- "autoname": "field:ascend_database_id",
+ "autoname": "field:description",
  "creation": "2026-06-02 11:53:29.648589",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -24,7 +24,7 @@
   "estimated_cost",
   "average_cost",
   "ids_and_barcodes_section",
-  "ascend_database_id",
+  "id",
   "store_sku",
   "upc",
   "manufacturers_part_number"
@@ -75,13 +75,6 @@
    "fieldname": "ids_and_barcodes_section",
    "fieldtype": "Section Break",
    "label": "ID's and Barcodes"
-  },
-  {
-   "fieldname": "ascend_database_id",
-   "fieldtype": "Data",
-   "label": "Ascend Database ID",
-   "read_only": 1,
-   "unique": 1
   },
   {
    "fieldname": "store_sku",
@@ -168,6 +161,13 @@
    "fieldtype": "Data",
    "label": "Style Number",
    "read_only": 1
+  },
+  {
+   "fieldname": "id",
+   "fieldtype": "Data",
+   "label": "Ascend Database ID",
+   "read_only": 1,
+   "unique": 1
   }
  ],
  "grid_page_length": 50,
@@ -175,7 +175,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-16 17:12:35.965984",
+ "modified": "2026-06-18 16:09:25.391261",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",

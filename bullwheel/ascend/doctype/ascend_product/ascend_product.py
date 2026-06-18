@@ -55,4 +55,4 @@ class AscendProduct(AbstractVirtualDocType):
 # Link-field autocomplete hook. Registered in hooks.py under standard_queries as
 # bullwheel.ascend.doctype.ascend_product.ascend_product.ascend_product_search.
 # Each result is (name, description, store_sku).
-ascend_product_search = AscendProduct.make_search_function(display_fields=["description", "store_sku"])
+# ascend_product_search = AscendProduct.make_search_function(display_fields=["description", "store_sku"])

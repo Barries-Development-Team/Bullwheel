@@ -2,10 +2,10 @@ app_name = "bullwheel"
 
 # Custom Link field search functions — bypass the standard search_widget pipeline
 # which is incompatible with virtual DocType results (as_list/relevance_sorter mismatch).
-standard_queries = {
-	"Ascend Product": "bullwheel.ascend.doctype.ascend_product.ascend_product.ascend_product_search",
-	"Product Category": "bullwheel.ascend.doctype.product_category.product_category.product_category_search",
-}
+# standard_queries = {
+# 	"Ascend Product": "bullwheel.ascend.doctype.ascend_product.ascend_product.ascend_product_search",
+# 	"Product Category": "bullwheel.ascend.doctype.product_category.product_category.product_category_search",
+#}
 app_title = "Bullwheel"
 app_publisher = "Barrie\'s Ski and Sports"
 app_description = "Management Software for Barrie\'s Ski and Sports"
