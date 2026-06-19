@@ -30,7 +30,7 @@ class AscendProduct(AbstractVirtualDocType):
 	# `category` has no confirmed Products column — NULL placeholder until resolved.
 	# `[Store UPC]` and `[Year]` are bracket-quoted (space / reserved-word).
 	SCHEMA_CONFIG = {
-		"name":                      {"sql_column": "Products.ID",            "fieldtype": "Data",     "display": "hidden",    "searchable": False},
+		"name":                      {"sql_column": "Products.[Store UPC]",            "fieldtype": "Data",     "display": "hidden",    "searchable": False},
 		"ascend_database_id":        {"sql_column": "Products.ID",            "fieldtype": "Data",     "display": "hidden",    "searchable": False},
 		"description":               {"sql_column": "Description",   "fieldtype": "Data",     "display": "primary",   "searchable": True},
 		"keyword":                   {"sql_column": "Keyword",       "fieldtype": "Data",     "display": None,        "searchable": False},
@@ -65,4 +65,4 @@ class AscendProduct(AbstractVirtualDocType):
 # Link-field autocomplete hook. Registered in hooks.py under standard_queries as
 # bullwheel.ascend.doctype.ascend_product.ascend_product.ascend_product_search.
 # Each result is (name, description, store_sku).
-ascend_product_search = AscendProduct.make_search_function(display_fields=["description", "store_sku"])
+ascend_product_search = AscendProduct.make_search_function(display_fields=["description"])

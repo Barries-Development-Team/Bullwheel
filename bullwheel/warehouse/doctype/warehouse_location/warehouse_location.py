@@ -17,12 +17,12 @@ class WarehouseLocation(NestedSet):
 
 	def validate_non_group_has_no_children(self):
 		if not self.is_group:
-			child_count = frappe.db.count('Warehouse Location', filters={'parent_location': self.name})
+			child_count = frappe.db.count('Warehouse Location', filters={'parent_warehouse_location': self.name})
 			if child_count > 0:
 				frappe.throw(f"Cannot uncheck 'Is Group': This location has {child_count} child location(s)")
 
 	def validate_parent_is_group(self):
-		if self.parent_location:
-			parent = frappe.get_doc('Warehouse Location', self.parent_location)
+		if self.parent_warehouse_location:
+			parent = frappe.get_doc('Warehouse Location', self.parent_warehouse_location)
 			if not parent.is_group:
-				frappe.throw(f"Parent location '{self.parent_location}' must be a group location")
+				frappe.throw(f"Parent location '{self.parent_warehouse_location}' must be a group location")
