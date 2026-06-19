@@ -14,7 +14,7 @@ queries), so it uses MSSQLDatabase directly rather than AscendDatabase.
 
 Run it via the CLI — see bullwheel/commands.py:
 
-    bench --site <site> introspect-schema --table Products
+    bench --site <site> introspect-schema --table Products --suggest --primary-key ID
 """
 
 from bullwheel.database.SQLServer import MSSQLDatabase
@@ -68,15 +68,31 @@ def format_schema_table(schema):
 	return "\n".join(lines)
 
 
-def suggest_schema_config(schema):
-	"""Produce a starter SCHEMA_CONFIG dict (column -> entry) from an introspected schema.
+def suggest_schema_config(schema, primary_key_column=None):
+	"""Produce a starter SCHEMA_CONFIG dict from an introspected schema.
 
 	Every column becomes a snake_case fieldname mapped back to its SQL column, with
 	conservative defaults (display None, searchable False). It is a scaffold to
 	copy into a controller and edit down — not a finished config. SQL columns whose
 	names contain spaces are bracket-quoted so the SELECT clause is valid as-is.
+
+	When `primary_key_column` is provided (e.g. `"ID"`), a `"name"` entry is
+	prepended at the top of the config pointing to that column with display "hidden".
+	Without it, no `"name"` entry is generated and the developer must add one
+	manually before the config is valid.
 	"""
 	config = {}
+
+	if primary_key_column:
+		sql_column = f"[{primary_key_column}]" if " " in primary_key_column else primary_key_column
+		pk_info = schema.get(primary_key_column, {})
+		config["name"] = {
+			"sql_column": sql_column,
+			"fieldtype": _sql_type_to_fieldtype(pk_info.get("sql_type", "int")),
+			"display": "hidden",
+			"searchable": False,
+		}
+
 	for column_name, info in schema.items():
 		fieldname = _columnname_to_fieldname(column_name)
 		sql_column = f"[{column_name}]" if " " in column_name else column_name
@@ -86,6 +102,7 @@ def suggest_schema_config(schema):
 			"display": None,
 			"searchable": False,
 		}
+
 	return config
 
 

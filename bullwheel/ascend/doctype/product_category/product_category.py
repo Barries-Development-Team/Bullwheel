@@ -6,9 +6,14 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
 class ProductCategory(AbstractVirtualDocType):
-    TABLE_NAME = "Categories"        # Ascend SQL table name
-    PRIMARY_KEY_COLUMN = "ID"    # SQL primary key column
+    TABLE_NAME = "Categories"
     SCHEMA_CONFIG = {
+        "name": {
+                "sql_column": "ID",
+                "fieldtype": "Data",
+                "display": "hidden",
+                "searchable": False,
+        },
         "database_id": {
                 "sql_column": "ID",
                 "fieldtype": "Data",

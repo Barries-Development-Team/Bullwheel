@@ -69,21 +69,20 @@ def normalize_record(record):
 	}
 
 
-def build_field_to_column(schema_config, primary_key_column):
-	"""Convert SCHEMA_CONFIG into the FIELD_TO_COLUMN dict AscendDatabase uses to
-	resolve filter/order fieldnames to SQL column names.
+def build_field_to_column(schema_config):
+	"""Convert SCHEMA_CONFIG into the FIELD_TO_COLUMN dict used to resolve filter
+	and order-by fieldnames to SQL column names.
 
 	Fields whose `sql_column` is None (NULL placeholders) are omitted — they
-	cannot be filtered or ordered on. The Frappe meta-field `name` is mapped to
-	the primary key column so filters referencing `name` resolve without
-	special-casing.
+	cannot be filtered or ordered on. The `name` entry in SCHEMA_CONFIG is
+	handled identically to every other field; it naturally maps Frappe's `name`
+	meta-field to the primary key column.
 	"""
 	field_to_column = {}
 	for fieldname, field_config in schema_config.items():
 		sql_column = field_config.get("sql_column")
 		if sql_column:
 			field_to_column[fieldname] = sql_column
-	field_to_column["name"] = primary_key_column
 	return field_to_column
 
 
@@ -114,30 +113,6 @@ def build_search_columns(schema_config):
 		if field_config.get("searchable") and field_config.get("sql_column")
 	]
 
-
-def find_primary_key_field(schema_config, primary_key_column):
-	"""Return the fieldname whose `sql_column` resolves to the table's primary key column.
-
-	The result is the key used to populate Frappe's `name` meta-field from a query
-	result. Raises ValueError unless exactly one field maps to the primary key,
-	which keeps a misconfigured SCHEMA_CONFIG from silently producing nameless rows.
-
-	Comparison strips table prefixes and brackets so that a table-qualified column
-	(`"Products.ID"`) matches an unqualified `PRIMARY_KEY_COLUMN` (`"ID"`). This
-	is necessary when JOINs require disambiguating the SELECT clause.
-	"""
-	bare_primary = _bare_column(primary_key_column)
-	matches = [
-		fieldname
-		for fieldname, field_config in schema_config.items()
-		if _bare_column(field_config.get("sql_column", "")) == bare_primary
-	]
-	if len(matches) != 1:
-		raise ValueError(
-			f"Expected exactly one SCHEMA_CONFIG field mapping to primary key "
-			f"column '{primary_key_column}', found {len(matches)}: {matches}"
-		)
-	return matches[0]
 
 
 def build_json_schema(schema_config):
@@ -176,15 +151,14 @@ def build_json_schema(schema_config):
 
 def validate_schema_config(
 	schema_config,
-	primary_key_column,
 	discovered_columns=None,
 	additional_discovered_columns=None,
 ):
 	"""Validate a SCHEMA_CONFIG dict, raising ValueError on the first problem found.
 
-	Always checks structural correctness: every entry has the required keys, a
-	valid `display` value, and a boolean-ish `searchable`; and exactly one field
-	maps to `primary_key_column`.
+	Always checks structural correctness: every entry has the required keys and a
+	valid `display` value; and a `name` entry with a non-null `sql_column` is present
+	(the `name` entry is what maps Frappe's primary identifier to a SQL column).
 
 	When `discovered_columns` (the output of `introspect_table_schema`, or any
 	iterable of real SQL column names) is provided, confirms every non-NULL,
@@ -204,6 +178,15 @@ def validate_schema_config(
 	"""
 	if not schema_config:
 		raise ValueError("SCHEMA_CONFIG is empty.")
+
+	if "name" not in schema_config:
+		raise ValueError(
+			"SCHEMA_CONFIG must include a 'name' entry mapping sql_column to the primary key column."
+		)
+	if not schema_config["name"].get("sql_column"):
+		raise ValueError(
+			"SCHEMA_CONFIG 'name' entry must have a non-null sql_column (the primary key column)."
+		)
 
 	primary_columns = {_bare_column(col) for col in discovered_columns} if discovered_columns else None
 	joined_columns = {_bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
@@ -238,8 +221,6 @@ def validate_schema_config(
 						f"which was not found in the introspected table schema."
 					)
 
-	# Reuse the primary-key uniqueness check (raises if not exactly one match).
-	find_primary_key_field(schema_config, primary_key_column)
 	return True
 
 

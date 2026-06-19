@@ -20,35 +20,35 @@ from bullwheel.ascend.schema_config_builder import (
 	build_json_schema,
 	build_search_columns,
 	build_select_clause,
-	find_primary_key_field,
 	normalize_record,
 	validate_schema_config,
 )
 
-# A small fixture covering every interesting case: a hidden primary key, a NULL
-# placeholder column, a bracket-quoted column with a space, and mixed searchable.
+# A small fixture covering every interesting case: an explicit name entry (primary
+# key), a hidden secondary id field, a NULL placeholder, a bracket-quoted column,
+# and mixed searchable flags.
 SAMPLE_CONFIG = {
+	"name":               {"sql_column": "ID",          "fieldtype": "Data", "display": "hidden",    "searchable": False},
 	"ascend_database_id": {"sql_column": "ID",          "fieldtype": "Data", "display": "hidden",    "searchable": False},
 	"description":        {"sql_column": "Description", "fieldtype": "Data", "display": "primary",   "searchable": True},
-	"category":          {"sql_column": None,          "fieldtype": "Data", "display": None,        "searchable": False},
-	"store_sku":         {"sql_column": "[Store UPC]", "fieldtype": "Data", "display": "secondary", "searchable": True},
-	"quantity":          {"sql_column": "Quantity",    "fieldtype": "Int",  "display": "secondary", "searchable": False},
+	"category":           {"sql_column": None,          "fieldtype": "Data", "display": None,        "searchable": False},
+	"store_sku":          {"sql_column": "[Store UPC]", "fieldtype": "Data", "display": "secondary", "searchable": True},
+	"quantity":           {"sql_column": "Quantity",    "fieldtype": "Int",  "display": "secondary", "searchable": False},
 }
-PRIMARY_KEY_COLUMN = "ID"
 
 
 class UnitTestSchemaConfigBuilder(UnitTestCase):
 	"""Unit tests for schema_config_builder pure functions."""
 
 	def test_build_field_to_column_maps_fields_and_meta_name(self):
-		field_to_column = build_field_to_column(SAMPLE_CONFIG, PRIMARY_KEY_COLUMN)
+		field_to_column = build_field_to_column(SAMPLE_CONFIG)
 		self.assertEqual(field_to_column["description"], "Description")
 		self.assertEqual(field_to_column["store_sku"], "[Store UPC]")
-		# Frappe meta-field `name` resolves to the primary key column.
+		# `name` is declared in SCHEMA_CONFIG and resolves to the primary key column.
 		self.assertEqual(field_to_column["name"], "ID")
 
 	def test_build_field_to_column_omits_null_columns(self):
-		field_to_column = build_field_to_column(SAMPLE_CONFIG, PRIMARY_KEY_COLUMN)
+		field_to_column = build_field_to_column(SAMPLE_CONFIG)
 		# `category` has no SQL column, so it must not be filterable.
 		self.assertNotIn("category", field_to_column)
 
@@ -63,17 +63,6 @@ class UnitTestSchemaConfigBuilder(UnitTestCase):
 		search_columns = build_search_columns(SAMPLE_CONFIG)
 		self.assertEqual(search_columns, ["Description", "[Store UPC]"])
 
-	def test_find_primary_key_field(self):
-		self.assertEqual(find_primary_key_field(SAMPLE_CONFIG, PRIMARY_KEY_COLUMN), "ascend_database_id")
-
-	def test_find_primary_key_field_requires_exactly_one(self):
-		ambiguous = {
-			"a": {"sql_column": "ID", "fieldtype": "Data"},
-			"b": {"sql_column": "ID", "fieldtype": "Data"},
-		}
-		with self.assertRaises(ValueError):
-			find_primary_key_field(ambiguous, "ID")
-
 	def test_build_json_schema_flags(self):
 		fields = build_json_schema(SAMPLE_CONFIG)
 		by_name = {field["fieldname"]: field for field in fields}
@@ -84,17 +73,28 @@ class UnitTestSchemaConfigBuilder(UnitTestCase):
 		self.assertEqual(by_name["description"]["label"], "Description")
 
 	def test_validate_schema_config_accepts_valid(self):
-		self.assertTrue(validate_schema_config(SAMPLE_CONFIG, PRIMARY_KEY_COLUMN))
+		self.assertTrue(validate_schema_config(SAMPLE_CONFIG))
+
+	def test_validate_schema_config_rejects_missing_name_entry(self):
+		no_name = {"x": {"sql_column": "ID", "fieldtype": "Data", "display": None}}
+		with self.assertRaises(ValueError):
+			validate_schema_config(no_name)
+
+	def test_validate_schema_config_rejects_null_name_column(self):
+		null_name = {"name": {"sql_column": None, "fieldtype": "Data", "display": None}}
+		with self.assertRaises(ValueError):
+			validate_schema_config(null_name)
 
 	def test_validate_schema_config_rejects_bad_display(self):
-		bad = {"x": {"sql_column": "ID", "fieldtype": "Data", "display": "banner"}}
+		bad = {"name": {"sql_column": "ID", "fieldtype": "Data", "display": None},
+		       "x":    {"sql_column": "X",  "fieldtype": "Data", "display": "banner"}}
 		with self.assertRaises(ValueError):
-			validate_schema_config(bad, "ID")
+			validate_schema_config(bad)
 
 	def test_validate_schema_config_against_discovered_columns(self):
 		discovered = ["ID", "Description", "Store UPC", "Quantity"]
 		# Valid: every non-NULL column (bracket-stripped) exists in the table.
-		self.assertTrue(validate_schema_config(SAMPLE_CONFIG, PRIMARY_KEY_COLUMN, discovered))
+		self.assertTrue(validate_schema_config(SAMPLE_CONFIG, discovered))
 
 	def test_normalize_record_stringifies_uuids(self):
 		# SQL Server uniqueidentifier columns arrive from pymssql as uuid.UUID objects.
@@ -138,44 +138,35 @@ class UnitTestSchemaConfigBuilder(UnitTestCase):
 		self.assertEqual(_bare_column(""), "")
 		self.assertEqual(_bare_column(None), "")
 
-	def test_find_primary_key_field_with_qualified_column(self):
-		# When the primary key field uses table-qualified sql_column, find_primary_key_field
-		# must still resolve it to the unqualified PRIMARY_KEY_COLUMN.
-		joined_config = {
-			"ascend_database_id": {"sql_column": "Products.ID", "fieldtype": "Data", "display": "hidden", "searchable": False},
-			"description":        {"sql_column": "Products.Description", "fieldtype": "Data", "display": "primary", "searchable": True},
-			"category":           {"sql_column": "Categories.Topic", "fieldtype": "Data", "display": None, "searchable": False},
-		}
-		self.assertEqual(find_primary_key_field(joined_config, "ID"), "ascend_database_id")
-
 	def test_validate_skips_qualified_columns_when_no_additional_columns_provided(self):
 		# Qualified sql_column references should not raise even if discovered_columns
 		# only covers the primary table.
 		joined_config = {
+			"name":               {"sql_column": "Products.ID",          "fieldtype": "Data", "display": "hidden",  "searchable": False},
 			"ascend_database_id": {"sql_column": "Products.ID",          "fieldtype": "Data", "display": "hidden",  "searchable": False},
 			"description":        {"sql_column": "Products.Description",  "fieldtype": "Data", "display": "primary", "searchable": True},
 			"category":           {"sql_column": "Categories.Topic",      "fieldtype": "Data", "display": None,      "searchable": False},
 		}
 		# Only primary table columns passed — joined columns have no validator.
 		discovered = ["ID", "Description"]
-		self.assertTrue(validate_schema_config(joined_config, "ID", discovered))
+		self.assertTrue(validate_schema_config(joined_config, discovered))
 
 	def test_validate_checks_qualified_columns_against_additional_discovered_columns(self):
 		# When additional_discovered_columns is provided, qualified references are checked.
 		joined_config = {
-			"ascend_database_id": {"sql_column": "Products.ID",      "fieldtype": "Data", "display": "hidden",  "searchable": False},
-			"category":           {"sql_column": "Categories.Topik", "fieldtype": "Data", "display": None,      "searchable": False},  # typo
+			"name":     {"sql_column": "Products.ID",      "fieldtype": "Data", "display": "hidden", "searchable": False},
+			"category": {"sql_column": "Categories.Topik", "fieldtype": "Data", "display": None,     "searchable": False},  # typo
 		}
 		discovered = ["ID"]
 		additional = ["Topic", "ParentID"]  # correct column names from Categories
 		with self.assertRaises(ValueError):
-			validate_schema_config(joined_config, "ID", discovered, additional)
+			validate_schema_config(joined_config, discovered, additional)
 
 	def test_validate_accepts_valid_qualified_columns_with_additional(self):
 		joined_config = {
-			"ascend_database_id": {"sql_column": "Products.ID",      "fieldtype": "Data", "display": "hidden",  "searchable": False},
-			"category":           {"sql_column": "Categories.Topic",  "fieldtype": "Data", "display": None,      "searchable": False},
+			"name":     {"sql_column": "Products.ID",     "fieldtype": "Data", "display": "hidden", "searchable": False},
+			"category": {"sql_column": "Categories.Topic","fieldtype": "Data", "display": None,     "searchable": False},
 		}
 		discovered = ["ID"]
 		additional = ["Topic", "ParentID"]
-		self.assertTrue(validate_schema_config(joined_config, "ID", discovered, additional))
+		self.assertTrue(validate_schema_config(joined_config, discovered, additional))

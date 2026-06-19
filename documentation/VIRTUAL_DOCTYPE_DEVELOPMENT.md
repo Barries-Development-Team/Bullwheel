@@ -28,10 +28,11 @@ base class derives everything else from it: the field→column map, the aliased
 ## Step 1 — Discover the table's columns
 
 Run the introspection CLI against the Ascend database to see the real column
-names and types. Use `--suggest` to also get a starter `SCHEMA_CONFIG`:
+names and types. Use `--suggest` to also get a starter `SCHEMA_CONFIG`, and
+`--primary-key` to include the required `"name"` entry in the output:
 
 ```bash
-bench --site <your-site> introspect-schema --table Products --suggest
+bench --site <your-site> introspect-schema --table Products --suggest --primary-key ID
 ```
 
 `--server <SQL Server name>` targets a specific connection; omitted, it uses the
@@ -39,40 +40,50 @@ bench --site <your-site> introspect-schema --table Products --suggest
 with its SQL type, length, and nullability — write your config against these
 verified names rather than guessing.
 
+Without `--primary-key`, the suggested config will be missing the required `"name"`
+entry and the command will print a reminder with an example to add it manually.
+
 ## Step 2 — Declare `SCHEMA_CONFIG`
 
-Each entry maps a Frappe fieldname to its SQL mapping and UI intent:
+Each entry maps a Frappe fieldname to its SQL mapping and UI intent. A `"name"`
+entry is **required** — it declares the primary key SQL column and is what the
+framework uses to populate Frappe's document identifier:
 
 ```python
 SCHEMA_CONFIG = {
+    "name":               {"sql_column": "ID",          "fieldtype": "Data", "display": "hidden",    "searchable": False},
     "ascend_database_id": {"sql_column": "ID",          "fieldtype": "Data", "display": "hidden",    "searchable": False},
     "description":        {"sql_column": "Description", "fieldtype": "Data", "display": "primary",   "searchable": True},
-    "store_sku":         {"sql_column": "[Store UPC]", "fieldtype": "Data", "display": "secondary", "searchable": True},
-    "category":          {"sql_column": None,          "fieldtype": "Data", "display": None,        "searchable": False},
+    "store_sku":          {"sql_column": "[Store UPC]", "fieldtype": "Data", "display": "secondary", "searchable": True},
+    "category":           {"sql_column": None,          "fieldtype": "Data", "display": None,        "searchable": False},
     # ... one entry per field you want to surface
 }
 ```
 
+**The `"name"` entry** maps Frappe's internal document identifier directly to the
+primary key SQL column. Because it appears in `SCHEMA_CONFIG`, it is projected in
+the `SELECT` clause as `<column> AS name` and flows through like every other field —
+no special-casing required. Its `sql_column` must not be `None`. You will typically
+also declare a separate human-visible id field (e.g. `ascend_database_id`) pointing
+to the same column so it appears on the form.
+
 | Key          | Meaning |
 |--------------|---------|
-| `sql_column` | SQL Server column name. **Bracket-quote** names with spaces (`[Store UPC]`) or that collide with reserved words (`[Year]`). Use `None` for a field with no source column yet — it is projected as `NULL`. |
+| `sql_column` | SQL Server column name. **Bracket-quote** names with spaces (`[Store UPC]`) or that collide with reserved words (`[Year]`). Use `None` for a field with no source column yet — it is projected as `NULL`. The `"name"` entry must have a non-null `sql_column`. |
 | `fieldtype`  | Frappe fieldtype (`Data`, `Int`, `Currency`, `Check`, `Datetime`, …). |
 | `display`    | List-view / autocomplete exposure: `"hidden"`, `"primary"`, `"secondary"`, or `None`. See below. |
 | `searchable` | `True` to include the column in the OR LIKE Link autocomplete search. |
 
 **`display` values**
 
-- `"hidden"` — included in the document but never shown in the list view (use for the UUID primary key).
+- `"hidden"` — included in the document but never shown in the list view (use for `"name"` and UUID id fields).
 - `"primary"` — the title / Link label; always shown. Use for the one main descriptive field.
 - `"secondary"` — shown in lists and Link autocomplete alongside the primary.
 - `None` — not shown in lists, but present in the full document form.
 
-Exactly one field must map its `sql_column` to the table's primary key column
-(see `PRIMARY_KEY_COLUMN` in the next step) — that field becomes Frappe's `name`.
-
 ## Step 3 — Write the controller
 
-Inherit `AbstractVirtualDocType` and declare three class attributes:
+Inherit `AbstractVirtualDocType` and declare two class attributes:
 
 ```python
 # bullwheel/ascend/doctype/ascend_<thing>/ascend_<thing>.py
@@ -80,9 +91,8 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
 class AscendThing(AbstractVirtualDocType):
-    TABLE_NAME = "Things"        # Ascend SQL table name
-    PRIMARY_KEY_COLUMN = "ID"    # SQL primary key column
-    SCHEMA_CONFIG = { ... }       # from Step 2
+    TABLE_NAME = "Things"   # Ascend SQL table name
+    SCHEMA_CONFIG = { ... }  # from Step 2 — must include a "name" entry
 
 
 # Link-field autocomplete hook (only if this DocType is a Link target)
@@ -117,20 +127,18 @@ Multiple entries are concatenated in order, so you can chain as many JOINs as ne
 ### Column qualification
 
 With a JOIN in place, use dot notation (`table.column` or `alias.column`) in
-`sql_column` whenever two tables share a column name — including the primary key:
+`sql_column` whenever two tables share a column name — including the primary key.
+The `"name"` entry should also be qualified in that case, since `load_from_db`
+uses its `sql_column` directly in the `WHERE` clause:
 
 ```python
 SCHEMA_CONFIG = {
-    "ascend_database_id": {"sql_column": "Products.ID",     "fieldtype": "Data", "display": "hidden",  "searchable": False},
-    "description":        {"sql_column": "Products.Description", "fieldtype": "Data", "display": "primary", "searchable": True},
-    "category":           {"sql_column": "cat.Topic",        "fieldtype": "Data", "display": None,      "searchable": False},
+    "name":               {"sql_column": "Products.ID",          "fieldtype": "Data", "display": "hidden",  "searchable": False},
+    "ascend_database_id": {"sql_column": "Products.ID",          "fieldtype": "Data", "display": "hidden",  "searchable": False},
+    "description":        {"sql_column": "Products.Description",  "fieldtype": "Data", "display": "primary", "searchable": True},
+    "category":           {"sql_column": "cat.Topic",             "fieldtype": "Data", "display": None,      "searchable": False},
 }
 ```
-
-**`PRIMARY_KEY_COLUMN` is always unqualified** (`"ID"`, never `"Products.ID"`).
-The `WHERE` clause in `load_from_db` qualifies it automatically as
-`Products.ID = %s`. Qualify only the `sql_column` in `SCHEMA_CONFIG` so the
-`SELECT` clause is unambiguous.
 
 If the joined tables have no overlapping column names, qualification is optional
 but still recommended for readability.
@@ -141,7 +149,7 @@ Use `--join-table` (repeatable) on the CLI to inspect the columns available from
 each joined table before writing the config:
 
 ```bash
-bench --site <site> introspect-schema --table Products --join-table Categories
+bench --site <site> introspect-schema --table Products --join-table Categories --suggest --primary-key ID
 ```
 
 ### Validating a JOIN config
@@ -158,7 +166,7 @@ server = get_default_ascend_database()
 primary_schema  = introspect_table_schema(server, "Products")
 joined_schema   = introspect_join_schemas(server, JOIN_CONFIG)
 
-validate_schema_config(SCHEMA_CONFIG, "ID", primary_schema.keys(), joined_schema.keys())
+validate_schema_config(SCHEMA_CONFIG, primary_schema.keys(), joined_schema.keys())
 ```
 
 Unqualified columns are validated against the primary table; qualified
@@ -179,11 +187,13 @@ build_json_schema(SCHEMA_CONFIG)  # -> list of field dicts to drop into doctype.
 
 Set on the DocType:
 - `is_virtual = 1`
-- `autoname = field:<your primary-key fieldname>` (e.g. `field:ascend_database_id`)
+- `autoname = field:ascend_database_id` (or whichever fieldname mirrors the primary key — not `field:name`, as that is a reserved meta-field and causes a naming loop)
 - `title_field = <your "primary" display field>`
 - The primary-key field marked `unique`; keep it out of `in_list_view` (it's a UUID).
 
-The fieldnames in the JSON **must** match the keys in `SCHEMA_CONFIG`.
+The fieldnames in the JSON **must** match the keys in `SCHEMA_CONFIG`. The `"name"`
+key in `SCHEMA_CONFIG` is handled by the framework and does not correspond to a
+declared DocType field — omit it from the JSON.
 
 ## Step 5 — Register the search hook (Link targets only)
 
@@ -222,12 +232,12 @@ from bullwheel.ascend.schema_introspection import introspect_table_schema
 from bullwheel.ascend.schema_config_builder import validate_schema_config
 
 schema = introspect_table_schema(get_default_ascend_database(), "Things")
-validate_schema_config(SCHEMA_CONFIG, "ID", discovered_columns=schema.keys())
+validate_schema_config(SCHEMA_CONFIG, discovered_columns=schema.keys())
 ```
 
 It raises `ValueError` if any `sql_column` doesn't exist in the table, a `display`
-value is invalid, a required key is missing, or the primary key isn't mapped by
-exactly one field. Bracket-quoting is stripped before the column comparison.
+value is invalid, a required key is missing, or the `"name"` entry is absent or has
+a null `sql_column`. Bracket-quoting is stripped before the column comparison.
 
 ---
 
@@ -256,6 +266,11 @@ core limitation, not a framework bug.)
 
 - **Single source of truth** — one `SCHEMA_CONFIG` drives the field map, SELECT
   clause, search columns, and JSON, so they cannot drift apart.
+- **`name` is just another field** — declaring `"name"` in `SCHEMA_CONFIG` is
+  explicit rather than inferred: the framework no longer needs to search for which
+  field maps to the primary key, and the `WHERE` clause for `load_from_db` comes
+  directly from `SCHEMA_CONFIG["name"]["sql_column"]`. No separate `PRIMARY_KEY_COLUMN`
+  attribute is required.
 - **Sorting fixed once** — `get_list` translates the list view's `order_by`
   (including DocType names with spaces) into a real SQL `ORDER BY`. No per-DocType
   sorting code, and no repeat of the original Ascend Product sorting bug.

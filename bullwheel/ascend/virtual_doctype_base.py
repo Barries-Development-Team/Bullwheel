@@ -11,7 +11,6 @@ from bullwheel.ascend.schema_config_builder import (
 	build_field_to_column,
 	build_search_columns,
 	build_select_clause,
-	find_primary_key_field,
 	normalize_record,
 )
 
@@ -110,16 +109,16 @@ class AbstractVirtualDocType(Document):
 
 	# ─── Subclass Contract — override these ───────────────────────────────────
 	TABLE_NAME: str = None        # Ascend SQL table name, e.g. "Products"
-	PRIMARY_KEY_COLUMN: str = None  # SQL primary key column name, e.g. "ID" (always unqualified)
 	JOIN_CONFIG: list = None      # List of JOIN descriptors — see _build_join_clause for the dict shape
 	SCHEMA_CONFIG: dict = None    # fieldname -> {sql_column, fieldtype, display, searchable}
+	                               # Must include a "name" entry whose sql_column is the primary key.
 
 	# ─── Derived Constants (lazily built & cached per subclass) ───────────────
 
 	@classmethod
 	def field_to_column(cls):
 		"""Return (and cache) the fieldname -> SQL column map for filter resolution."""
-		return cls._derived("_field_to_column", lambda: build_field_to_column(cls.SCHEMA_CONFIG, cls.PRIMARY_KEY_COLUMN))
+		return cls._derived("_field_to_column", lambda: build_field_to_column(cls.SCHEMA_CONFIG))
 
 	@classmethod
 	def select_clause(cls):
@@ -130,11 +129,6 @@ class AbstractVirtualDocType(Document):
 	def search_columns(cls):
 		"""Return (and cache) the list of searchable SQL columns."""
 		return cls._derived("_search_columns", lambda: build_search_columns(cls.SCHEMA_CONFIG))
-
-	@classmethod
-	def primary_key_field(cls):
-		"""Return (and cache) the fieldname mapped to the primary key column."""
-		return cls._derived("_primary_key_field", lambda: find_primary_key_field(cls.SCHEMA_CONFIG, cls.PRIMARY_KEY_COLUMN))
 
 	@classmethod
 	def join_clause(cls):
@@ -161,22 +155,22 @@ class AbstractVirtualDocType(Document):
 		"""Convert a raw SQL result row into a frappe._dict suitable for a virtual document.
 
 		Normalizes SQL Server types into Frappe-friendly primitives (notably GUID
-		`uniqueidentifier` columns, which pymssql returns as uuid.UUID objects) and
-		sets the `name` meta-field from the primary key field. Used by both
-		load_from_db and get_list so the two paths stay consistent.
+		`uniqueidentifier` columns, which pymssql returns as uuid.UUID objects). The
+		`name` meta-field comes through the SELECT alias directly from the `name` entry
+		in SCHEMA_CONFIG — no special-casing required.
 		"""
-		record = normalize_record(record)
-		return frappe._dict({**record, "name": record[cls.primary_key_field()]})
+		return frappe._dict(normalize_record(record))
 
 	# ─── Read Operations ──────────────────────────────────────────────────────
 
 	def load_from_db(self):
 		"""Load a single record from SQL Server by primary key and populate this document."""
 		join = self.join_clause()
+		name_column = self.SCHEMA_CONFIG["name"]["sql_column"]
 		query = f"SELECT {self.select_clause()} FROM {self.TABLE_NAME}"
 		if join:
 			query += f" {join}"
-		query += f" WHERE {self.TABLE_NAME}.{self.PRIMARY_KEY_COLUMN} = %s"
+		query += f" WHERE {name_column} = %s"
 
 		with MSSQLDatabase(get_default_ascend_database()) as ascend:
 			result = ascend.sql(
@@ -200,8 +194,8 @@ class AbstractVirtualDocType(Document):
 		"""
 		order_by, order_direction = cls._resolve_order_by(kwargs.get("order_by"))
 
-		if order_by is None: # Order by id_column by default
-			order_by = cls.primary_key_field()
+		if order_by is None:
+			order_by = cls.SCHEMA_CONFIG["name"]["sql_column"]
 
 		join = cls.join_clause()
 		where_clause, values = _build_where_clause(
@@ -261,8 +255,7 @@ class AbstractVirtualDocType(Document):
 		rows (with `name` populated) when called with `as_dict=True`.
 		"""
 		table_name = cls.TABLE_NAME
-		primary_key_column = cls.PRIMARY_KEY_COLUMN
-		primary_key_field = cls.primary_key_field()
+		name_column = cls.SCHEMA_CONFIG["name"]["sql_column"]
 		select_clause = cls.select_clause()
 		field_to_column = cls.field_to_column()
 		search_columns = cls.search_columns()
@@ -279,7 +272,7 @@ class AbstractVirtualDocType(Document):
 				f"SELECT {select_clause} FROM {table_name}"
 				f"{' ' + join if join else ''}"
 				f"{where_clause}"
-				f" ORDER BY {primary_key_column} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
+				f" ORDER BY {name_column} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
 			)
 			values += [int(start), int(page_length)]
 
@@ -289,10 +282,10 @@ class AbstractVirtualDocType(Document):
 			records = [normalize_record(record) for record in records]
 
 			if as_dict:
-				return [frappe._dict({**record, "name": record[primary_key_field]}) for record in records]
+				return [frappe._dict(record) for record in records]
 
 			return [
-				(record[primary_key_field], *(record.get(field) or "" for field in display_fields))
+				(record["name"], *(record.get(field) or "" for field in display_fields))
 				for record in records
 			]
 
