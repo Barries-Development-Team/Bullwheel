@@ -13,6 +13,7 @@
   "is_group",
   "is_forklift_accessible",
   "location_content_section",
+  "scan_here",
   "location_inventory_quantities",
   "tree_details_section",
   "lft",
@@ -99,13 +100,19 @@
    "fieldtype": "Table",
    "label": "Inventory Quantities",
    "options": "Location Inventory"
+  },
+  {
+   "fieldname": "scan_here",
+   "fieldtype": "Data",
+   "label": "Scan Here",
+   "options": "Barcode"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_tree": 1,
  "links": [],
- "modified": "2026-06-02 11:30:27.005717",
+ "modified": "2026-06-19 16:21:57.066093",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Warehouse Location",

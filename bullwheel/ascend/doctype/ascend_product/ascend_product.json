@@ -79,13 +79,13 @@
   {
    "fieldname": "store_sku",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Store SKU",
    "read_only": 1
   },
   {
    "fieldname": "upc",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "UPC",
    "read_only": 1
   },
@@ -98,6 +98,7 @@
   {
    "fieldname": "category",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Category",
    "options": "Product Category",
    "read_only": 1
@@ -175,7 +176,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-18 16:09:25.391261",
+ "modified": "2026-06-19 15:35:04.898216",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
