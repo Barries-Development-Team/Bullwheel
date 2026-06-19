@@ -247,77 +247,56 @@ class AbstractVirtualDocType(Document):
 		pass
 
 	# ─── Search Function Hook ─────────────────────────────────────────────
-	'''
+
 	@classmethod
 	def make_search_function(cls, display_fields):
-		"""Build a Link-field search hook for this DocType using its derived constants.
+		"""Build a whitelisted Link-field search hook for this DocType.
 
 		Bind the result to a module-level name in the controller and register that
 		dotted path under `standard_queries` in hooks.py. `display_fields` are the
-		fieldnames shown after the id in each autocomplete tuple.
+		fieldnames shown after the id in each autocomplete tuple. The returned
+		function matches Frappe's `standard_queries` contract and queries Ascend
+		directly, bypassing the search_widget pipeline. Returns
+		`(name, *display_field_values)` tuples for autocomplete, or `frappe._dict`
+		rows (with `name` populated) when called with `as_dict=True`.
 		"""
-		return create_virtual_doctype_search(
-			table_name=cls.TABLE_NAME,
-			primary_key_column=cls.PRIMARY_KEY_COLUMN,
-			primary_key_field=cls.primary_key_field(),
-			select_clause=cls.select_clause(),
-			field_to_column=cls.field_to_column(),
-			search_columns=cls.search_columns(),
-			display_fields=display_fields,
-		)
-	
-	def create_virtual_doctype_search(
-		table_name,
-		primary_key_column,
-		primary_key_field,
-		select_clause,
-		field_to_column,
-		search_columns,
-		display_fields,
-	):
-	"""Build a whitelisted Link-field search function for a virtual DocType.
+		table_name = cls.TABLE_NAME
+		primary_key_column = cls.PRIMARY_KEY_COLUMN
+		primary_key_field = cls.primary_key_field()
+		select_clause = cls.select_clause()
+		field_to_column = cls.field_to_column()
+		search_columns = cls.search_columns()
+		join = cls.join_clause()
 
-	The returned function matches Frappe's `standard_queries` contract and queries
-	Ascend database directly, bypassing the search_widget pipeline. It returns
-	`(name, *display_field_values)` tuples for autocomplete, or `frappe._dict`
-	rows (with `name` populated) when called with `as_dict=True`.
+		@frappe.whitelist()
+		def virtual_doctype_search(_doctype, txt, _searchfield, start, page_length, _filters, as_dict=False):
+			# _doctype, _searchfield, _filters are required positional args from the
+			# standard_queries contract but are not needed for the Ascend query.
+			_ = _doctype, _searchfield, _filters
 
-	Arguments mirror the derived constants produced from a SCHEMA_CONFIG:
-		primary_key_column — SQL column name of the primary key (e.g. "ID")
-		primary_key_field  — Frappe fieldname holding that key (e.g. "ascend_database_id")
-		display_fields     — fieldnames shown after the id in autocomplete tuples
-	"""
-
-	@frappe.whitelist()
-	def virtual_doctype_search(_doctype, txt, _searchfield, start, page_length, _filters, as_dict=False):
-		# _doctype, _searchfield, _filters are required positional args from the
-		# standard_queries contract but are not needed for the Ascend query.
-		_ = _doctype, _searchfield, _filters
-
-		with AscendDatabase(get_default_ascend_database()) as ascend:
-			records = ascend.get_list(
-				table_name,
-				select_clause,
-				primary_key_column,
-				field_to_column,
-				search_columns=search_columns,
-				page_length=int(page_length),
-				start=int(start),
-				txt=txt,
+			where_clause, values = _build_where_clause(field_to_column, None, search_columns, txt, None)
+			query = (
+				f"SELECT {select_clause} FROM {table_name}"
+				f"{' ' + join if join else ''}"
+				f"{where_clause}"
+				f" ORDER BY {primary_key_column} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
 			)
+			values += [int(start), int(page_length)]
 
-		records = [normalize_record(record) for record in records]
+			with MSSQLDatabase(get_default_ascend_database()) as ascend:
+				records = ascend.sql(query=query, values=values, as_dict=True)
 
-		if as_dict:
-			return [frappe._dict({**record, "name": record[primary_key_field]}) for record in records]
+			records = [normalize_record(record) for record in records]
 
-		return [
-			(record[primary_key_field], *(record.get(field) or "" for field in display_fields))
-			for record in records
-		]
+			if as_dict:
+				return [frappe._dict({**record, "name": record[primary_key_field]}) for record in records]
 
-	return virtual_doctype_search
-	'''
+			return [
+				(record[primary_key_field], *(record.get(field) or "" for field in display_fields))
+				for record in records
+			]
+
+		return virtual_doctype_search
 
 	# ─── Order-By Resolution ──────────────────────────────────────────────────
 
