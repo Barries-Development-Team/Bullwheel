@@ -1,0 +1,108 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "UUID",
+ "creation": "2026-06-20 16:01:21.800679",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "ski",
+  "binding_brand_and_model",
+  "din_range",
+  "column_break_neng",
+  "used",
+  "top_condition",
+  "base_condition",
+  "additional_ski_information_section",
+  "tip_waist_tail",
+  "radius"
+ ],
+ "fields": [
+  {
+   "fieldname": "ski",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Ski",
+   "link_filters": "[[\"Ascend Product\",\"category\",\"like\",\"Ski Hardgoods - Skis%\"]]",
+   "options": "Ascend Product",
+   "reqd": 1
+  },
+  {
+   "fieldname": "binding_brand_and_model",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Binding Brand and Model",
+   "reqd": 1
+  },
+  {
+   "fieldname": "din_range",
+   "fieldtype": "Data",
+   "label": "DIN Range"
+  },
+  {
+   "fieldname": "additional_ski_information_section",
+   "fieldtype": "Section Break",
+   "label": "Additional Ski Information"
+  },
+  {
+   "fieldname": "tip_waist_tail",
+   "fieldtype": "Data",
+   "label": "Tip-Waist-Tail (mm)"
+  },
+  {
+   "fieldname": "radius",
+   "fieldtype": "Data",
+   "label": "Radius"
+  },
+  {
+   "fieldname": "column_break_neng",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "used",
+   "fieldtype": "Check",
+   "label": "Used"
+  },
+  {
+   "depends_on": "eval:doc.used",
+   "fieldname": "top_condition",
+   "fieldtype": "Int",
+   "label": "Top Condition"
+  },
+  {
+   "depends_on": "eval:doc.used",
+   "fieldname": "base_condition",
+   "fieldtype": "Int",
+   "label": "Base Condition"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-20 16:51:26.366771",
+ "modified_by": "Administrator",
+ "module": "Ascend",
+ "name": "Ski with Bindings",
+ "naming_rule": "UUID",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

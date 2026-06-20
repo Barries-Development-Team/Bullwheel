@@ -51,44 +51,118 @@ def _extract_search_text(txt, or_filters):
 					return filter_condition[3].strip("%")
 		return None
 
+# Maps the human-readable filter types accepted in dict-format filters (and the
+# symbolic operators Frappe sends in list-format filters) to SQL operators.
+_FILTER_TYPE_TO_SQL_OPERATOR = {
+	"equals": "=",
+	"not equals": "!=",
+	"like": "LIKE",
+	"not like": "NOT LIKE",
+	"in": "IN",
+	"not in": "NOT IN",
+	"is": "IS",
+	# Symbolic operators carried through from Frappe's list-format filters.
+	"=": "=",
+	"!=": "!=",
+	"<": "<",
+	"<=": "<=",
+	">": ">",
+	">=": ">=",
+}
+
+# Maps an "Is" filter's text to the SQL null-test it produces. The null keyword
+# is part of the SQL syntax (not a bindable value), so it is emitted literally.
+_IS_TEXT_TO_NULL_CLAUSE = {
+	"set": "NOT NULL",
+	"not set": "NULL",
+	"null": "NULL",
+	"not null": "NOT NULL",
+}
+
+def _iter_filters(filters):
+	"""Yield (fieldname, filter_type, text) tuples from any supported filter format.
+
+	Accepts three shapes:
+	  * named-type dict   — {fieldname: [type, text]}, e.g. {"brand": ["Like", "Rossi%"]}
+	  * plain dict        — {fieldname: value}, treated as an Equals filter
+	  * Frappe list format — [[doctype, fieldname, operator, value]]
+
+	A dict value is read as a [type, text] pair only when it is a two-element
+	list/tuple whose first element is a recognized filter type; otherwise the
+	whole value is treated as the text of an Equals filter (so a literal
+	two-element value is not misread as a type/text pair). Yields nothing when
+	`filters` is falsy.
+	"""
+	if not filters:
+		return
+
+	if isinstance(filters, dict):
+		for fieldname, raw_filter in filters.items():
+			if (
+				isinstance(raw_filter, (list, tuple))
+				and len(raw_filter) == 2
+				and isinstance(raw_filter[0], str)
+				and raw_filter[0].strip().lower() in _FILTER_TYPE_TO_SQL_OPERATOR
+			):
+				yield fieldname, raw_filter[0], raw_filter[1]
+			else:
+				yield fieldname, "Equals", raw_filter
+	else:
+		for filter_item in filters:
+			yield filter_item[1], filter_item[2], filter_item[3]
+
+def _build_filter_condition(column, filter_type, text):
+	"""Build one parameterized SQL condition and its bound values for a single filter.
+
+	`filter_type` is case-insensitive and may be a human-readable name (Equals,
+	Not Equals, Like, Not Like, In, Not In, Is) or a symbolic operator. For Like /
+	Not Like the caller supplies `%` wildcards directly in `text`. In / Not In
+	expect `text` to be a list/tuple of values. Is expects "set" / "not set"
+	(equivalently "null" / "not null") and produces an IS [NOT] NULL test with no
+	bound value. Returns (condition_string, values) where `values` is the list of
+	parameters to bind. Raises ValueError for an unrecognized type or Is text.
+	"""
+	sql_operator = _FILTER_TYPE_TO_SQL_OPERATOR.get(filter_type.strip().lower())
+	if sql_operator is None:
+		raise ValueError(f"Unsupported filter type: {filter_type!r}")
+
+	if sql_operator in ("IN", "NOT IN"):
+		values = list(text)
+		placeholders = ", ".join(["%s"] * len(values))
+		return f"{column} {sql_operator} ({placeholders})", values
+
+	if sql_operator == "IS":
+		null_clause = _IS_TEXT_TO_NULL_CLAUSE.get(str(text).strip().lower())
+		if null_clause is None:
+			raise ValueError(f"Unsupported 'Is' filter text: {text!r} (expected 'set' or 'not set')")
+		return f"{column} IS {null_clause}", []
+
+	return f"{column} {sql_operator} %s", [text]
+
 def _build_where_clause(field_to_column, filters, search_columns, txt, or_filters):
-	"""Build a parameterized SQL WHERE clause from Frappe list-view filters and search text.
+	"""Build a parameterized SQL WHERE clause from Frappe filters and search text.
 
-	Handles both dict-format ({fieldname: value}) and list-format
-	([[doctype, fieldname, operator, value]]) filters. Supported operators:
-	=, !=, <, <=, >, >=, LIKE, NOT LIKE, IN, NOT IN. Fieldnames are resolved
-	to SQL column names via field_to_column. Unrecognised fieldnames are skipped.
+	`filters` may be a named-type dict ({fieldname: [type, text]}), a plain dict
+	({fieldname: value}, treated as Equals), or Frappe's list format
+	([[doctype, fieldname, operator, value]]). Supported filter types are Equals,
+	Not Equals, Like, Not Like, In, Not In, and Is (plus the symbolic comparison
+	operators =, !=, <, <=, >, >=). For Like / Not Like, `%` wildcards are taken
+	verbatim from the filter text. Fieldnames are resolved to SQL columns via
+	`field_to_column`; unrecognized fieldnames are skipped.
 
-	When search text is present (from txt or or_filters), appends an OR LIKE
-	condition across all search_columns.
+	When search text is present (from `txt` or `or_filters`), appends an OR LIKE
+	condition across all `search_columns`.
 	"""
 	conditions = []
 	values = []
 
-	if filters:
-		filter_list = (
-			[[None, fieldname, "=", value] for fieldname, value in filters.items()]
-			if isinstance(filters, dict)
-			else filters
-		)
-		for filter_item in filter_list:
-			fieldname = filter_item[1]
-			operator = filter_item[2]
-			value = filter_item[3]
-
-			column = field_to_column.get(fieldname)
-			if not column:
-				continue
-
-			sql_operator = operator.upper()
-
-			if sql_operator in ("IN", "NOT IN"):
-				placeholders = ", ".join(["%s"] * len(value))
-				conditions.append(f"{column} {sql_operator} ({placeholders})")
-				values.extend(value)
-			else:
-				conditions.append(f"{column} {sql_operator} %s")
-				values.append(value)
+	for fieldname, filter_type, text in _iter_filters(filters):
+		column = field_to_column.get(fieldname)
+		if not column:
+			continue
+		condition, condition_values = _build_filter_condition(column, filter_type, text)
+		conditions.append(condition)
+		values.extend(condition_values)
 
 	search_text = _extract_search_text(txt, or_filters)
 	if search_text and search_columns:
@@ -291,15 +365,16 @@ class AbstractVirtualDocType(Document):
 		def virtual_doctype_search(_doctype, txt, _searchfield, start, page_length, _filters, as_dict=False):
 			# _doctype, _searchfield, _filters are required positional args from the
 			# standard_queries contract but are not needed for the Ascend query.
-			_ = _doctype, _searchfield, _filters
+			_ = _doctype, _searchfield
 
-			where_clause, values = _build_where_clause(field_to_column, None, search_columns, txt, None)
+			where_clause, values = _build_where_clause(field_to_column, _filters, search_columns, txt, None)
 			query = (
 				f"SELECT {select_clause} FROM {table_name}"
 				f"{' ' + join if join else ''}"
 				f"{where_clause}"
 				f" ORDER BY {name_column} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
 			)
+
 			values += [int(start), int(page_length)]
 
 			with MSSQLDatabase(get_default_ascend_database()) as ascend:
