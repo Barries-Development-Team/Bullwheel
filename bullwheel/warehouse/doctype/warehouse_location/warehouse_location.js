@@ -9,38 +9,45 @@ frappe.ui.form.on('Warehouse Location', {
 				if (event.key !== 'Enter') return;
 				event.preventDefault();
 
-				const scanned_value = (frm.doc.scan_here || '').trim();
+				// Read straight from the input element. A Frappe Data field only
+				// syncs into frm.doc on its change event (blur/debounce), which has
+				// not fired yet when Enter is pressed mid-typing — so frm.doc.scan_here
+				// would be stale and the scan would appear to be missed.
+				const input = event.target;
+				const scanned_value = (input.value || '').trim();
 				if (!scanned_value) return;
 
+				// Clear the input immediately so the user can scan the next item
+				// without waiting on the server round-trip, and keep the model in sync.
+				$(input).val('');
+				frm.doc.scan_here = '';
+
 				frappe.call({
-					method: 'frappe.desk.search.search_link',
-					args: {
-						txt: scanned_value,
-						doctype: 'Ascend Product',
-						ignore_user_permissions: 0,
-						reference_doctype: 'Location Inventory',
-						query: 'bullwheel.ascend.doctype.ascend_product.ascend_product.ascend_product_search',
-						page_length: 1
-					},
+					method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_product_dict',
+					args: {id: scanned_value, type: 'summary'},
 					callback(response) {
-						const results = response.results || [];
-						if (!results.length) {
+						const product = response.message;
+						// get_product_dict returns the product record (truthy object)
+						// when found, or null when no product matches the scan.
+						if (!product) {
 							frappe.show_alert({
 								message: `No product found for: ${frappe.utils.escape_html(scanned_value)}`,
 								indicator: 'red'
 							});
-						} else {
-							frm.add_child('location_inventory_quantities', {
-								product: results[0].value,
-								quantity: 1
-							});
-							frm.refresh_field('location_inventory_quantities');
-							frappe.show_alert({
-								message: `Added: ${results[0].description || results[0].value}`,
-								indicator: 'green'
-							});
+							return;
 						}
-						frm.set_value('scan_here', '');
+
+						// The Link field stores the Ascend Product's name (the ID
+						// column), not the scanned barcode.
+						frm.add_child('location_inventory_quantities', {
+							product: product["Store UPC"],
+							quantity: 1
+						});
+						frm.refresh_field('location_inventory_quantities');
+						frappe.show_alert({
+							message: `Added: ${frappe.utils.escape_html(product.Description || product["Store UPC"])}`,
+							indicator: 'green'
+						});
 					}
 				});
 			});

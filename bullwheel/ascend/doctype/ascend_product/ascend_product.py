@@ -13,7 +13,11 @@ are all derived from it.
 See bullwheel/ascend/VIRTUAL_DOCTYPE_DEVELOPMENT.md for the full workflow.
 """
 
+import frappe
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
+from bullwheel.database.SQLServer import MSSQLDatabase
+from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
+from bullwheel.ascend.schema_config_builder import normalize_record
 
 
 class AscendProduct(AbstractVirtualDocType):
@@ -61,8 +65,32 @@ class AscendProduct(AbstractVirtualDocType):
     }
 ]
 
-
 # Link-field autocomplete hook. Registered in hooks.py under standard_queries as
 # bullwheel.ascend.doctype.ascend_product.ascend_product.ascend_product_search.
-# Each result is (name, description, store_sku).
+# Each result is (name, description).
 ascend_product_search = AscendProduct.make_search_function(display_fields=["description"])
+
+@frappe.whitelist()
+def get_product_dict(id: str, type: str = 'full') -> dict | None:
+	"""Look up a single product by its Store UPC or UPC. Returns the product
+	# record as a dict, or None when no matching product exists so callers can
+	# distinguish "found" from "not found" without catching an exception.
+	# Optionally, using 'type' you can select to return the full dict or just a summary.
+	# the summary includes only the Description, Ascend SKU, and UPC."""
+
+	if type == 'full':
+		query = 'SELECT * FROM Products WHERE [Store UPC] = %s OR UPC = %s'
+	elif type == 'summary':
+		query = 'SELECT Description, [Store UPC], UPC FROM Products WHERE [Store UPC] = %s OR UPC = %s'
+	else:
+		raise ValueError("Type options are \'full\' and \'summary\'.")
+
+	with MSSQLDatabase(get_default_ascend_database()) as ascend:
+		result = ascend.sql(
+			query=query,
+			values=(id, id),
+			as_dict=True
+		)
+	if not result:
+		return None
+	return frappe._dict(normalize_record(result[0]))

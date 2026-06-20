@@ -4,7 +4,6 @@
 import frappe
 from frappe.utils.nestedset import NestedSet
 
-
 class WarehouseLocation(NestedSet):
 	def validate(self):
 		self.validate_no_inventory_in_group()

@@ -13,6 +13,7 @@ from bullwheel.ascend.schema_config_builder import (
 	build_select_clause,
 	normalize_record,
 )
+from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
 
 # ─── Static Helper Functions ───────────────────────────────────────
 
@@ -39,11 +40,6 @@ def _build_join_clause(join_config):
 		part += f" ON {on_condition}"
 		parts.append(part)
 	return " ".join(parts)
-
-
-def get_default_ascend_database():
-		default_database = frappe.db.get_single_value('Bullwheel Settings', 'default_database')
-		return frappe.get_doc("SQL Server", default_database)
 
 def _extract_search_text(txt, or_filters):
 		"""Return the raw search string from either a direct txt arg or Frappe's or_filters list."""
