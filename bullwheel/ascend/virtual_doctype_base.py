@@ -181,6 +181,36 @@ class AbstractVirtualDocType(Document):
 		super(Document, self).__init__(self._to_document_dict(result[0]))
 
 	@classmethod
+	def get_link_field_values(cls, name, fieldnames):
+		"""Fetch only the requested fields for one record by primary key.
+
+		An optimized alternative to load_from_db for callers (e.g. Link-field title display)
+		that need a couple of columns rather than the whole document. Each fieldname is
+		aliased to itself; fieldnames with no SQL column (NULL placeholders or unknown
+		names) come back as None. Returns a dict keyed by fieldname, or None when no record
+		matches. The `name` field maps to the primary key column via field_to_column, so it
+		can be requested like any other field and is UUID-normalized in the result.
+		"""
+		field_to_column = cls.field_to_column()
+		select_expressions = ", ".join(
+			f"{field_to_column.get(fieldname) or 'NULL'} AS {fieldname}" for fieldname in fieldnames
+		)
+		join = cls.join_clause()
+		name_column = cls.SCHEMA_CONFIG["name"]["sql_column"]
+		query = f"SELECT {select_expressions} FROM {cls.TABLE_NAME}"
+		if join:
+			query += f" {join}"
+		query += f" WHERE {name_column} = %s"
+
+		with MSSQLDatabase(get_default_ascend_database()) as ascend:
+			result = ascend.sql(query=query, values=(name,), as_dict=True)
+
+		if not result:
+			return None
+
+		return normalize_record(result[0])
+
+	@classmethod
 	def get_list(cls, filters=None, page_length=20, start=0, txt=None, or_filters=None, **kwargs):
 		"""Fetch a paginated, filtered, sorted list of records.
 

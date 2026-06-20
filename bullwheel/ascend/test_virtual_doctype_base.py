@@ -8,8 +8,12 @@ Covers order_by resolution (sorting was the recurring bug the framework fixes)
 and JOIN clause construction from JOIN_CONFIG.
 """
 
+import uuid
+from unittest.mock import MagicMock, patch
+
 from frappe.tests import UnitTestCase
 
+from bullwheel.ascend import virtual_doctype_base
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
@@ -139,3 +143,86 @@ class UnitTestJoinClause(UnitTestCase):
 			"LEFT JOIN Categories ON Products.TopicID = Categories.ID"
 			" INNER JOIN Vendors ON Products.VendorID = Vendors.ID",
 		)
+
+
+def _mock_ascend_returning(rows, captured):
+	"""Return a MagicMock standing in for the MSSQLDatabase context manager.
+
+	Records the executed query and values into `captured` and returns `rows` from sql().
+	"""
+	connection = MagicMock()
+
+	def sql(query, values, as_dict=False):
+		captured["query"] = query
+		captured["values"] = values
+		captured["as_dict"] = as_dict
+		return rows
+
+	connection.sql.side_effect = sql
+
+	database = MagicMock()
+	database.__enter__.return_value = connection
+	database.__exit__.return_value = False
+	return database
+
+
+class UnitTestGetLinkFieldValues(UnitTestCase):
+	"""Unit tests for the optimized single-row, column-limited fetch."""
+
+	def _run(self, doctype_cls, name, fieldnames, rows):
+		captured = {}
+		database = _mock_ascend_returning(rows, captured)
+		with (
+			patch.object(virtual_doctype_base, "MSSQLDatabase", return_value=database),
+			patch.object(virtual_doctype_base, "get_default_ascend_database", return_value=None),
+		):
+			result = doctype_cls.get_link_field_values(name, fieldnames)
+		return result, captured
+
+	def test_selects_only_requested_columns_by_primary_key(self):
+		result, captured = self._run(
+			_SampleVirtualDocType, "PROD-1", ["name", "description"],
+			[{"name": "PROD-1", "description": "Red Ski"}],
+		)
+		self.assertEqual(result, {"name": "PROD-1", "description": "Red Ski"})
+		self.assertEqual(
+			captured["query"],
+			"SELECT ID AS name, Description AS description FROM Products WHERE ID = %s",
+		)
+		self.assertEqual(captured["values"], ("PROD-1",))
+
+	def test_unmapped_field_projects_null(self):
+		_result, captured = self._run(
+			_SampleVirtualDocType, "PROD-1", ["description", "category"],
+			[{"description": "Red Ski", "category": None}],
+		)
+		self.assertEqual(
+			captured["query"],
+			"SELECT Description AS description, NULL AS category FROM Products WHERE ID = %s",
+		)
+
+	def test_join_clause_is_included(self):
+		_result, captured = self._run(
+			_JoinedVirtualDocType, "PROD-1", ["name", "category"],
+			[{"name": "PROD-1", "category": "Skis"}],
+		)
+		self.assertEqual(
+			captured["query"],
+			"SELECT Products.ID AS name, Categories.Topic AS category"
+			" FROM Products LEFT JOIN Categories ON Products.TopicID = Categories.ID"
+			" WHERE Products.ID = %s",
+		)
+
+	def test_uuid_name_is_stringified(self):
+		guid = uuid.UUID("12345678-1234-5678-1234-567812345678")
+		result, _captured = self._run(
+			_SampleVirtualDocType, str(guid), ["name", "description"],
+			[{"name": guid, "description": "Red Ski"}],
+		)
+		self.assertEqual(result["name"], str(guid))
+
+	def test_no_match_returns_none(self):
+		result, _captured = self._run(
+			_SampleVirtualDocType, "PROD-404", ["description"], []
+		)
+		self.assertIsNone(result)

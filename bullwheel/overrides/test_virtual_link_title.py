@@ -25,6 +25,10 @@ _RECORDS = {
 }
 
 
+class _PlainController:
+	"""A virtual controller with no optimized fast path — forces the get_cached_doc fallback."""
+
+
 def _fake_get_cached_doc(doctype, name):
 	"""Stand in for frappe.get_cached_doc against the in-memory _RECORDS table."""
 	if name not in _RECORDS:
@@ -83,12 +87,15 @@ class UnitTestPatchedGetValue(UnitTestCase):
 
 	def setUp(self):
 		self._is_virtual = patch.object(virtual_link_title, "is_virtual_doctype", return_value=True)
+		self._controller = patch.object(virtual_link_title, "get_controller", return_value=_PlainController)
 		self._cached_doc = patch.object(frappe, "get_cached_doc", side_effect=_fake_get_cached_doc)
 		self._is_virtual.start()
+		self._controller.start()
 		self._cached_doc.start()
 
 	def tearDown(self):
 		self._is_virtual.stop()
+		self._controller.stop()
 		self._cached_doc.stop()
 
 	def _get_value(self, *args, **kwargs):
@@ -132,12 +139,15 @@ class UnitTestPatchedGetValues(UnitTestCase):
 
 	def setUp(self):
 		self._is_virtual = patch.object(virtual_link_title, "is_virtual_doctype", return_value=True)
+		self._controller = patch.object(virtual_link_title, "get_controller", return_value=_PlainController)
 		self._cached_doc = patch.object(frappe, "get_cached_doc", side_effect=_fake_get_cached_doc)
 		self._is_virtual.start()
+		self._controller.start()
 		self._cached_doc.start()
 
 	def tearDown(self):
 		self._is_virtual.stop()
+		self._controller.stop()
 		self._cached_doc.stop()
 
 	def _get_values(self, *args, **kwargs):
@@ -169,6 +179,47 @@ class UnitTestPatchedGetValues(UnitTestCase):
 			self._get_values(_VIRTUAL_DOCTYPE, {"name": ("in", ["PROD-1", "PROD-404"])}, ["name", "description"]),
 			[["PROD-1", "Red Ski"]],
 		)
+
+
+class UnitTestReadFields(UnitTestCase):
+	"""`_read_fields` prefers the controller's optimized fast path when one exists."""
+
+	def test_uses_get_link_field_values_when_present(self):
+		class _FastController:
+			calls = []
+
+			@classmethod
+			def get_link_field_values(cls, name, fieldnames):
+				cls.calls.append((name, list(fieldnames)))
+				return {"name": name, "description": "Red Ski"}
+
+		with (
+			patch.object(virtual_link_title, "get_controller", return_value=_FastController),
+			patch.object(frappe, "get_cached_doc", side_effect=AssertionError("fallback used")) as cached,
+		):
+			row = virtual_link_title._read_fields(_VIRTUAL_DOCTYPE, "PROD-1", ["name", "description"])
+
+		self.assertEqual(row, ["PROD-1", "Red Ski"])
+		self.assertEqual(_FastController.calls, [("PROD-1", ["name", "description"])])
+		cached.assert_not_called()
+
+	def test_fast_path_missing_record_returns_none(self):
+		class _FastController:
+			@classmethod
+			def get_link_field_values(cls, name, fieldnames):
+				return None
+
+		with patch.object(virtual_link_title, "get_controller", return_value=_FastController):
+			self.assertIsNone(virtual_link_title._read_fields(_VIRTUAL_DOCTYPE, "PROD-404", ["description"]))
+
+	def test_falls_back_to_cached_doc_without_fast_path(self):
+		with (
+			patch.object(virtual_link_title, "get_controller", return_value=_PlainController),
+			patch.object(frappe, "get_cached_doc", side_effect=_fake_get_cached_doc),
+		):
+			row = virtual_link_title._read_fields(_VIRTUAL_DOCTYPE, "PROD-1", ["name", "description"])
+
+		self.assertEqual(row, ["PROD-1", "Red Ski"])
 
 
 class UnitTestDelegation(UnitTestCase):

@@ -24,6 +24,7 @@ import threading
 
 import frappe
 from frappe.database.database import Database
+from frappe.model.base_document import get_controller
 from frappe.model.utils import is_virtual_doctype
 
 _PATCHED_FLAG = "_bullwheel_virtual_link_title_patched"
@@ -135,13 +136,20 @@ def _names_from_operator_value(value):
 
 
 def _read_fields(doctype, name, fieldnames):
-	"""Load one virtual document through its controller and return the requested values.
+	"""Return the requested field values for one virtual document, in the requested order.
 
-	Uses ``get_cached_doc`` so repeated lookups within a request hit the document cache,
-	matching the ``cache=True`` intent of the title call sites. The controller's
-	``load_from_db`` performs the actual external lookup. Returns the field values in the
-	requested order, or ``None`` when the record does not exist.
+	Prefers an optional, optimized ``get_link_field_values(name, fieldnames)`` classmethod on
+	the controller (which can fetch just the needed columns) when one is defined. Otherwise
+	falls back to loading the whole document via ``get_cached_doc`` — which also lets repeated
+	lookups within a request hit the document cache, matching the ``cache=True`` intent of the
+	title call sites. Returns ``None`` when the record does not exist.
 	"""
+	controller = get_controller(doctype)
+	fast_fetch = getattr(controller, "get_link_field_values", None)
+	if callable(fast_fetch):
+		values = fast_fetch(name, fieldnames)
+		return None if values is None else [values.get(fieldname) for fieldname in fieldnames]
+
 	try:
 		document = frappe.get_cached_doc(doctype, name)
 	except frappe.DoesNotExistError:
