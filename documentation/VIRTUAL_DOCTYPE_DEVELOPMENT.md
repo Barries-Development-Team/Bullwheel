@@ -252,15 +252,20 @@ in the query builder). The base class normalizes every record through
 and filters all work. **No action needed** — just be aware the `name` will be the
 lowercase, hyphenated GUID string.
 
-**Do NOT enable "Show Title in Link Fields" on a virtual DocType.** That setting
-makes Frappe resolve link titles via `frappe.db.get_value(doctype, name, title_field)`,
-and core's query engine has **no virtual-doctype routing** — it runs the query
-against a `tab<DocType>` table that doesn't exist for virtual DocTypes, raising
-`Table '...' doesn't exist`. Leave the setting off (it is off by default). The
-framework's `display` config already gives Link autocomplete a friendly label, so
-users still see a description rather than a raw GUID when picking a value. (If a
-saved Link field shows the raw GUID name in the form, that is the cost of this
-core limitation, not a framework bug.)
+**"Show Title in Link Fields" works on virtual DocTypes** — enable it normally
+(set `show_title_field_in_link` and `title_field`). Frappe resolves link titles via
+`frappe.db.get_value(doctype, name, title_field)` (and `get_values` for the version
+diff), and core's query engine has **no virtual-doctype routing** — left alone it
+runs the query against a `tab<DocType>` table that doesn't exist, raising
+`Table '...' doesn't exist`. Bullwheel closes this gap in
+`bullwheel/overrides/virtual_link_title.py`: it patches `Database.get_value` and
+`Database.get_values` (installed once from `bullwheel/__init__.py`) so that, when the
+DocType is virtual **and** the filters select rows purely by `name`, the value is
+read through the controller's `load_from_db` instead of the database. All other calls
+delegate to the original implementation untouched. This single choke point covers
+every link-title path — form load, the `get_link_title` endpoint, version diffing,
+print view — so a saved Link field shows the `title_field` (e.g. the product
+description) rather than the raw GUID `name`.
 
 ## Why this shape
 
