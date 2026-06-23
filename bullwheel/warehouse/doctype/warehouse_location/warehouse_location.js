@@ -39,10 +39,19 @@ frappe.ui.form.on('Warehouse Location', {
 
 						// The Link field stores the Ascend Product's name (the ID
 						// column), not the scanned barcode.
-						frm.add_child('location_inventory_quantities', {
-							product: product["Store UPC"],
-							quantity: 1
-						});
+						const store_upc = product["Store UPC"];
+						const existing_row = (frm.doc.location_inventory_quantities || []).find(
+							row => row.product === store_upc
+						);
+
+						if (existing_row) {
+							frappe.model.set_value(existing_row.doctype, existing_row.name, 'quantity', existing_row.quantity + 1);
+						} else {
+							frm.add_child('location_inventory_quantities', {
+								product: store_upc,
+								quantity: 1
+							});
+						}
 						frm.refresh_field('location_inventory_quantities');
 						frappe.show_alert({
 							message: `Added: ${frappe.utils.escape_html(product.Description || product["Store UPC"])}`,

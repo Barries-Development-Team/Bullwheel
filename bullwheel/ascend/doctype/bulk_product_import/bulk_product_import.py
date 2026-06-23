@@ -9,11 +9,12 @@ import openpyxl
 from frappe.model.document import Document
 
 # Maps template column headers to New Product child table fieldnames.
-# Columns absent from this map (ID, IsNonInventory, Brand, eCommerce, Color Code, JH QTY)
+# Columns absent from this map (ID, IsNonInventory, eCommerce, Color Code, JH QTY)
 # are left blank because they have no equivalent field in the New Product DocType.
 TEMPLATE_COLUMN_TO_FIELD = {
 	"VPN": "vpn",
 	"Category": "category",
+	"Brand": "brand",
 	"Description": "description",
 	"Cost": "cost",
 	"MSRP": "msrp",
@@ -75,6 +76,6 @@ def generate_import_sheet(name):
 	workbook.save(file_buffer)
 	file_buffer.seek(0)
 
-	frappe.local.response.filename = f"{name} - Ascend Import.xlsx"
+	frappe.local.response.filename = f"{name} - Ascend Vendor Product Import.xlsx"
 	frappe.local.response.filecontent = file_buffer.read()
 	frappe.local.response.type = "download"
