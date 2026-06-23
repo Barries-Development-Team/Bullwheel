@@ -17,7 +17,7 @@
   {
    "fieldname": "default_database",
    "fieldtype": "Link",
-   "label": "Default Database",
+   "label": "Default Ascend Database",
    "options": "SQL Server"
   }
  ],
@@ -25,7 +25,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-06-02 12:41:59.674278",
+ "modified": "2026-06-23 12:43:23.569182",
  "modified_by": "Administrator",
  "module": "Bullwheel Core",
  "name": "Bullwheel Settings",

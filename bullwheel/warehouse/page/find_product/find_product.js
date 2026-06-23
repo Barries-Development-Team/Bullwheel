@@ -13,7 +13,7 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 			fieldname: 'product',
 			label: 'Product',
 			options: 'Ascend Product',
-			placeholder: 'Search by description or Ascend SKU...',
+			placeholder: 'Search Ascend products...',
 		},
 		render_input: true,
 	});
@@ -22,7 +22,7 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 	// Results container
 	var $results = $('<div class="find-product-results" style="margin-top: 20px;"></div>').appendTo(page.main);
 
-	search_field.$input.on('change', function() {
+	function run_search() {
 		var product = search_field.get_value();
 		$results.empty();
 
@@ -61,5 +61,9 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 				$results.append($table);
 			}
 		});
-	});
+	}
+
+	page.set_primary_action('Find', run_search, 'search');
+
+	// search_field.$input.on('change', run_search);
 };
