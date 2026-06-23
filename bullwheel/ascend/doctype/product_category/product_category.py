@@ -9,7 +9,7 @@ class ProductCategory(AbstractVirtualDocType):
     TABLE_NAME = "Categories"
     SCHEMA_CONFIG = {
         "name": {
-                "sql_column": "ID",
+                "sql_column": "Topic",
                 "fieldtype": "Data",
                 "display": "hidden",
                 "searchable": False,
@@ -150,4 +150,4 @@ class ProductCategory(AbstractVirtualDocType):
 
 
 # Link-field autocomplete hook (only if this DocType is a Link target)
-product_category_search = ProductCategory.make_search_function(display_fields=["category_name"])
+product_category_search = ProductCategory.make_search_function(display_fields=[""])
