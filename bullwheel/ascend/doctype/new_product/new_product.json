@@ -1,0 +1,166 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": ".{vpn}.-.###",
+ "creation": "2026-06-22 17:01:50.596264",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "product_details_section",
+  "description",
+  "category",
+  "style_name",
+  "style_number",
+  "color",
+  "size",
+  "year",
+  "gender",
+  "season",
+  "column_break_swll",
+  "cost",
+  "msrp",
+  "case",
+  "case_quantity",
+  "case_upc",
+  "cast_msrp",
+  "section_break_reim",
+  "vpn",
+  "upc",
+  "mpn"
+ ],
+ "fields": [
+  {
+   "fieldname": "vpn",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Vendor Part Number (VPN)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Description",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "label": "Category",
+   "options": "Product Category",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_swll",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cost",
+   "fieldtype": "Currency",
+   "label": "Cost"
+  },
+  {
+   "fieldname": "msrp",
+   "fieldtype": "Currency",
+   "label": "MSRP"
+  },
+  {
+   "fieldname": "section_break_reim",
+   "fieldtype": "Section Break",
+   "label": "Identifiers"
+  },
+  {
+   "fieldname": "upc",
+   "fieldtype": "Data",
+   "label": "UPC (or custom barcode #)"
+  },
+  {
+   "fieldname": "mpn",
+   "fieldtype": "Data",
+   "label": "Manufacturer Part Number (MPN)"
+  },
+  {
+   "fieldname": "style_name",
+   "fieldtype": "Data",
+   "label": "Style Name"
+  },
+  {
+   "fieldname": "style_number",
+   "fieldtype": "Data",
+   "label": "Style Number"
+  },
+  {
+   "fieldname": "color",
+   "fieldtype": "Data",
+   "label": "Color"
+  },
+  {
+   "fieldname": "size",
+   "fieldtype": "Data",
+   "label": "Size"
+  },
+  {
+   "fieldname": "year",
+   "fieldtype": "Data",
+   "label": "Year"
+  },
+  {
+   "fieldname": "gender",
+   "fieldtype": "Data",
+   "label": "Gender"
+  },
+  {
+   "fieldname": "season",
+   "fieldtype": "Data",
+   "label": "Season"
+  },
+  {
+   "default": "0",
+   "fieldname": "case",
+   "fieldtype": "Check",
+   "label": "Case"
+  },
+  {
+   "depends_on": "eval:doc.case",
+   "fieldname": "case_quantity",
+   "fieldtype": "Int",
+   "label": "Case Quantity",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.case",
+   "fieldname": "case_upc",
+   "fieldtype": "Data",
+   "label": "Case UPC"
+  },
+  {
+   "depends_on": "eval:doc.case",
+   "fieldname": "cast_msrp",
+   "fieldtype": "Currency",
+   "label": "Cast MSRP"
+  },
+  {
+   "fieldname": "product_details_section",
+   "fieldtype": "Section Break",
+   "label": "Product Details"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-06-22 18:22:36.504007",
+ "modified_by": "Administrator",
+ "module": "Ascend",
+ "name": "New Product",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "description"
+}
