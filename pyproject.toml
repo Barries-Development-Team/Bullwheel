@@ -8,6 +8,7 @@ requires-python = ">=3.14"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
+    "openpyxl>=3.1.5",
     # "frappe~=16.0.0" # Installed and managed by bench.
     "pymssql>=2.3.13",
 ]
