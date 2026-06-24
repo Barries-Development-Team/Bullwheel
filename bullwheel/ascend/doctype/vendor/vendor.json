@@ -8,72 +8,164 @@
  "field_order": [
   "vendor_name",
   "address",
-  "address_2",
-  "id",
+  "address2",
   "city",
   "state",
   "postal_code",
   "country",
   "phone_1",
-  "column_break_gzum"
+  "phone_2",
+  "fax",
+  "email",
+  "website",
+  "notes",
+  "column_break_gzum",
+  "account_id",
+  "min_order",
+  "free_shipping",
+  "sales_rep",
+  "terms",
+  "ship_method",
+  "section_break_sctp",
+  "id"
  ],
  "fields": [
   {
    "fieldname": "vendor_name",
    "fieldtype": "Data",
    "label": "Name",
+   "read_only": 1,
    "unique": 1
   },
   {
    "fieldname": "id",
    "fieldtype": "Data",
-   "label": "Ascend Database ID"
+   "label": "Ascend Database ID",
+   "read_only": 1
   },
   {
    "fieldname": "address",
    "fieldtype": "Data",
-   "label": "Street Address"
-  },
-  {
-   "fieldname": "address_2",
-   "fieldtype": "Data",
-   "label": "Unit/Suite"
+   "label": "Street Address",
+   "read_only": 1
   },
   {
    "fieldname": "city",
    "fieldtype": "Data",
-   "label": "City"
+   "label": "City",
+   "read_only": 1
   },
   {
    "fieldname": "state",
    "fieldtype": "Data",
-   "label": "State/Province"
+   "label": "State/Province",
+   "read_only": 1
   },
   {
    "fieldname": "postal_code",
    "fieldtype": "Data",
-   "label": "Postal Code"
+   "label": "Postal Code",
+   "read_only": 1
   },
   {
    "fieldname": "country",
    "fieldtype": "Data",
-   "label": "Country"
+   "label": "Country",
+   "read_only": 1
   },
   {
    "fieldname": "phone_1",
    "fieldtype": "Phone",
-   "label": "Phone 1"
+   "label": "Phone 1",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_gzum",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_sctp",
+   "fieldtype": "Section Break",
+   "hidden": 1
+  },
+  {
+   "fieldname": "address2",
+   "fieldtype": "Data",
+   "label": "Unit/Suite",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fax",
+   "fieldtype": "Phone",
+   "label": "Fax",
+   "read_only": 1
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "E-Mail",
+   "read_only": 1
+  },
+  {
+   "fieldname": "website",
+   "fieldtype": "Data",
+   "label": "Website",
+   "read_only": 1
+  },
+  {
+   "fieldname": "account_id",
+   "fieldtype": "Data",
+   "label": "Account ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "min_order",
+   "fieldtype": "Currency",
+   "label": "Minimum Order Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "free_shipping",
+   "fieldtype": "Currency",
+   "label": "Free Shipping Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sales_rep",
+   "fieldtype": "Data",
+   "label": "Sales Representative",
+   "read_only": 1
+  },
+  {
+   "fieldname": "terms",
+   "fieldtype": "Data",
+   "label": "Terms",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ship_method",
+   "fieldtype": "Data",
+   "label": "Ship Method",
+   "read_only": 1
+  },
+  {
+   "fieldname": "phone_2",
+   "fieldtype": "Phone",
+   "label": "Phone 2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-24 15:03:11.942076",
+ "modified": "2026-06-24 16:39:12.546655",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Vendor",

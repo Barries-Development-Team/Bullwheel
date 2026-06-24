@@ -98,7 +98,7 @@ class MSSQLDatabase:
 		query: str,
 		values: tuple | list | dict = (),
 		*,
-		as_dict: bool = False,
+		as_dict: bool = True,
 		as_list: bool = False,
 		debug: bool = False,
 		auto_commit: bool = False,

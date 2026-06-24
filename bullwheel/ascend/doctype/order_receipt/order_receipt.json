@@ -1,26 +1,41 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "field:po",
  "creation": "2026-06-24 14:19:49.394323",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "po"
+  "po",
+  "vendor"
  ],
  "fields": [
   {
    "fieldname": "po",
    "fieldtype": "Data",
-   "label": "Purchase Order (PO)"
+   "in_list_view": 1,
+   "label": "Purchase Order (PO)",
+   "placeholder": "e.g. Specialized 0626678",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Vendor",
+   "options": "Vendor",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-24 14:23:27.831406",
+ "modified": "2026-06-24 17:03:04.907100",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {
@@ -40,5 +55,6 @@
  "rows_threshold_for_grid_search": 20,
  "sort_field": "creation",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "title_field": "po"
 }

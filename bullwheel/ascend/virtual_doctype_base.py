@@ -285,7 +285,7 @@ class AbstractVirtualDocType(Document):
 		return normalize_record(result[0])
 
 	@classmethod
-	def get_list(cls, filters=None, page_length=20, start=0, txt=None, or_filters=None, **kwargs):
+	def get_list(cls, filters=None, page_length=20, start=0, txt=None, or_filters=None, as_list=False,**kwargs):
 		"""Fetch a paginated, filtered, sorted list of records.
 
 		Wires the list view's `order_by` through to AscendDatabase (mapping the
@@ -312,9 +312,10 @@ class AbstractVirtualDocType(Document):
 		with MSSQLDatabase(get_default_ascend_database()) as ascend:
 			results = ascend.sql(
 				query=query,
-				values=values,
-				as_dict=True
+				values=values
 			)
+
+		#if as_list:
 
 		return [cls._to_document_dict(record) for record in results]
 	

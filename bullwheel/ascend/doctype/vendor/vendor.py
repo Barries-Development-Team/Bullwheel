@@ -4,10 +4,16 @@
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
-class AscendThing(AbstractVirtualDocType):
+class Vendor(AbstractVirtualDocType):
     TABLE_NAME = "Vendors"   # Ascend SQL table name
     SCHEMA_CONFIG = {
         "name": {
+                "sql_column": "Name",
+                "fieldtype": "Data",
+                "display": None,
+                "searchable": False,
+        },
+        "vendor_name": {
                 "sql_column": "Name",
                 "fieldtype": "Data",
                 "display": None,
@@ -43,13 +49,13 @@ class AscendThing(AbstractVirtualDocType):
                 "display": None,
                 "searchable": False,
         },
-        "zip": {
+        "postal_code": {
                 "sql_column": "ZIP",
                 "fieldtype": "Data",
                 "display": None,
                 "searchable": False,
         },
-        "phone": {
+        "phone_1": {
                 "sql_column": "Phone",
                 "fieldtype": "Data",
                 "display": None,
@@ -91,7 +97,7 @@ class AscendThing(AbstractVirtualDocType):
                 "display": None,
                 "searchable": False,
         },
-        "sales_person": {
+        "sales_rep": {
                 "sql_column": "SalesPerson",
                 "fieldtype": "Data",
                 "display": None,
@@ -103,7 +109,7 @@ class AscendThing(AbstractVirtualDocType):
                 "display": None,
                 "searchable": False,
         },
-        "ship_via": {
+        "ship_method": {
                 "sql_column": "ShipVia",
                 "fieldtype": "Data",
                 "display": None,
@@ -151,7 +157,7 @@ class AscendThing(AbstractVirtualDocType):
                 "display": None,
                 "searchable": False,
         },
-        "phone2": {
+        "phone_2": {
                 "sql_column": "Phone2",
                 "fieldtype": "Data",
                 "display": None,
@@ -245,4 +251,4 @@ class AscendThing(AbstractVirtualDocType):
 
 
 # Link-field autocomplete hook (only if this DocType is a Link target)
-ascend_thing_search = AscendThing.make_search_function(display_fields=["description"])
+vendor_search = Vendor.make_search_function(display_fields=["vendor_name"])
