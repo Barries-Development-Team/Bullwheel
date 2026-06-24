@@ -86,7 +86,6 @@ to the same column so it appears on the form.
 Inherit `AbstractVirtualDocType` and declare two class attributes:
 
 ```python
-# bullwheel/ascend/doctype/ascend_<thing>/ascend_<thing>.py
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
@@ -96,6 +95,7 @@ class AscendThing(AbstractVirtualDocType):
 
 
 # Link-field autocomplete hook (only if this DocType is a Link target)
+# Display fields must match fields names from SCHEMA_CONFIG.
 ascend_thing_search = AscendThing.make_search_function(display_fields=["description"])
 ```
 
