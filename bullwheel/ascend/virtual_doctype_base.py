@@ -285,7 +285,7 @@ class AbstractVirtualDocType(Document):
 		return normalize_record(result[0])
 
 	@classmethod
-	def get_list(cls, filters=None, page_length=20, start=0, txt=None, or_filters=None, as_list=False,**kwargs):
+	def get_list(cls, fields=None, filters=None, page_length=20, start=0, txt=None, or_filters=None, as_list=False,**kwargs):
 		"""Fetch a paginated, filtered, sorted list of records.
 
 		Wires the list view's `order_by` through to AscendDatabase (mapping the
@@ -293,6 +293,18 @@ class AbstractVirtualDocType(Document):
 		a list of frappe._dict rows, each with `name` set to the primary key value.
 		"""
 		order_by, order_direction = cls._resolve_order_by(kwargs.get("order_by"))
+
+		if fields is None:
+			select_clause = cls.select_clause()
+		else:
+			select_expressions = []
+			for field in fields:
+				if type(field) != str: # There was some weird dict passed as a paramater. I don't know it's purpose. This skips over it.
+					continue
+				sql_column = cls.SCHEMA_CONFIG.get(field).get("sql_column") or "NULL"
+				select_expressions.append(f"{sql_column} AS {field}")
+			select_clause = ", ".join(select_expressions)
+				
 
 		if order_by is None:
 			order_by = cls.SCHEMA_CONFIG["name"]["sql_column"]
@@ -302,7 +314,7 @@ class AbstractVirtualDocType(Document):
 			cls.field_to_column(), filters, cls.search_columns(), txt, or_filters
 		)
 		query = (
-			f"SELECT {cls.select_clause()} FROM {cls.TABLE_NAME}"
+			f"SELECT {select_clause} FROM {cls.TABLE_NAME}"
 			f"{' ' + join if join else ''}"
 			f"{where_clause}"
 			f" ORDER BY {order_by} {order_direction} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
@@ -315,7 +327,8 @@ class AbstractVirtualDocType(Document):
 				values=values
 			)
 
-		#if as_list:
+		if as_list:
+			return [tuple(row_dict.values()) for row_dict in results]
 
 		return [cls._to_document_dict(record) for record in results]
 	
