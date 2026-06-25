@@ -285,6 +285,7 @@ class AbstractVirtualDocType(Document):
 		return normalize_record(result[0])
 
 	@classmethod
+	@frappe.validate_and_sanitize_search_inputs
 	def get_list(cls, fields=None, filters=None, page_length=20, start=0, txt=None, or_filters=None, as_list=False,**kwargs):
 		"""Fetch a paginated, filtered, sorted list of records.
 
@@ -376,6 +377,7 @@ class AbstractVirtualDocType(Document):
 		join = cls.join_clause()
 
 		@frappe.whitelist()
+		@frappe.validate_and_sanitize_search_inputs
 		def virtual_doctype_search(_doctype, txt, _searchfield, start, page_length, _filters, as_dict=False):
 			# _doctype, _searchfield, _filters are required positional args from the
 			# standard_queries contract but are not needed for the Ascend query.
