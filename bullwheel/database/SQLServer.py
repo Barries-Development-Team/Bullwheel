@@ -174,16 +174,19 @@ class MSSQLDatabase:
 
 	# ─── Health Check ─────────────────────────────────────────────────
 
-	def test_connection(self) -> bool:
+	def test_connection(self) -> str:
 		"""Attempt to open a connection and execute a minimal query to verify
 		that the server is reachable and credentials are valid. Always closes
 		the connection before returning."""
 		try:
 			self.connect()
-			self.sql("SELECT 1")
-			return True
-		except (ConnectionError, QueryError):
-			return False
+			self.sql(
+				query="SELECT 1",
+				as_dict=False
+			)
+			return 'success'
+		except (ConnectionError, QueryError) as error:
+			return error
 		finally:
 			self.close()
 

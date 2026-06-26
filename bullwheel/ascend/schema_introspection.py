@@ -86,22 +86,12 @@ def suggest_schema_config(schema, primary_key_column=None):
 	if primary_key_column:
 		sql_column = f"[{primary_key_column}]" if " " in primary_key_column else primary_key_column
 		pk_info = schema.get(primary_key_column, {})
-		config["name"] = {
-			"sql_column": sql_column,
-			"fieldtype": _sql_type_to_fieldtype(pk_info.get("sql_type", "int")),
-			"display": "hidden",
-			"searchable": False,
-		}
+		config["name"] = sql_column
 
 	for column_name, info in schema.items():
 		fieldname = _columnname_to_fieldname(column_name)
 		sql_column = f"[{column_name}]" if " " in column_name else column_name
-		config[fieldname] = {
-			"sql_column": sql_column,
-			"fieldtype": _sql_type_to_fieldtype(info["sql_type"]),
-			"display": None,
-			"searchable": False,
-		}
+		config[fieldname] = sql_column
 
 	return config
 

@@ -251,4 +251,4 @@ class Vendor(AbstractVirtualDocType):
 
 
 # Link-field autocomplete hook (only if this DocType is a Link target)
-vendor_search = Vendor.make_search_function(display_fields=["vendor_name"])
+# vendor_search = Vendor.make_search_function(display_fields=["vendor_name"])

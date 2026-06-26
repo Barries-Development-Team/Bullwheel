@@ -150,4 +150,4 @@ class ProductCategory(AbstractVirtualDocType):
 
 
 # Link-field autocomplete hook (only if this DocType is a Link target)
-product_category_search = ProductCategory.make_search_function(display_fields=[""])
+# product_category_search = ProductCategory.make_search_function(display_fields=[""])
