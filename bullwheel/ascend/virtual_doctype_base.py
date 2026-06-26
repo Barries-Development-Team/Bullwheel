@@ -21,10 +21,14 @@ def _to_document_dict(record):
 		for fieldname, value in record.items()
 	})
 
-def _clean_field_parameter(field):
+def _clean_fieldname(field):
 	"""Removes assumed table name and formating from field names.
 	For example, the parameter '`tabVendor`.`name`' should be resolved to just 'name'."""
 	return field.split('.')[-1].replace('`','')
+
+def _parse_parameter(parameter: str) -> list[str]:
+	"""Split a string on whitespace, but text inside backtick pairs is treated as a single token."""
+	return re.findall(r'(?:`[^`]*`|\S)+', parameter)
 
 
 class AbstractVirtualDocType(Document):
@@ -38,40 +42,52 @@ class AbstractVirtualDocType(Document):
 	# ─── Helper Methods  ──────────────────────────────────────────────────────
 
 	@classmethod
-	def build_select_clause(cls, fields: list = []) -> str:
+	def _build_select_clause(cls, fields: list = [], limit: int = 20) -> str:
 		"""Generate an SQL Select clause to fetch the provided fields. If no fields are provided, all are selected."""
 		if len(fields) <= 0:
 			fields = cls.SCHEMA_CONFIG.keys()
-		else:
-			fields = [_clean_field_parameter(field) for field in fields] # Pre-generated table names like "tabProducts" can sneak in. This removes those.
+
 		select_statements = []
 		for field in fields:
+			field = _clean_fieldname(field)
 			sql_column = cls.SCHEMA_CONFIG.get(field)
 			if sql_column is not None:
 				select_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} AS {field}')
-		return ', '.join(select_statements)
+		return f'SELECT TOP {limit} ' + ', '.join(select_statements)
 	
 	@classmethod
-	def build_join_clause(cls) -> str:
+	def _build_join_clause(cls) -> str:
 		join_statements = []
 		for config in cls.JOIN_CONFIG:
 			join_statements.append(f'{config.get('join')} {config.get('table')} AS {config.get('alias')} ON {config.get('on')}')
 		return ' '.join(join_statements)
 	
 	@classmethod
-	def build_where_clause(cls, filters: list, values: list = []) -> str:
+	def _build_where_clause(cls, filters: list, values: list = []) -> str:
+		"""Build the WHERE clause from a list of filters. Filter values are appended to the passed values list."""
 		where_statements = []
 		for doctype, field, type, value in filters:
-			where_statements.append(f' WHERE {cls.SCHEMA_CONFIG.get(field)} {type} %s')
+			where_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} {type} %s')
 			values.append(value) # Appends the value to the list of values passed as an argument.
-		return ' '.join(where_statements)
+		return 'WHERE ' + ' AND '.join(where_statements)
+	
+	@classmethod
+	def _build_order_by_clause(cls, order_by: str) -> str:
+		parameters = order_by.split(', ')
+		order_by_statements = []
+		
+		for parameter in parameters:
+			field, order = _parse_parameter(parameter)
+			order_by_statements.append(f'{_clean_fieldname(field)} {order.upper()}')
+
+		return 'ORDER BY ' + ', '.join(order_by_statements)
 
 	
 	# ─── Read Operations ──────────────────────────────────────────────────────
 
 	# TODO: Finish
 	def load_from_db(self):
-		query = f'SELECT {self.build_select_clause()} FROM {self.TABLE_NAME}'
+		query = f'SELECT {self._build_select_clause()} FROM {self.TABLE_NAME}'
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			record = db.sql(
@@ -84,17 +100,28 @@ class AbstractVirtualDocType(Document):
 	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, order_by: str, start: int, page_length: int, group_by: str, with_comment_count: str, save_user_settings: bool, strict,  **args):
 
-		query = f'SELECT TOP {page_length} {cls.build_select_clause(fields)} FROM {cls.TABLE_NAME}'
+		query_clauses = []
 		values = []
-		if cls.JOIN_CONFIG is not None:
-			query += f' {cls.build_join_clause()}'
-		query += f' {cls.build_where_clause(filters, values)}' # Values are appended to the list inside this method.
-		# TODO: Implement order by
+
+		# SELECT
+		query_clauses.append(cls._build_select_clause(fields, page_length))
 		
+		# FROM
+		query_clauses.append(f'FROM {cls.TABLE_NAME}')
+
+		# JOIN
+		if cls.JOIN_CONFIG is not None:
+			query_clauses.append(cls._build_join_clause())
+
+		# WHERE
+		query_clauses.append(cls._build_where_clause(filters, values)) # Values are appended to the list inside this method.
+		
+		# ORDER BY
+		query_clauses.append(cls._build_order_by_clause(order_by))
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(
-				query=query,
+				query=' '.join(query_clauses),
 				values=values,
 				as_dict=True
 			)
