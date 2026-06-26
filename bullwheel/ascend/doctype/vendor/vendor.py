@@ -11,13 +11,13 @@ class Vendor(AbstractVirtualDocType):
                 "sql_column": "Name",
                 "fieldtype": "Data",
                 "display": None,
-                "searchable": False,
+                "searchable": True,
         },
         "vendor_name": {
                 "sql_column": "Name",
                 "fieldtype": "Data",
                 "display": None,
-                "searchable": False,
+                "searchable": True,
         },
         "id": {
                 "sql_column": "ID",
@@ -77,7 +77,7 @@ class Vendor(AbstractVirtualDocType):
                 "sql_column": "Website",
                 "fieldtype": "Data",
                 "display": None,
-                "searchable": False,
+                "searchable": True,
         },
         "account_id": {
                 "sql_column": "AccountID",

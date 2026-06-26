@@ -41,6 +41,11 @@ def _build_join_clause(join_config):
 		parts.append(part)
 	return " ".join(parts)
 
+def _clean_field_parameter(field):
+	"""Removes assumed table name and formating from field names.
+	For example, the parameter '`tabVendor`.`name`' should be resolved to just 'name'."""
+	return field.split('.')[-1].replace('`','')
+
 def _extract_search_text(txt, or_filters):
 		"""Return the raw search string from either a direct txt arg or Frappe's or_filters list."""
 		if txt:
@@ -285,7 +290,7 @@ class AbstractVirtualDocType(Document):
 		return normalize_record(result[0])
 
 	@classmethod
-	@frappe.validate_and_sanitize_search_inputs
+	#@frappe.validate_and_sanitize_search_inputs
 	def get_list(cls, fields=None, filters=None, page_length=20, start=0, txt=None, or_filters=None, as_list=False,**kwargs):
 		"""Fetch a paginated, filtered, sorted list of records.
 
@@ -301,6 +306,9 @@ class AbstractVirtualDocType(Document):
 			select_expressions = []
 			for field in fields:
 				if type(field) != str: # There was some weird dict passed as a paramater. I don't know it's purpose. This skips over it.
+					continue
+				field = _clean_field_parameter(field)
+				if field not in cls.SCHEMA_CONFIG.keys(): # Skip fields like "owner"
 					continue
 				sql_column = cls.SCHEMA_CONFIG.get(field).get("sql_column") or "NULL"
 				select_expressions.append(f"{sql_column} AS {field}")
@@ -346,7 +354,11 @@ class AbstractVirtualDocType(Document):
 			f"{where_clause}"
 		)
 		with MSSQLDatabase(get_default_ascend_database()) as ascend:
-			result = ascend.sql(query=query, values=values)
+			result = ascend.sql(
+				query=query, 
+				values=values,
+				as_list=True
+			)
 
 		return result[0][0] if result else 0
 	
@@ -378,10 +390,10 @@ class AbstractVirtualDocType(Document):
 
 		@frappe.whitelist()
 		@frappe.validate_and_sanitize_search_inputs
-		def virtual_doctype_search(_doctype, txt, _searchfield, start, page_length, _filters, as_dict=False):
-			# _doctype, _searchfield, _filters are required positional args from the
+		def virtual_doctype_search(doctype, txt, searchfield, start, page_len, _filters, as_dict=False):
+			# doctype, searchfield, filters are required positional args from the
 			# standard_queries contract but are not needed for the Ascend query.
-			_ = _doctype, _searchfield
+			_ = doctype, searchfield
 
 			where_clause, values = _build_where_clause(field_to_column, _filters, search_columns, txt, None)
 			query = (
@@ -391,7 +403,7 @@ class AbstractVirtualDocType(Document):
 				f" ORDER BY {name_column} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
 			)
 
-			values += [int(start), int(page_length)]
+			values += [int(start), int(page_len)]
 
 			with MSSQLDatabase(get_default_ascend_database()) as ascend:
 				records = ascend.sql(query=query, values=values, as_dict=True)

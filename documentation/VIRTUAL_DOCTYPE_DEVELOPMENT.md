@@ -267,6 +267,12 @@ every link-title path — form load, the `get_link_title` endpoint, version diff
 print view — so a saved Link field shows the `title_field` (e.g. the product
 description) rather than the raw GUID `name`.
 
+## Troubleshooting and Common Issues
+
+**Server Error when trying to create a Link field to the Virtual Doctype** — Make sure you have added the search query to the app hooks. See Step 5.
+
+**Link field values don't change when I search** — Ensure that the values you wish too search are configured as "searchable: True" in the doctype's py file.
+
 ## Why this shape
 
 - **Single source of truth** — one `SCHEMA_CONFIG` drives the field map, SELECT

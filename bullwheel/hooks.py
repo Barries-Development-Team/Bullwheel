@@ -5,6 +5,7 @@ app_name = "bullwheel"
 standard_queries = {
  	"Ascend Product": "bullwheel.ascend.doctype.ascend_product.ascend_product.ascend_product_search",
  	"Product Category": "bullwheel.ascend.doctype.product_category.product_category.product_category_search",
+    #"Vendor": "bullwheel.ascend.doctype.vendor.vendor.vendor_search"
 }
 app_title = "Bullwheel"
 app_publisher = "Barrie\'s Ski and Sports"

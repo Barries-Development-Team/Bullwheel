@@ -99,7 +99,6 @@ class MSSQLDatabase:
 		values: tuple | list | dict = (),
 		*,
 		as_dict: bool = True,
-		as_list: bool = False,
 		debug: bool = False,
 		auto_commit: bool = False,
 		pluck: bool = False,
@@ -131,7 +130,7 @@ class MSSQLDatabase:
 			if pluck:
 				return [row[0] for row in result]
 
-			if as_list and not as_dict:
+			if not as_dict:
 				return [[value for value in row] for row in result]
 
 			return result
