@@ -87,17 +87,10 @@ def introspect_schema(context, table_name, server_name=None, suggest=False, prim
 
 def _format_suggested_config(config):
 	"""Pretty-print a suggested SCHEMA_CONFIG dict as copy-pasteable Python source."""
-	lines = ["SCHEMA_CONFIG = {"]
-	for fieldname, entry in config.items():
-		display = "None" if entry["display"] is None else f'"{entry["display"]}"'
-		lines.append(f'\t"{fieldname}": {{')
-		lines.append(f'\t\t"sql_column": "{entry["sql_column"]}",')
-		lines.append(f'\t\t"fieldtype": "{entry["fieldtype"]}",')
-		lines.append(f'\t\t"display": {display},')
-		lines.append(f'\t\t"searchable": {entry["searchable"]},')
-		lines.append("\t},")
-	lines.append("}")
-	return "\n".join(lines)
+	lines = []
+	for fieldname in config:
+		lines.append(f"\t'{fieldname}': '{config.get(fieldname)}'")
+	return "SCHEMA_CONFIG = {\n" + ",\n".join(lines) + "\n}"
 
 
 commands = [introspect_schema]

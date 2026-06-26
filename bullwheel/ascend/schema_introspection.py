@@ -69,18 +69,7 @@ def format_schema_table(schema):
 
 
 def suggest_schema_config(schema, primary_key_column=None):
-	"""Produce a starter SCHEMA_CONFIG dict from an introspected schema.
-
-	Every column becomes a snake_case fieldname mapped back to its SQL column, with
-	conservative defaults (display None, searchable False). It is a scaffold to
-	copy into a controller and edit down — not a finished config. SQL columns whose
-	names contain spaces are bracket-quoted so the SELECT clause is valid as-is.
-
-	When `primary_key_column` is provided (e.g. `"ID"`), a `"name"` entry is
-	prepended at the top of the config pointing to that column with display "hidden".
-	Without it, no `"name"` entry is generated and the developer must add one
-	manually before the config is valid.
-	"""
+	"""Produce a starter SCHEMA_CONFIG dict from an introspected schema."""
 	config = {}
 
 	if primary_key_column:
