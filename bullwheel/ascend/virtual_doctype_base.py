@@ -70,6 +70,10 @@ class AbstractVirtualDocType(Document):
 		for doctype, field, type, value in filters:
 			where_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} {type} %s')
 			values.append(value) # Appends the value to the list of values passed as an argument.
+
+		if len(where_statements) <= 0:
+			return None
+		
 		return 'WHERE ' + ' AND '.join(where_statements)
 	
 	@classmethod
@@ -93,7 +97,7 @@ class AbstractVirtualDocType(Document):
 	
 	# ─── Read Operations ──────────────────────────────────────────────────────
 
-	# TODO: Finish
+	# TODO: Apply fixes for empty WHERE clauses.
 	def load_from_db(self):
 		query_clauses = []
 		# SELECT
@@ -127,6 +131,7 @@ class AbstractVirtualDocType(Document):
 			if type(fields[i]) != str:
 				invalid_field_indices.append(i)
 				print(f"\033[33mAscend Virtual Doc Warning: Invalid field parameter {fields[i]}.\033[0m")
+				continue
 			fields[i] = _clean_fieldname(fields[i])
 
 		for i in invalid_field_indices:
