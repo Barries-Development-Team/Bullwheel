@@ -26,7 +26,7 @@ class AscendProduct(AbstractVirtualDocType):
 	TABLE_NAME = "Products"
 
 	SCHEMA_CONFIG = {
-        'name': 'Products.ID',
+        'name': 'Products.[Store UPC]',
         'id': 'Products.ID',
         'category': 'cat.Topic',
         'description': 'Products.Description',

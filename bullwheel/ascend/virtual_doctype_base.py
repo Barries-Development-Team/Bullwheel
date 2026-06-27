@@ -95,21 +95,42 @@ class AbstractVirtualDocType(Document):
 
 	# TODO: Finish
 	def load_from_db(self):
-		query = f'SELECT {self._build_select_clause()} FROM {self.TABLE_NAME}'
+		query_clauses = []
+		# SELECT
+		query_clauses.append(self._build_select_clause())
+		# FROM
+		query_clauses.append(f'FROM {self.TABLE_NAME}')
+		# JOIN
+		if self.JOIN_CONFIG is not None:
+			query_clauses.append(self._build_join_clause())
+		# WHERE
+		query_clauses.append(f'WHERE {self.SCHEMA_CONFIG.get('name')} = %s')
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
-			record = db.sql(
-				query=query,
-				values=[]
+			records = db.sql(
+				query=' '.join(query_clauses),
+				values=[self.name],
+				as_dict=True
 			)
 
-		super(Document, self).__init__()
+		if not records:
+			raise frappe.DoesNotExistError(f"{self.doctype} '{self.name}' not found.")
+
+		super(Document, self).__init__(_to_document_dict(records[0]))
 	
 	@classmethod
-	def get_list(cls, doctype: str, fields: list, filters: list, order_by: str, start: int, page_length: int, group_by: str, with_comment_count: str, save_user_settings: bool, strict,  **args):
+	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, group_by: str = None, order_by: str = None, strict = None, **args):
+		
 		# Reformat incorrectly assumed table names from fields list. E.g. '`tabAscend Product`.`name`' to 'name' 
+		invalid_field_indices = [] # List of field paramater indicies not compatible with this virtual doctype.
 		for i in range(len(fields)):
+			if type(fields[i]) != str:
+				invalid_field_indices.append(i)
+				print(f"\033[33mAscend Virtual Doc Warning: Invalid field parameter {fields[i]}.\033[0m")
 			fields[i] = _clean_fieldname(fields[i])
+
+		for i in invalid_field_indices:
+			del fields[i]
 
 		# Display a warning to the console if an expected field has no mapping in the schema config.
 		if cls.SHOW_FIELD_WARNINGS:
