@@ -34,10 +34,11 @@ def _parse_parameter(parameter: str) -> list[str]:
 class AbstractVirtualDocType(Document):
 
 	# ─── Subclass Contract — override these ───────────────────────────────────
-	TABLE_NAME: str = None        # Ascend SQL table name, e.g. "Products"
-	JOIN_CONFIG: list = None      # List of JOIN descriptors — see _build_join_clause for the dict shape
-	SCHEMA_CONFIG: dict = None    # Fieldname -> SQL Column
-								   # Must include a "name" entry whose sql_column is the primary key.
+	TABLE_NAME: str = None       		# Ascend SQL table name, e.g. "Products"
+	JOIN_CONFIG: list = None     		# List of JOIN descriptors — see _build_join_clause for the dict shape
+	SCHEMA_CONFIG: dict = None    		# Fieldname -> SQL Column. Must include a "name" entry whose sql_column is the primary key.
+	SHOW_FIELD_WARNINGS: bool = True	# Display a warning in the console if an expected field has no mapping in SCHEMA_CONFIG
+
 
 	# ─── Helper Methods  ──────────────────────────────────────────────────────
 
@@ -49,10 +50,10 @@ class AbstractVirtualDocType(Document):
 
 		select_statements = []
 		for field in fields:
-			field = _clean_fieldname(field)
 			sql_column = cls.SCHEMA_CONFIG.get(field)
 			if sql_column is not None:
 				select_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} AS {field}')
+			
 		return f'SELECT TOP {limit} ' + ', '.join(select_statements)
 	
 	@classmethod
@@ -78,7 +79,14 @@ class AbstractVirtualDocType(Document):
 		
 		for parameter in parameters:
 			field, order = _parse_parameter(parameter)
-			order_by_statements.append(f'{_clean_fieldname(field)} {order.upper()}')
+			sql_column = cls.SCHEMA_CONFIG.get(field)
+			if sql_column is not None:
+				order_by_statements.append(f'{_clean_fieldname(field)} {order.upper()}')
+			else:
+				order_by_statements.append('(SELECT NULL)')
+
+		if len(order_by_statements) <= 0:
+			return None
 
 		return 'ORDER BY ' + ', '.join(order_by_statements)
 
@@ -99,6 +107,15 @@ class AbstractVirtualDocType(Document):
 	
 	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, order_by: str, start: int, page_length: int, group_by: str, with_comment_count: str, save_user_settings: bool, strict,  **args):
+		# Remove incorrectly assumed table names from fields list.
+		for i in range(len(fields)):
+			fields[i] = _clean_fieldname(fields[i])
+
+		if cls.SHOW_FIELD_WARNINGS:
+			for field in fields:
+				if cls.SCHEMA_CONFIG.get(field) is None:
+					print(f"\033[33mAscend Virtual Doc Warning: No field mapping exists for {field} in {doctype}.\033[0m")
+			print(f"\033[33mIf this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.\033[0m")
 
 		query_clauses = []
 		values = []
