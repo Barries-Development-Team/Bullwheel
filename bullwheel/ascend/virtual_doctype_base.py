@@ -107,10 +107,11 @@ class AbstractVirtualDocType(Document):
 	
 	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, order_by: str, start: int, page_length: int, group_by: str, with_comment_count: str, save_user_settings: bool, strict,  **args):
-		# Remove incorrectly assumed table names from fields list.
+		# Reformat incorrectly assumed table names from fields list. E.g. '`tabAscend Product`.`name`' to 'name' 
 		for i in range(len(fields)):
 			fields[i] = _clean_fieldname(fields[i])
 
+		# Display a warning to the console if an expected field has no mapping in the schema config.
 		if cls.SHOW_FIELD_WARNINGS:
 			for field in fields:
 				if cls.SCHEMA_CONFIG.get(field) is None:
@@ -122,17 +123,13 @@ class AbstractVirtualDocType(Document):
 
 		# SELECT
 		query_clauses.append(cls._build_select_clause(fields, page_length))
-		
 		# FROM
 		query_clauses.append(f'FROM {cls.TABLE_NAME}')
-
 		# JOIN
 		if cls.JOIN_CONFIG is not None:
 			query_clauses.append(cls._build_join_clause())
-
 		# WHERE
 		query_clauses.append(cls._build_where_clause(filters, values)) # Values are appended to the list inside this method.
-		
 		# ORDER BY
 		query_clauses.append(cls._build_order_by_clause(order_by))
 
