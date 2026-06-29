@@ -30,6 +30,12 @@ def _parse_parameter(parameter: str) -> list[str]:
 	"""Split a string on whitespace, but text inside backtick pairs is treated as a single token."""
 	return re.findall(r'(?:`[^`]*`|\S)+', parameter)
 
+def _bare_column(sql_column: str) -> str:
+	"""Extract the bare, lowercase column name from a SQL column reference for comparison.
+	Handles table-qualified references ('Products.ID', 'cat.Topic') and bracket-quoted
+	names ('[Store UPC]', '[Year]'). 'Products.[Store UPC]' -> 'store upc'."""
+	return sql_column.split('.')[-1].strip('[]').lower()
+
 
 class AbstractVirtualDocType(Document):
 
@@ -41,6 +47,67 @@ class AbstractVirtualDocType(Document):
 
 
 	# ─── Helper Methods  ──────────────────────────────────────────────────────
+
+	@classmethod
+	def validate_schema_config(cls, discovered_columns=None, additional_discovered_columns=None) -> bool:
+		"""Validate this class's SCHEMA_CONFIG for structural correctness.
+
+		Always checks that SCHEMA_CONFIG is not empty, that a 'name' entry exists mapping
+		to a non-null primary key column, and that all values are strings or None.
+
+		When discovered_columns is provided (an iterable of SQL column names from the primary
+		table, e.g. from introspect_table_schema), confirms that unqualified column references
+		exist in that set. When additional_discovered_columns is provided (column names from
+		joined tables), confirms that table-qualified references (containing '.') resolve to a
+		known column. Qualified columns are skipped when additional_discovered_columns is not
+		provided.
+
+		Returns True on success; raises ValueError describing the first problem found.
+		"""
+		schema_config = cls.SCHEMA_CONFIG
+
+		if not schema_config:
+			raise ValueError(f"{cls.__name__}: SCHEMA_CONFIG is empty or None.")
+
+		if 'name' not in schema_config:
+			raise ValueError(
+				f"{cls.__name__}: SCHEMA_CONFIG must include a 'name' entry mapping to the primary key column."
+			)
+		if not schema_config.get('name'):
+			raise ValueError(
+				f"{cls.__name__}: SCHEMA_CONFIG 'name' entry must have a non-null SQL column (the primary key)."
+			)
+
+		for fieldname, sql_column in schema_config.items():
+			if sql_column is not None and not isinstance(sql_column, str):
+				raise ValueError(
+					f"{cls.__name__}: Field '{fieldname}' has an invalid value {sql_column!r}. "
+					f"Expected a string SQL column name or None."
+				)
+
+		if discovered_columns is not None or additional_discovered_columns is not None:
+			primary_columns = {_bare_column(col) for col in discovered_columns} if discovered_columns else None
+			joined_columns = {_bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
+
+			for fieldname, sql_column in schema_config.items():
+				if not sql_column:
+					continue
+				is_table_qualified = '.' in sql_column
+				bare = _bare_column(sql_column)
+				if is_table_qualified:
+					if joined_columns is not None and bare not in joined_columns:
+						raise ValueError(
+							f"{cls.__name__}: Field '{fieldname}' maps to joined column '{sql_column}', "
+							f"which was not found in the introspected joined-table schema."
+						)
+				else:
+					if primary_columns is not None and bare not in primary_columns:
+						raise ValueError(
+							f"{cls.__name__}: Field '{fieldname}' maps to SQL column '{sql_column}', "
+							f"which was not found in the introspected primary table schema."
+						)
+
+		return True
 
 	@classmethod
 	def _build_select_clause(cls, fields: list = [], limit: int = 20) -> str:
@@ -58,9 +125,12 @@ class AbstractVirtualDocType(Document):
 	
 	@classmethod
 	def _build_join_clause(cls) -> str:
+		"""Build a JOIN clause from JOIN_CONFIG. The alias key is optional; when absent, no AS clause is emitted."""
 		join_statements = []
 		for config in cls.JOIN_CONFIG:
-			join_statements.append(f'{config.get('join')} {config.get('table')} AS {config.get('alias')} ON {config.get('on')}')
+			alias = config.get('alias')
+			alias_clause = f' AS {alias}' if alias else ''
+			join_statements.append(f'{config.get("join")} {config.get("table")}{alias_clause} ON {config.get("on")}')
 		return ' '.join(join_statements)
 	
 	@classmethod
@@ -92,14 +162,21 @@ class AbstractVirtualDocType(Document):
 	
 	@classmethod
 	def _build_order_by_clause(cls, order_by: str) -> str:
+		"""Build an ORDER BY clause from a Frappe order_by string. Handles both plain field names
+		('description asc') and Frappe's fully-qualified backtick form ('`tabX`.`description` asc').
+		Fields with no SCHEMA_CONFIG mapping fall back to (SELECT NULL)."""
 		parameters = order_by.split(', ')
 		order_by_statements = []
-		
+
 		for parameter in parameters:
-			field, order = _parse_parameter(parameter)
+			tokens = _parse_parameter(parameter)
+			if not tokens:
+				continue
+			field = _clean_fieldname(tokens[0])
+			order = tokens[1].upper() if len(tokens) > 1 else 'ASC'
 			sql_column = cls.SCHEMA_CONFIG.get(field)
 			if sql_column is not None:
-				order_by_statements.append(f'{_clean_fieldname(field)} {order.upper()}')
+				order_by_statements.append(f'{field} {order}')
 			else:
 				order_by_statements.append('(SELECT NULL)')
 

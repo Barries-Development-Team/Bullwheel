@@ -13,10 +13,11 @@ hand-written SQL, filter logic, pagination, or sorting code.
 
 ```
 bullwheel/ascend/
+├── doctype/
+│   └── example_doc/
+│       └── example_doc.py    Python controller file — inherits Abstract Doctype Controller
 ├── virtual_doctype_base.py   AbstractVirtualDocType — inherit this
-├── schema_config_builder.py  SCHEMA_CONFIG -> FIELD_TO_COLUMN / SELECT / SEARCH / JSON
-├── schema_introspection.py   discover SQL Server columns + suggest a config
-└── search_hook_helper.py     generate the Link-autocomplete search function
+└── schema_introspection.py   discover SQL Server columns + suggest a config
 ```
 
 One `SCHEMA_CONFIG` dict on your controller is the single source of truth. The
@@ -51,12 +52,21 @@ framework uses to populate Frappe's document identifier:
 
 ```python
 SCHEMA_CONFIG = {
-    "name":               {"sql_column": "ID",          "fieldtype": "Data", "display": "hidden",    "searchable": False},
-    "ascend_database_id": {"sql_column": "ID",          "fieldtype": "Data", "display": "hidden",    "searchable": False},
-    "description":        {"sql_column": "Description", "fieldtype": "Data", "display": "primary",   "searchable": True},
-    "store_sku":          {"sql_column": "[Store UPC]", "fieldtype": "Data", "display": "secondary", "searchable": True},
-    "category":           {"sql_column": None,          "fieldtype": "Data", "display": None,        "searchable": False},
-    # ... one entry per field you want to surface
+        'name': 'Products.[Store UPC]',
+        'id': 'Products.ID',
+        'category': 'cat.Topic',
+        'description': 'Products.Description',
+        'price': 'Products.Price',
+        'estimated_cost': 'Products.EstCost',
+        'quantity': 'Products.Quantity',
+        'reorder_level': 'Products.ReorderLevel',
+        'maximum': 'Products.Maximum',
+        'commission': 'Products.Commission',
+        'upc': 'Products.UPC',
+        'mfgr_part_no': 'Products.MfgrPartNo',
+        'reconciled': 'Products.Reconciled',
+        'store_sku': 'Products.[Store UPC]',
+        # ... one entry per field you want to surface
 }
 ```
 
@@ -86,18 +96,15 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
 class AscendThing(AbstractVirtualDocType):
-    TABLE_NAME = "Things"   # Ascend SQL table name
-    SCHEMA_CONFIG = { ... }  # from Step 2 — must include a "name" entry
+    TABLE_NAME = "Things"             # Ascend SQL table name
+    JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b
+    SCHEMA_CONFIG = { ... }           # From Step 2 — must include a "name" entry
+    SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console if frappe tries to lookup an unmapped field.
 
-
-# Link-field autocomplete hook (only if this DocType is a Link target)
-# Display fields must match fields names from SCHEMA_CONFIG.
-ascend_thing_search = AscendThing.make_search_function(display_fields=["description"])
 ```
 
 That's the whole controller. `load_from_db`, `get_list`, `get_count`, sorting,
-and the read-only guards are all inherited. `make_search_function`'s
-`display_fields` are the fieldnames shown after the id in each autocomplete row.
+and the read-only guards are all inherited.
 
 ## Step 3b — Working with JOINs (optional)
 
@@ -191,21 +198,8 @@ The fieldnames in the JSON **must** match the keys in `SCHEMA_CONFIG`. The `"nam
 key in `SCHEMA_CONFIG` is handled by the framework and does not correspond to a
 declared DocType field — omit it from the JSON.
 
-## Step 5 — Register the search hook (Link targets only)
 
-In `bullwheel/hooks.py`:
-
-```python
-standard_queries = {
-    "Ascend Product": "bullwheel.ascend.doctype.ascend_product.ascend_product.ascend_product_search",
-    "Ascend Thing":   "bullwheel.ascend.doctype.ascend_thing.ascend_thing.ascend_thing_search",
-}
-```
-
-This bypasses Frappe's default search_widget pipeline, which is incompatible with
-virtual DocType results.
-
-## Step 6 — Migrate and verify
+## Step 5 — Migrate and verify
 
 ```bash
 bench --site <your-site> migrate
@@ -265,14 +259,12 @@ description) rather than the raw GUID `name`.
 
 ## Troubleshooting and Common Issues
 
-**Server Error when trying to create a Link field to the Virtual Doctype** — Make sure you have added the search query to the app hooks. See Step 5.
-
-**Link field values don't change when I search** — Ensure that the values you wish too search are configured as "searchable: True" in the doctype's py file.
+TODO
 
 ## Why this shape
 
-- **Single source of truth** — one `SCHEMA_CONFIG` drives the field map, SELECT
-  clause, search columns, and JSON, so they cannot drift apart.
+- **Single source of truth** — one `SCHEMA_CONFIG` drives the field map and SELECT
+  clause so they cannot drift apart.
 - **`name` is just another field** — declaring `"name"` in `SCHEMA_CONFIG` is
   explicit rather than inferred: the framework no longer needs to search for which
   field maps to the primary key, and the `WHERE` clause for `load_from_db` comes
