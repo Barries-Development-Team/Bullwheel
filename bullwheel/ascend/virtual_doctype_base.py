@@ -133,7 +133,7 @@ class AbstractVirtualDocType(Document):
 	
 	# ─── Read Operations ──────────────────────────────────────────────────────
 
-	# TODO: Apply fixes for empty WHERE clauses.
+
 	def load_from_db(self):
 		query_clauses = []
 		# SELECT
@@ -159,7 +159,7 @@ class AbstractVirtualDocType(Document):
 		super(Document, self).__init__(_to_document_dict(records[0]))
 	
 	@classmethod
-	def get_list(cls, doctype: str, fields: list, filters: list, or_filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
+	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, or_filters: list = [], as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
 		
 		cls._validate_and_clean_fields(fields, doctype)
 
@@ -191,10 +191,28 @@ class AbstractVirtualDocType(Document):
 
 		return [_to_document_dict(record) for record in records]
 	
-	def get_count():
-		pass
+	@classmethod
+	def get_count(cls, doctype: str, filters: list, fields: list, distinct, limit, save_user_settings, strict, or_filters: list = [], **args):
+		query_clauses = []
+		values = []
 
+		# SELECT COUNT FROM
+		query_clauses.append (f'SELECT COUNT(*) AS count FROM {cls.TABLE_NAME}')
+		# JOIN
+		if cls.JOIN_CONFIG is not None:
+			query_clauses.append(cls._build_join_clause())
+		# WHERE
+		if len(filters) > 0 or len(or_filters) > 0:
+			query_clauses.append(cls._build_where_clause(filters, or_filters, values))
 
+		with MSSQLDatabase(get_default_ascend_database()) as db:
+			records = db.sql(
+				query=' '.join(query_clauses),
+				values=values,
+				as_dict=True
+			)
+
+		return records[0].get('count')
 		  	
 	# ─── Read-Only Guards ─────────────────────────────────────────────────────
 	
