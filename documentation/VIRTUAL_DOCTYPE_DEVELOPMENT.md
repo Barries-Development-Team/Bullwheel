@@ -259,7 +259,7 @@ description) rather than the raw GUID `name`.
 
 ## Troubleshooting and Common Issues
 
-TODO
+- **Incorrect Number of Records Displayed in List View** — This usually occurs when the JOIN config for the doctype is incorrect.
 
 ## Why this shape
 

@@ -10,8 +10,7 @@
   "parent_category",
   "serialized",
   "rental",
-  "database_id",
-  "parent_id"
+  "database_id"
  ],
  "fields": [
   {
@@ -37,6 +36,7 @@
   {
    "fieldname": "database_id",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Database ID",
    "read_only": 1,
    "unique": 1
@@ -47,20 +47,13 @@
    "fieldtype": "Check",
    "label": "Serialized",
    "read_only": 1
-  },
-  {
-   "fieldname": "parent_id",
-   "fieldtype": "Link",
-   "label": "Parent ID",
-   "options": "Product Category",
-   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-23 11:52:57.260408",
+ "modified": "2026-06-29 17:09:53.825574",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Product Category",

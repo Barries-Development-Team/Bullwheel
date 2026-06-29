@@ -13,24 +13,33 @@ from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings impo
 
 # ─── Static Helper Functions ───────────────────────────────────────
 
+def has_duplicates(dict_list):
+    seen = set()
+    for d in dict_list:
+        # Sort items to handle differing key orderings for identical data
+        dict_tuple = tuple(sorted(d.items()))
+        if dict_tuple in seen:
+            return True
+        seen.add(dict_tuple)
+    return False
 
-def _to_document_dict(record):
+def to_document_dict(record):
 	"""Returns a proper frappe dict with every `uuid.UUID` value converted to its string form"""
 	return frappe._dict({
 		fieldname: (str(value) if isinstance(value, uuid.UUID) else value)
 		for fieldname, value in record.items()
 	})
 
-def _clean_fieldname(field):
+def clean_fieldname(field):
 	"""Removes assumed table name and formating from field names.
 	For example, the parameter '`tabVendor`.`name`' should be resolved to just 'name'."""
 	return field.split('.')[-1].replace('`','')
 
-def _parse_parameter(parameter: str) -> list[str]:
+def parse_parameter(parameter: str) -> list[str]:
 	"""Split a string on whitespace, but text inside backtick pairs is treated as a single token."""
 	return re.findall(r'(?:`[^`]*`|\S)+', parameter)
 
-def _bare_column(sql_column: str) -> str:
+def bare_column(sql_column: str) -> str:
 	"""Extract the bare, lowercase column name from a SQL column reference for comparison.
 	Handles table-qualified references ('Products.ID', 'cat.Topic') and bracket-quoted
 	names ('[Store UPC]', '[Year]'). 'Products.[Store UPC]' -> 'store upc'."""
@@ -86,14 +95,14 @@ class AbstractVirtualDocType(Document):
 				)
 
 		if discovered_columns is not None or additional_discovered_columns is not None:
-			primary_columns = {_bare_column(col) for col in discovered_columns} if discovered_columns else None
-			joined_columns = {_bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
+			primary_columns = {bare_column(col) for col in discovered_columns} if discovered_columns else None
+			joined_columns = {bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
 
 			for fieldname, sql_column in schema_config.items():
 				if not sql_column:
 					continue
 				is_table_qualified = '.' in sql_column
-				bare = _bare_column(sql_column)
+				bare = bare_column(sql_column)
 				if is_table_qualified:
 					if joined_columns is not None and bare not in joined_columns:
 						raise ValueError(
@@ -110,7 +119,7 @@ class AbstractVirtualDocType(Document):
 		return True
 
 	@classmethod
-	def _build_select_clause(cls, fields: list = [], limit: int = 20) -> str:
+	def _build_select_clause(cls, fields: list = []) -> str:
 		"""Generate an SQL Select clause to fetch the provided fields. If no fields are provided, all are selected."""
 		if len(fields) <= 0:
 			fields = cls.SCHEMA_CONFIG.keys()
@@ -120,8 +129,14 @@ class AbstractVirtualDocType(Document):
 			sql_column = cls.SCHEMA_CONFIG.get(field)
 			if sql_column is not None:
 				select_statements.append(f'{sql_column} AS {field}')
-			
-		return f'SELECT TOP {limit} ' + ', '.join(select_statements)
+
+		return 'SELECT ' + ', '.join(select_statements)
+
+	@classmethod
+	def _build_pagination_clause(cls, start: int, page_length: int) -> str:
+		"""Build an OFFSET/FETCH pagination clause for SQL Server. Must follow an ORDER BY clause in the query.
+		For example, start=20 and page_length=80 skips the first 20 rows and returns the next 80."""
+		return f'OFFSET {start} ROWS FETCH NEXT {page_length} ROWS ONLY'
 	
 	@classmethod
 	def _build_join_clause(cls) -> str:
@@ -169,10 +184,10 @@ class AbstractVirtualDocType(Document):
 		order_by_statements = []
 
 		for parameter in parameters:
-			tokens = _parse_parameter(parameter)
+			tokens = parse_parameter(parameter)
 			if not tokens:
 				continue
-			field = _clean_fieldname(tokens[0])
+			field = clean_fieldname(tokens[0])
 			order = tokens[1].upper() if len(tokens) > 1 else 'ASC'
 			sql_column = cls.SCHEMA_CONFIG.get(field)
 			if sql_column is not None:
@@ -194,7 +209,7 @@ class AbstractVirtualDocType(Document):
 			if not isinstance(field, str):
 				print(f"\033[33mAscend Virtual Doc Warning: Invalid field parameter {field}.\033[0m")
 				continue
-			valid_fields.append(_clean_fieldname(field))
+			valid_fields.append(clean_fieldname(field))
 		fields[:] = valid_fields  # In-place replacement so the caller's list is updated.
 
 		# Display a warning to the console if an expected field has no mapping in the schema config.
@@ -231,7 +246,7 @@ class AbstractVirtualDocType(Document):
 		if not records:
 			raise frappe.DoesNotExistError(f"{self.doctype} '{self.name}' not found.")
 
-		super(Document, self).__init__(_to_document_dict(records[0]))
+		super(Document, self).__init__(to_document_dict(records[0]))
 	
 	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, or_filters: list = [], as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
@@ -242,7 +257,7 @@ class AbstractVirtualDocType(Document):
 		values = []
 
 		# SELECT
-		query_clauses.append(cls._build_select_clause(fields, page_length))
+		query_clauses.append(cls._build_select_clause(fields))
 		# FROM
 		query_clauses.append(f'FROM {cls.TABLE_NAME}')
 		# JOIN
@@ -251,8 +266,10 @@ class AbstractVirtualDocType(Document):
 		# WHERE
 		if len(filters) > 0 or len(or_filters) > 0:
 			query_clauses.append(cls._build_where_clause(filters, or_filters, values)) # Values appended to list.
-		# ORDER BY
-		query_clauses.append(cls._build_order_by_clause(order_by))
+		# ORDER BY (required before OFFSET/FETCH)
+		query_clauses.append(cls._build_order_by_clause(order_by) if order_by else 'ORDER BY (SELECT NULL)')
+		# OFFSET/FETCH
+		query_clauses.append(cls._build_pagination_clause(start, page_length))
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(
@@ -261,10 +278,14 @@ class AbstractVirtualDocType(Document):
 				as_dict=True
 			)
 
+		# Check for duplicate records resulting from bad JOIN configs.
+		if has_duplicates(records):
+			print(f"\033[33mAscend Virtual Doc Warning: Duplicate results found in {doctype} query. JOIN_CONFIG for {doctype} may be incorrect.\033[0m")
+
 		if as_list:
 			return [[record.get(field) for field in fields] for record in records] # Order of fields in returned list enforced by field parameter.
 
-		return [_to_document_dict(record) for record in records]
+		return [to_document_dict(record) for record in records]
 	
 	@classmethod
 	def get_count(cls, doctype: str, filters: list, fields: list, distinct, limit, save_user_settings, strict, or_filters: list = [], **args):

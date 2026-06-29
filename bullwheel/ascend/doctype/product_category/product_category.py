@@ -11,7 +11,6 @@ class ProductCategory(AbstractVirtualDocType):
 	'name': 'Categories.Topic',
 	'database_id': 'Categories.ID',
 	'parent_category': 'parent.Topic',
-	'parent_id': 'Categories.ParentID',
 	'other_id': 'Categories.OtherID',
 	'category_name': 'Categories.Topic',
 	'qbacct_type': 'Categories.QBAcctType',
@@ -39,6 +38,6 @@ class ProductCategory(AbstractVirtualDocType):
         "join":  "LEFT JOIN",                          # JOIN type
         "table": "Categories",                         # Table to join
         "alias": "parent",                                # Optional alias
-        "on":    "Categories.ParentID = parent.ParentID",          # Full ON condition
+        "on":    "Categories.ParentID = parent.ID",          # Full ON condition
     	}	
 	]
