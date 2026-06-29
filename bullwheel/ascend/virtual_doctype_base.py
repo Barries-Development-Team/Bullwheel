@@ -119,7 +119,7 @@ class AbstractVirtualDocType(Document):
 		for field in fields:
 			sql_column = cls.SCHEMA_CONFIG.get(field)
 			if sql_column is not None:
-				select_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} AS {field}')
+				select_statements.append(f'{sql_column} AS {field}')
 			
 		return f'SELECT TOP {limit} ' + ', '.join(select_statements)
 	
@@ -141,7 +141,7 @@ class AbstractVirtualDocType(Document):
 
 		# AND Filters: (Condition 1 AND Condition 2 AND ... AND Condition n)
 		and_statements = []
-		for doctype, field, operator, value in filters: # Tuple unpacking supports both list-formatted and tuple-formatted filters.
+		for _, field, operator, value in filters: # Tuple unpacking supports both list-formatted and tuple-formatted filters.
 			and_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} {operator} %s')
 			values.append(value) # Appends the value to the list of values passed as an argument.
 		if len(and_statements) > 0:
@@ -149,7 +149,7 @@ class AbstractVirtualDocType(Document):
 
 		# OR Filters: (Condition 1 OR ... OR Condition n)
 		or_statements = []
-		for doctype, field, operator, value in or_filters:
+		for _, field, operator, value in or_filters:
 			or_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} {operator} %s')
 			values.append(value)
 		if len(or_statements) > 0:
@@ -189,23 +189,21 @@ class AbstractVirtualDocType(Document):
 	def _validate_and_clean_fields(cls, fields, doctype) -> None:
 		"""Reformat incorrectly assumed table names from fields list. E.g. '`tabAscend Product`.`name`' to 'name'.
 		Removes improper field argument types (e.i. not a string). Field argument is edited directly."""
-		invalid_field_indices = [] # List of field paramater indicies not compatible with this virtual doctype.
-		for i in range(len(fields)):
-			if type(fields[i]) != str:
-				invalid_field_indices.append(i)
-				print(f"\033[33mAscend Virtual Doc Warning: Invalid field parameter {fields[i]}.\033[0m")
+		valid_fields = []
+		for field in fields:
+			if not isinstance(field, str):
+				print(f"\033[33mAscend Virtual Doc Warning: Invalid field parameter {field}.\033[0m")
 				continue
-			fields[i] = _clean_fieldname(fields[i])
-
-		for i in invalid_field_indices:
-			del fields[i]
+			valid_fields.append(_clean_fieldname(field))
+		fields[:] = valid_fields  # In-place replacement so the caller's list is updated.
 
 		# Display a warning to the console if an expected field has no mapping in the schema config.
 		if cls.SHOW_FIELD_WARNINGS:
-			for field in fields:
-				if cls.SCHEMA_CONFIG.get(field) is None:
+			unmapped = [field for field in fields if cls.SCHEMA_CONFIG.get(field) is None]
+			if unmapped:
+				for field in unmapped:
 					print(f"\033[33mAscend Virtual Doc Warning: No field mapping exists for {field} in {doctype}.\033[0m")
-			print(f"\033[33mIf this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.\033[0m")
+				print(f"\033[33mIf this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.\033[0m")
 
 	
 	# ─── Read Operations ──────────────────────────────────────────────────────
