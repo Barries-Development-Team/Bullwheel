@@ -64,15 +64,29 @@ class AbstractVirtualDocType(Document):
 		return ' '.join(join_statements)
 	
 	@classmethod
-	def _build_where_clause(cls, filters: list, values: list = []) -> str:
+	def _build_where_clause(cls, filters: list, or_filters: list = [], values: list = []) -> str:
 		"""Build the WHERE clause from a list of filters. Filter values are appended to the passed values list."""
+
 		where_statements = []
-		for doctype, field, type, value in filters:
-			where_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} {type} %s')
+
+		# AND Filters: (Condition 1 AND Condition 2 AND ... AND Condition n)
+		and_statements = []
+		for doctype, field, operator, value in filters: # Tuple unpacking supports both list-formatted and tuple-formatted filters.
+			and_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} {operator} %s')
 			values.append(value) # Appends the value to the list of values passed as an argument.
+		if len(and_statements) > 0:
+			where_statements.append('(' + ' AND '.join(and_statements) + ')')
+
+		# OR Filters: (Condition 1 OR ... OR Condition n)
+		or_statements = []
+		for doctype, field, operator, value in or_filters:
+			or_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} {operator} %s')
+			values.append(value)
+		if len(or_statements) > 0:
+			where_statements.append('(' + ' OR '.join(or_statements) + ')')
 
 		if len(where_statements) <= 0:
-			return None
+			return 'WHERE 1=1' # Equivalent to having no where clause at all.
 		
 		return 'WHERE ' + ' AND '.join(where_statements)
 	
@@ -93,6 +107,28 @@ class AbstractVirtualDocType(Document):
 			return None
 
 		return 'ORDER BY ' + ', '.join(order_by_statements)
+	
+	@classmethod
+	def _validate_and_clean_fields(cls, fields, doctype) -> None:
+		"""Reformat incorrectly assumed table names from fields list. E.g. '`tabAscend Product`.`name`' to 'name'.
+		Removes improper field argument types (e.i. not a string). Field argument is edited directly."""
+		invalid_field_indices = [] # List of field paramater indicies not compatible with this virtual doctype.
+		for i in range(len(fields)):
+			if type(fields[i]) != str:
+				invalid_field_indices.append(i)
+				print(f"\033[33mAscend Virtual Doc Warning: Invalid field parameter {fields[i]}.\033[0m")
+				continue
+			fields[i] = _clean_fieldname(fields[i])
+
+		for i in invalid_field_indices:
+			del fields[i]
+
+		# Display a warning to the console if an expected field has no mapping in the schema config.
+		if cls.SHOW_FIELD_WARNINGS:
+			for field in fields:
+				if cls.SCHEMA_CONFIG.get(field) is None:
+					print(f"\033[33mAscend Virtual Doc Warning: No field mapping exists for {field} in {doctype}.\033[0m")
+			print(f"\033[33mIf this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.\033[0m")
 
 	
 	# ─── Read Operations ──────────────────────────────────────────────────────
@@ -123,26 +159,9 @@ class AbstractVirtualDocType(Document):
 		super(Document, self).__init__(_to_document_dict(records[0]))
 	
 	@classmethod
-	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, group_by: str = None, order_by: str = None, strict = None, **args):
+	def get_list(cls, doctype: str, fields: list, filters: list, or_filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
 		
-		# Reformat incorrectly assumed table names from fields list. E.g. '`tabAscend Product`.`name`' to 'name' 
-		invalid_field_indices = [] # List of field paramater indicies not compatible with this virtual doctype.
-		for i in range(len(fields)):
-			if type(fields[i]) != str:
-				invalid_field_indices.append(i)
-				print(f"\033[33mAscend Virtual Doc Warning: Invalid field parameter {fields[i]}.\033[0m")
-				continue
-			fields[i] = _clean_fieldname(fields[i])
-
-		for i in invalid_field_indices:
-			del fields[i]
-
-		# Display a warning to the console if an expected field has no mapping in the schema config.
-		if cls.SHOW_FIELD_WARNINGS:
-			for field in fields:
-				if cls.SCHEMA_CONFIG.get(field) is None:
-					print(f"\033[33mAscend Virtual Doc Warning: No field mapping exists for {field} in {doctype}.\033[0m")
-			print(f"\033[33mIf this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.\033[0m")
+		cls._validate_and_clean_fields(fields, doctype)
 
 		query_clauses = []
 		values = []
@@ -155,7 +174,8 @@ class AbstractVirtualDocType(Document):
 		if cls.JOIN_CONFIG is not None:
 			query_clauses.append(cls._build_join_clause())
 		# WHERE
-		query_clauses.append(cls._build_where_clause(filters, values)) # Values are appended to the list inside this method.
+		if len(filters) > 0 or len(or_filters) > 0:
+			query_clauses.append(cls._build_where_clause(filters, or_filters, values)) # Values appended to list.
 		# ORDER BY
 		query_clauses.append(cls._build_order_by_clause(order_by))
 
@@ -166,15 +186,14 @@ class AbstractVirtualDocType(Document):
 				as_dict=True
 			)
 
+		if as_list:
+			return [[record.get(field) for field in fields] for record in records] # Order of fields in returned list enforced by field parameter.
+
 		return [_to_document_dict(record) for record in records]
 	
 	def get_count():
 		pass
 
-	# ─── Search Function Hook ─────────────────────────────────────────────
-
-
-	# ─── Order-By Resolution ──────────────────────────────────────────────────
 
 		  	
 	# ─── Read-Only Guards ─────────────────────────────────────────────────────

@@ -176,7 +176,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-20 14:03:12.342393",
+ "modified": "2026-06-29 14:52:16.490910",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
@@ -197,10 +197,10 @@
  ],
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
- "search_fields": "description, upc, keyword, store_sku",
+ "search_fields": "description, upc, keyword",
  "show_title_field_in_link": 1,
- "sort_field": "creation",
- "sort_order": "DESC",
+ "sort_field": "description",
+ "sort_order": "ASC",
  "states": [],
  "title_field": "description"
 }
