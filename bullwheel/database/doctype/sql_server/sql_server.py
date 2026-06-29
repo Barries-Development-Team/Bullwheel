@@ -16,16 +16,15 @@ class SQLServer(Document):
 def test_connection(**kwargs):
 	document = json.loads(kwargs.get('doc'))
 	server_document = frappe.get_doc("SQL Server", document.get('name'))
-	try:
-		with MSSQLDatabase(server_document) as database:
-			if database.test_connection():
-				frappe.msgprint(msg="Connection test succeeded!", title="Success", indicator="green")
-			else:
-				raise ConnectionError
-	except:
-		frappe.msgprint(
-					msg="Please check your database and authentication information and try again.",
-					title="Connection Test Failed",
-					indicator="red",
-				)
+	with MSSQLDatabase(server_document) as database:
+		result = database.test_connection()
+		if result == 'success':
+			frappe.msgprint(msg="Connection test succeeded!", title="Success", indicator="green")
+		else:
+			frappe.msgprint(
+				msg=f"Please check your database and authentication information and try again. The error is as follows:\n{result}",
+				title="Connection Test Failed",
+				indicator="red",
+			)
+		
 

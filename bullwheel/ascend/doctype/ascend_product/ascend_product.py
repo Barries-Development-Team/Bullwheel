@@ -25,36 +25,57 @@ class AscendProduct(AbstractVirtualDocType):
 
 	TABLE_NAME = "Products"
 
-	# Single source of truth: each Frappe fieldname -> SQL mapping and UI intent.
-	#   sql_column — SQL Server column; bracket-quote names with spaces; None => SELECT NULL
-	#   display    — "hidden" | "primary" | "secondary" | None (list-view / autocomplete exposure)
-	#   searchable — include in the OR LIKE Link autocomplete search
-	#
-	# `name` maps Frappe's primary identifier to the SQL primary key column.
-	# `category` has no confirmed Products column — NULL placeholder until resolved.
-	# `[Store UPC]` and `[Year]` are bracket-quoted (space / reserved-word).
 	SCHEMA_CONFIG = {
-		"name":                      {"sql_column": "Products.[Store UPC]",            "fieldtype": "Data",     "display": "hidden",    "searchable": False},
-		"ascend_database_id":        {"sql_column": "Products.ID",            "fieldtype": "Data",     "display": "hidden",    "searchable": False},
-		"description":               {"sql_column": "Description",   "fieldtype": "Data",     "display": "primary",   "searchable": True},
-		"keyword":                   {"sql_column": "Keyword",       "fieldtype": "Data",     "display": None,        "searchable": False},
-	"category":              	    {"sql_column": "cat.Topic",            "fieldtype": "Link",     "display": None,        "searchable": False},
-		"quantity":                  {"sql_column": "Quantity",      "fieldtype": "Int",      "display": "secondary", "searchable": False},
-		"brand":                     {"sql_column": "Brand",         "fieldtype": "Data",     "display": None,        "searchable": False},
-		"color":                     {"sql_column": "Color",         "fieldtype": "Data",     "display": None,        "searchable": False},
-		"size":                      {"sql_column": "Size",          "fieldtype": "Data",     "display": None,        "searchable": False},
-		"style_number":              {"sql_column": "StyleNumber",   "fieldtype": "Data",     "display": None,        "searchable": False},
-		"style_name":                {"sql_column": "StyleName",     "fieldtype": "Data",     "display": None,        "searchable": False},
-		"gender":                    {"sql_column": "Gender",        "fieldtype": "Data",     "display": None,        "searchable": False},
-		"season":                    {"sql_column": "Season",        "fieldtype": "Data",     "display": None,        "searchable": False},
-		"year":                      {"sql_column": "[Year]",        "fieldtype": "Data",     "display": None,        "searchable": False},
-		"price":                     {"sql_column": "Price",         "fieldtype": "Currency", "display": None,        "searchable": False},
-		"estimated_cost":            {"sql_column": "EstCost",       "fieldtype": "Currency", "display": None,        "searchable": False},
-		"average_cost":              {"sql_column": "AvgCost",       "fieldtype": "Currency", "display": None,        "searchable": False},
-		"store_sku":                 {"sql_column": "[Store UPC]",   "fieldtype": "Data",     "display": "secondary", "searchable": True},
-		"upc":                       {"sql_column": "UPC",           "fieldtype": "Data",     "display": None,        "searchable": True},
-		"manufacturers_part_number": {"sql_column": "MfgrPartNo",    "fieldtype": "Data",     "display": None,        "searchable": False},
-	}
+        'name': 'Products.[Store UPC]',
+        'id': 'Products.ID',
+        'category': 'cat.Topic',
+        'description': 'Products.Description',
+        'price': 'Products.Price',
+        'estimated_cost': 'Products.EstCost',
+        'quantity': 'Products.Quantity',
+        'reorder_level': 'Products.ReorderLevel',
+        'maximum': 'Products.Maximum',
+        'commission': 'Products.Commission',
+        'upc': 'Products.UPC',
+        'mfgr_part_no': 'Products.MfgrPartNo',
+        'reconciled': 'Products.Reconciled',
+        'store_sku': 'Products.[Store UPC]',
+        'keyword': 'Products.Keyword',
+        'location': 'Products.Location',
+        'brand': 'Products.Brand',
+        'color': 'Products.Color',
+        'size': 'Products.Size',
+        'other': 'Products.Other',
+        'division': 'Products.Division',
+        'e_commerce': 'Products.eCommerce',
+        'min2': 'Products.Min2',
+        'max2': 'Products.Max2',
+        'no_label': 'Products.NoLabel',
+        'non_inventory': 'Products.NonInventory',
+        'appt_length': 'Products.ApptLength',
+        'creator_id': 'Products.CreatorID',
+        'modifier_id': 'Products.ModifierID',
+        'date_created': 'Products.DateCreated',
+        'date_modified': 'Products.DateModified',
+        'hide': 'Products.Hide',
+        'loc_from_id': 'Products.LocFromID',
+        'dol_com': 'Products.DolCom',
+        'average_cost': 'Products.AvgCost',
+        'comments': 'Products.Comments',
+        'date_qty_chng': 'Products.DateQtyChng',
+        'print_labels_by_division': 'Products.PrintLabelsByDivision',
+        'row_version': 'Products.Row_Version',
+        'date_reconciled': 'Products.DateReconciled',
+        'modifier_location_id': 'Products.ModifierLocationID',
+        'last_cost': 'Products.LastCost',
+        'concurrency_token': 'Products.ConcurrencyToken',
+        'has_pending_delta': 'Products.HasPendingDelta',
+        'style_name': 'Products.StyleName',
+        'style_number': 'Products.StyleNumber',
+        'season': 'Products.Season',
+        'year': 'Products.Year',
+        'gender': 'Products.Gender'
+}
 
 	JOIN_CONFIG = [
     {
@@ -65,10 +86,6 @@ class AscendProduct(AbstractVirtualDocType):
     }
 ]
 
-# Link-field autocomplete hook. Registered in hooks.py under standard_queries as
-# bullwheel.ascend.doctype.ascend_product.ascend_product.ascend_product_search.
-# Each result is (name, description).
-ascend_product_search = AscendProduct.make_search_function(display_fields=["description"])
 
 @frappe.whitelist()
 def get_product_dict(id: str, type: str = 'full') -> dict | None:
