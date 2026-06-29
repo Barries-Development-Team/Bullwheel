@@ -14,10 +14,9 @@ See bullwheel/ascend/VIRTUAL_DOCTYPE_DEVELOPMENT.md for the full workflow.
 """
 
 import frappe
-from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
+from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType, _to_document_dict
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
-from bullwheel.ascend.schema_config_builder import normalize_record
 
 
 class AscendProduct(AbstractVirtualDocType):
@@ -110,4 +109,4 @@ def get_product_dict(id: str, type: str = 'full') -> dict | None:
 		)
 	if not result:
 		return None
-	return frappe._dict(normalize_record(result[0]))
+	return _to_document_dict(result[0])
