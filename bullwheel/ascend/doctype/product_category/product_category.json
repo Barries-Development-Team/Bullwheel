@@ -23,6 +23,7 @@
    "default": "0",
    "fieldname": "rental",
    "fieldtype": "Check",
+   "in_list_view": 1,
    "label": "Rental",
    "read_only": 1
   },
@@ -45,15 +46,17 @@
    "default": "0",
    "fieldname": "serialized",
    "fieldtype": "Check",
+   "in_list_view": 1,
    "label": "Serialized",
    "read_only": 1
   }
  ],
  "grid_page_length": 50,
+ "in_create": 1,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-29 17:09:53.825574",
+ "modified": "2026-06-29 17:54:40.202005",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Product Category",

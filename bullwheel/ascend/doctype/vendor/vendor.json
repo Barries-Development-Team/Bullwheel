@@ -46,18 +46,21 @@
   {
    "fieldname": "address",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Street Address",
    "read_only": 1
   },
   {
    "fieldname": "city",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "City",
    "read_only": 1
   },
   {
    "fieldname": "state",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "State/Province",
    "read_only": 1
   },
@@ -76,6 +79,7 @@
   {
    "fieldname": "phone_1",
    "fieldtype": "Phone",
+   "in_list_view": 1,
    "label": "Phone 1",
    "read_only": 1
   },
@@ -91,6 +95,7 @@
   {
    "fieldname": "address2",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Unit/Suite",
    "read_only": 1
   },
@@ -103,18 +108,21 @@
   {
    "fieldname": "email",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "E-Mail",
    "read_only": 1
   },
   {
    "fieldname": "website",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Website",
    "read_only": 1
   },
   {
    "fieldname": "account_id",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Account ID",
    "read_only": 1
   },
@@ -133,6 +141,7 @@
   {
    "fieldname": "sales_rep",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Sales Representative",
    "read_only": 1
   },
@@ -162,10 +171,11 @@
   }
  ],
  "grid_page_length": 50,
+ "in_create": 1,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-06-24 16:39:12.546655",
+ "modified": "2026-06-29 18:03:51.364892",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Vendor",
