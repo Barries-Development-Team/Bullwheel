@@ -7,7 +7,15 @@
  "engine": "InnoDB",
  "field_order": [
   "po",
-  "vendor"
+  "vendor",
+  "order_status",
+  "column_break_yjnq",
+  "total_order_items",
+  "shipping_charges",
+  "subtotal",
+  "order_total",
+  "section_break_zucl",
+  "order_items"
  ],
  "fields": [
   {
@@ -26,12 +34,56 @@
    "label": "Vendor",
    "options": "Vendor",
    "reqd": 1
+  },
+  {
+   "fieldname": "order_items",
+   "fieldtype": "Table",
+   "options": "Order Receipt Item"
+  },
+  {
+   "fieldname": "section_break_zucl",
+   "fieldtype": "Section Break",
+   "label": "Order Items"
+  },
+  {
+   "fieldname": "total_order_items",
+   "fieldtype": "Int",
+   "label": "Total Order Items",
+   "read_only": 1
+  },
+  {
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "label": "Order Subtotal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shipping_charges",
+   "fieldtype": "Currency",
+   "label": "Shipping (and other charges)"
+  },
+  {
+   "fieldname": "order_total",
+   "fieldtype": "Currency",
+   "label": "Order Total",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_yjnq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "order_status",
+   "fieldtype": "Select",
+   "label": "Order Status",
+   "options": "Submitted\nArrived (Not Received)\nReceived",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-24 17:03:04.907100",
+ "modified": "2026-06-29 18:43:02.106431",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",

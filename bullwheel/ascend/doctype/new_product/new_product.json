@@ -4,6 +4,7 @@
  "autoname": ".{vpn}.-.###",
  "creation": "2026-06-22 17:01:50.596264",
  "doctype": "DocType",
+ "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
   "product_details_section",
@@ -156,7 +157,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-06-23 11:58:23.403307",
+ "modified": "2026-06-29 18:34:09.884698",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",
