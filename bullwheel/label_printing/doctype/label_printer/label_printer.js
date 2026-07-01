@@ -1,0 +1,15 @@
+// Copyright (c) 2026, Barrie's Ski and Sports and contributors
+// For license information, please see license.txt
+
+frappe.ui.form.on('Label Printer', {
+    refresh(frm) {
+        frm.add_custom_button(__('Test Connection'), () => {
+            frappe.show_alert({ message: __('Testing connection...'), indicator: 'blue' });
+
+            frappe.call({
+                method: 'bullwheel.label_printing.doctype.label_printer.label_printer.test_connection',
+                args: { doc: frm.doc },
+            });
+        });
+    }
+});

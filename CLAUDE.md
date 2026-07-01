@@ -256,6 +256,35 @@ These conventions were explicitly requested by Carter and should be maintained g
 
 ---
 
+## Label Printing (Zebra / ZPL)
+
+The **Label Printing** module prints to network-attached Zebra printers using **raw ZPL over a TCP socket** — no driver, spooler, or CUPS. There is **no extra dependency**: the transport is Python's stdlib `socket`. Zebra printers listen on port **9100** and execute whatever ZPL bytes arrive.
+
+The module deliberately mirrors the SQL Server handler pattern (`MSSQLDatabase`), so the same conventions apply.
+
+**Files**
+
+| File | Role |
+|---|---|
+| `label_printing/ZebraPrinter.py` | `ZebraPrinter` — the transport primitive (printer analog of `MSSQLDatabase`). Constructed from a `Label Printer` doc; context-manager `connect`/`close`; `send(zpl)`; `get_host_status()` / `test_connection()`. **No commit/rollback** — printing is fire-and-forget. |
+| `label_printing/exceptions.py` | `PrinterException` base + `PrinterConnectionError`, `PrinterSendError`, `PrinterStatusError`. |
+| `label_printing/doctype/label_printer/label_printer.py` | Whitelisted `test_connection(**kwargs)` (msgprint green/orange/red) and `print_zpl(printer_name, zpl)` — the app-wide print entry point; guards against `disabled` printers. |
+| `label_printing/doctype/label_printer/label_printer.js` | **Test Connection** form button (copied from `sql_server.js`). |
+
+**`Label Printer` DocType** — device config: `printer_name` (autoname, unique), `ip`, `port` (default 9100), `timeout` (default 5s), `dpi`, `type` (Direct Thermal / Thermal Transfer), `location`, `disabled`.
+
+**Conventions**
+
+- **Send raw ZPL only.** Callers supply the ZPL string; the handler is transport, not templating. ZPL *content generation* (label layouts from product data) is a separate, not-yet-built layer.
+- **Print via the whitelisted `print_zpl`**, never by touching `ZebraPrinter` from client code. Example caller: the **Print Label** button in `warehouse_location.js` (prompts for a `Label Printer`, then calls `print_zpl` — the reference pattern for adding a print button to any DocType).
+- **Health check uses `~HS` (Host Status).** `get_host_status` parses paper-out / paused / head-open flags. A silent printer (some servers don't reply on 9100) is treated as **reachable-but-unknown**, not a failure.
+- **Sanitize interpolated values** — strip `^` and `~` (ZPL command prefixes) from any user/data string placed into ZPL.
+- **Geometry comes from the printer's `dpi`, resolved at build time.** ZPL positions are in dots, and ZPL cannot do arithmetic, so any dot dimension derived from inches (e.g. a 2" width = `2 * dpi`) must be computed where `dpi` is a real number. The label builder fetches the selected printer's `dpi` (`frappe.db.get_value('Label Printer', ...)`) and computes dimensions before assembling the ZPL — `print_zpl` stays pure transport and does no substitution.
+- **Centering:** `^FB<label_width>,1,0,C` at `^FO0,y` centers **text** fields — but **not** barcodes. `^FB` never moves a barcode's bars; they always start at the `^FO` origin. Center a barcode manually: estimate its width (Code 128 ≈ `(11 * chars + 35) * module_width` dots) and set `^FO<(label_width - barcode_width) / 2>,y`.
+- No default-printer concept yet; callers name the printer explicitly.
+
+---
+
 ## Ascend RMS — SQL Server Schema (Partial)
 
 These column names were discovered during development. The authoritative field mapping now lives in `FIELD_TO_COLUMN` in `ascend_product.py`. Update both this table and that dict as more of the schema is confirmed.

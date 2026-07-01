@@ -1,0 +1,115 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "field:printer_name",
+ "creation": "2026-07-01 15:56:50.469763",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "device_configuration_section",
+  "printer_name",
+  "location",
+  "type",
+  "dpi",
+  "column_break_nioz",
+  "ip",
+  "port",
+  "timeout",
+  "disabled"
+ ],
+ "fields": [
+  {
+   "fieldname": "printer_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Printer Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "ip",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "IP Address",
+   "reqd": 1
+  },
+  {
+   "default": "9100",
+   "fieldname": "port",
+   "fieldtype": "Int",
+   "label": "Port",
+   "non_negative": 1
+  },
+  {
+   "default": "5",
+   "fieldname": "timeout",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Connection Timeout Interval (seconds)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_nioz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Data",
+   "label": "Location"
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "label": "Media Type",
+   "options": "Direct Thermal\nThermal Transfer"
+  },
+  {
+   "fieldname": "device_configuration_section",
+   "fieldtype": "Section Break",
+   "label": "Device Configuration"
+  },
+  {
+   "default": "203",
+   "fieldname": "dpi",
+   "fieldtype": "Int",
+   "label": "DPI",
+   "non_negative": 1,
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-01 17:10:11.681288",
+ "modified_by": "Administrator",
+ "module": "Label Printing",
+ "name": "Label Printer",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
