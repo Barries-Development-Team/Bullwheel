@@ -84,6 +84,9 @@ app_license = "unlicense"
 # 	"methods": "bullwheel.utils.jinja_methods",
 # 	"filters": "bullwheel.utils.jinja_filters"
 # }
+# Migration
+# ------------
+
 
 # Installation
 # ------------
@@ -141,13 +144,12 @@ app_license = "unlicense"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+    "User": {
+        "before_insert": "bullwheel.overrides.default_user_timezone.set_default_timezone",
+        "on_update": "bullwheel.overrides.default_user_timezone.sync_timezone_default",
+    }
+}
 
 # Scheduled Tasks
 # ---------------

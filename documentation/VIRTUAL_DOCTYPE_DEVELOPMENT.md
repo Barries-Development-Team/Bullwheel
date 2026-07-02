@@ -255,7 +255,8 @@ read through the controller's `load_from_db` instead of the database. All other 
 delegate to the original implementation untouched. This single choke point covers
 every link-title path — form load, the `get_link_title` endpoint, version diffing,
 print view — so a saved Link field shows the `title_field` (e.g. the product
-description) rather than the raw GUID `name`.
+description) rather than the raw GUID `name`. For a full walkthrough of how the patch
+works and how it is applied, see `VIRTUAL_LINK_TITLE_PATCH.md`.
 
 ## Troubleshooting and Common Issues
 
