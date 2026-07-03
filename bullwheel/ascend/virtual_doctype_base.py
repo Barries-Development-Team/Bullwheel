@@ -10,6 +10,7 @@ from frappe.model.document import Document
 
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
+from bullwheel.bullwheel_core import print_console_warning
 
 # ─── Static Helper Functions ───────────────────────────────────────
 
@@ -258,7 +259,7 @@ class AbstractVirtualDocType(Document):
 		valid_fields = []
 		for field in fields:
 			if not isinstance(field, str):
-				print(f"\033[33mAscend Virtual Doc Warning: Invalid field parameter {field}.\033[0m")
+				print_console_warning(f"Ascend Virtual Doc Warning: Invalid field parameter {field}.")
 				continue
 			valid_fields.append(clean_fieldname(field))
 		fields[:] = valid_fields  # In-place replacement so the caller's list is updated.
@@ -268,8 +269,8 @@ class AbstractVirtualDocType(Document):
 			unmapped = [field for field in fields if cls.SCHEMA_CONFIG.get(field) is None]
 			if unmapped:
 				for field in unmapped:
-					print(f"\033[33mAscend Virtual Doc Warning: No field mapping exists for {field} in {doctype}.\033[0m")
-				print(f"\033[33mIf this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.\033[0m")
+					print_console_warning(f"Ascend Virtual Doc Warning: No field mapping exists for {field} in {doctype}.")
+				print_console_warning(f"If this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.")
 
 	
 	# ─── Read Operations ──────────────────────────────────────────────────────
@@ -359,7 +360,7 @@ class AbstractVirtualDocType(Document):
 
 		# Check for duplicate records resulting from bad JOIN configs.
 		if has_duplicates(records):
-			print(f"\033[33mAscend Virtual Doc Warning: Duplicate results found in {doctype} query. JOIN_CONFIG for {doctype} may be incorrect.\033[0m")
+			print_console_warning(f"Ascend Virtual Doc Warning: Duplicate results found in {doctype} query. JOIN_CONFIG for {doctype} may be incorrect.")
 
 		if as_list:
 			return [[record.get(field) for field in fields] for record in records] # Order of fields in returned list enforced by field parameter.
