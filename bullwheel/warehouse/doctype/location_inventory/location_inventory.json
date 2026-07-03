@@ -38,6 +38,7 @@
    "fieldname": "description",
    "fieldtype": "Data",
    "is_virtual": 1,
+   "in_list_view": 1,
    "label": "Description",
    "read_only": 1
   },
@@ -45,6 +46,7 @@
    "fieldname": "upc",
    "fieldtype": "Data",
    "is_virtual": 1,
+   "in_list_view": 1,
    "label": "UPC",
    "read_only": 1
   }
