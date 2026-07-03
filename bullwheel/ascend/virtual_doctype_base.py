@@ -269,6 +269,8 @@ class AbstractVirtualDocType(Document):
 			unmapped = [field for field in fields if cls.SCHEMA_CONFIG.get(field) is None]
 			if unmapped:
 				for field in unmapped:
+					if field == 'name' and cls.NAME_EXPRESSION is not None:
+						continue  # The primary key is backed by an expression, so no mapping is expected.
 					print_console_warning(f"Ascend Virtual Doc Warning: No field mapping exists for {field} in {doctype}.")
 				print_console_warning(f"If this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.")
 
