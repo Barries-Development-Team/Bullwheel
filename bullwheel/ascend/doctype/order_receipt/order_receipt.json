@@ -15,7 +15,10 @@
   "subtotal",
   "order_total",
   "section_break_zucl",
-  "order_items"
+  "add_item",
+  "order_items",
+  "new_products_tab",
+  "table_tvbc"
  ],
  "fields": [
   {
@@ -48,12 +51,14 @@
   {
    "fieldname": "total_order_items",
    "fieldtype": "Int",
+   "is_virtual": 1,
    "label": "Total Order Items",
    "read_only": 1
   },
   {
    "fieldname": "subtotal",
    "fieldtype": "Currency",
+   "is_virtual": 1,
    "label": "Order Subtotal",
    "read_only": 1
   },
@@ -65,6 +70,7 @@
   {
    "fieldname": "order_total",
    "fieldtype": "Currency",
+   "is_virtual": 1,
    "label": "Order Total",
    "read_only": 1
   },
@@ -78,13 +84,30 @@
    "label": "Order Status",
    "options": "Submitted\nArrived (Not Received)\nReceived",
    "reqd": 1
+  },
+  {
+   "fieldname": "add_item",
+   "fieldtype": "Data",
+   "label": "Add Item",
+   "options": "Barcode",
+   "placeholder": "Scan here"
+  },
+  {
+   "fieldname": "new_products_tab",
+   "fieldtype": "Tab Break",
+   "label": "New Products"
+  },
+  {
+   "fieldname": "table_tvbc",
+   "fieldtype": "Table",
+   "options": "New Product"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-29 18:43:02.106431",
- "modified_by": "Administrator",
+ "modified": "2026-07-03 10:52:26.515672",
+ "modified_by": "carterluker13@gmail.com",
  "module": "Ascend",
  "name": "Order Receipt",
  "naming_rule": "By fieldname",

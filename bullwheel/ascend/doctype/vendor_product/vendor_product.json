@@ -1,0 +1,120 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-07-03 11:07:07.541319",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "description",
+  "vendor",
+  "part_number",
+  "product",
+  "column_break_inpz",
+  "cost",
+  "case_quantity",
+  "case_upc",
+  "case_msrp",
+  "section_break_wmvl",
+  "id",
+  "vendor_id",
+  "product_id"
+ ],
+ "fields": [
+  {
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "label": "Vendor",
+   "options": "Vendor"
+  },
+  {
+   "fieldname": "product",
+   "fieldtype": "Link",
+   "label": "In-Store Product",
+   "options": "Ascend Product"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Description"
+  },
+  {
+   "fieldname": "part_number",
+   "fieldtype": "Data",
+   "label": "Part Number"
+  },
+  {
+   "fieldname": "column_break_inpz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cost",
+   "fieldtype": "Currency",
+   "label": "Cost"
+  },
+  {
+   "fieldname": "case_quantity",
+   "fieldtype": "Int",
+   "label": "Case Quantity"
+  },
+  {
+   "fieldname": "case_upc",
+   "fieldtype": "Data",
+   "label": "Case UPC"
+  },
+  {
+   "fieldname": "case_msrp",
+   "fieldtype": "Currency",
+   "label": "Case MSRP"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_wmvl",
+   "fieldtype": "Section Break",
+   "label": "Identifiers"
+  },
+  {
+   "fieldname": "id",
+   "fieldtype": "Data",
+   "label": "Database ID"
+  },
+  {
+   "fieldname": "vendor_id",
+   "fieldtype": "Data",
+   "label": "Vendor ID"
+  },
+  {
+   "fieldname": "product_id",
+   "fieldtype": "Data",
+   "label": "Product ID"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_virtual": 1,
+ "links": [],
+ "modified": "2026-07-03 11:33:01.329152",
+ "modified_by": "Administrator",
+ "module": "Ascend",
+ "name": "Vendor Product",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

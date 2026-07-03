@@ -6,20 +6,20 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "table_frll"
+  "placeholder"
  ],
  "fields": [
   {
-   "fieldname": "table_frll",
-   "fieldtype": "Table",
-   "options": "New Product"
+   "fieldname": "placeholder",
+   "fieldtype": "Data",
+   "label": "placeholder"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-22 18:36:58.532054",
- "modified_by": "Administrator",
+ "modified": "2026-07-03 10:32:52.342443",
+ "modified_by": "carterluker13@gmail.com",
  "module": "Ascend",
  "name": "Bulk Product Import",
  "naming_rule": "Set by user",
