@@ -24,6 +24,13 @@ app_license = "unlicense"
 # 	}
 # ]
 
+# Fixtures
+# ------------------
+
+fixtures = [
+    "Zebra Printer Label"
+]
+
 # Includes in <head>
 # ------------------
 
