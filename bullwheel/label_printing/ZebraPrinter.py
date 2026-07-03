@@ -15,16 +15,23 @@ from bullwheel.label_printing.exceptions import (
 
 class ZebraPrinter:
 	"""
-	Network handler for a Zebra label printer. Opens a raw TCP socket to the
-	printer's ZPL listener (default port 9100) and sends ZPL bytes directly —
-	there is no driver, spooler, or CUPS involved. Mirrors the connection and
-	context-manager style of MSSQLDatabase without any transaction semantics,
-	since printing over TCP is fire-and-forget.
+	Handler for a Zebra label printer. Sends ZPL over a raw TCP socket to one of
+	two targets, chosen by the printer's connection method:
+
+	  * Network — a direct socket to the printer's own ZPL listener (default port 9100).
+	  * USB     — a socket to the Bullwheel USB Print Service running on the connected
+	              computer, which forwards the ZPL on to the local USB printer.
+
+	Either way the transport is a fire-and-forget TCP send, so — like MSSQLDatabase —
+	this handler uses a context-manager lifecycle but has no transaction semantics.
 	"""
 
 	# ─── Class-Level Constants ────────────────────────────────────────
 
 	DEFAULT_PORT = 9100  # Zebra's raw ZPL listener port
+	# The Bullwheel USB Print Service listens here on the connected computer and
+	# forwards received ZPL to the local USB printer. Must match the service's port.
+	USB_PRINT_SERVICE_PORT = 9100
 	HOST_STATUS_COMMAND = "~HS"
 	READ_BUFFER_SIZE = 1024
 
@@ -36,6 +43,8 @@ class ZebraPrinter:
 		timeout: int = None,
 	):
 		self.printer_name = printer_document.printer_name
+		self.connection_method = printer_document.connection_method
+		self.connected_computer_address = printer_document.connected_computer_address
 		self.ip = printer_document.ip
 		self.port = printer_document.port or self.DEFAULT_PORT
 		# Fall back to the printer's configured timeout when the caller does not
@@ -43,21 +52,43 @@ class ZebraPrinter:
 		self.timeout = timeout if timeout is not None else printer_document.timeout
 		self.connection = None
 
+		# Resolve the socket endpoint from the connection method. A USB printer is
+		# reached indirectly through the Bullwheel USB Print Service on the connected
+		# computer; from this handler's perspective both methods are just a TCP socket.
+		if self.connection_method == "USB":
+			self.target_host = self.connected_computer_address
+			self.target_port = self.USB_PRINT_SERVICE_PORT
+		else:
+			self.target_host = self.ip
+			self.target_port = self.port
+
 		self.logger = frappe.logger("zebra")
+
+	def _describe_target(self) -> str:
+		"""Return a human-readable description of the socket endpoint for error
+		messages, distinguishing a direct network printer from a USB printer reached
+		through the Bullwheel USB Print Service."""
+		if self.connection_method == "USB":
+			return (
+				f"USB print service for printer '{self.printer_name}' "
+				f"at {self.target_host}:{self.target_port}"
+			)
+		return f"printer '{self.printer_name}' at {self.target_host}:{self.target_port}"
 
 	# ─── Connection Lifecycle ─────────────────────────────────────────
 
 	def connect(self) -> None:
-		"""Open a TCP socket to the printer's raw ZPL listener, raising a
-		PrinterConnectionError if the printer cannot be reached within the timeout."""
+		"""Open a TCP socket to the resolved print target — the printer's raw ZPL
+		listener (Network) or the Bullwheel USB Print Service on the connected computer
+		(USB) — raising PrinterConnectionError if it cannot be reached within the timeout."""
 		try:
 			self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			self.connection.settimeout(self.timeout)
-			self.connection.connect((self.ip, self.port))
+			self.connection.connect((self.target_host, self.target_port))
 		except OSError as error:
 			self.connection = None
 			raise PrinterConnectionError(
-				f"Failed to connect to printer '{self.printer_name}' at {self.ip}:{self.port}: {error}"
+				f"Failed to connect to {self._describe_target()}: {error}"
 			) from error
 
 	def close(self) -> None:
@@ -89,7 +120,7 @@ class ZebraPrinter:
 			self.connection.sendall(zpl.encode("utf-8"))
 		except OSError as error:
 			raise PrinterSendError(
-				f"Failed to send data to printer '{self.printer_name}' at {self.ip}:{self.port}: {error}"
+				f"Failed to send data to {self._describe_target()}: {error}"
 			) from error
 
 	# ─── Health Check ─────────────────────────────────────────────────
