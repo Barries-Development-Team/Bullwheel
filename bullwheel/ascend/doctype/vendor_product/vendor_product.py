@@ -4,7 +4,7 @@
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
-class AscendThing(AbstractVirtualDocType):
+class VendorProduct(AbstractVirtualDocType):
 	TABLE_NAME = "VendorProducts"     # Ascend SQL table name
 	JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b          
 	SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console if frappe tries to lookup an unmapped field.
