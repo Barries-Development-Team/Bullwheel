@@ -1,0 +1,85 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "field:label_name",
+ "creation": "2026-07-03 16:02:40.521047",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "label_name",
+  "recommended_print_media",
+  "column_break_tarv",
+  "length",
+  "width",
+  "section_break_dptq",
+  "zpl"
+ ],
+ "fields": [
+  {
+   "fieldname": "label_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "recommended_print_media",
+   "fieldtype": "Select",
+   "label": "Recommended Print Media",
+   "options": "Direct Thermal\nThermal Transfer"
+  },
+  {
+   "fieldname": "zpl",
+   "fieldtype": "Text",
+   "label": "ZPL"
+  },
+  {
+   "fieldname": "column_break_tarv",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "length",
+   "fieldtype": "Float",
+   "label": "Length"
+  },
+  {
+   "fieldname": "width",
+   "fieldtype": "Float",
+   "label": "Width"
+  },
+  {
+   "fieldname": "section_break_dptq",
+   "fieldtype": "Section Break"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-03 16:07:44.513325",
+ "modified_by": "Administrator",
+ "module": "Label Printing",
+ "name": "Zebra Printer Label",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
