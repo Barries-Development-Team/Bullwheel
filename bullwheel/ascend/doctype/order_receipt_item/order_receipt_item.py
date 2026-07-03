@@ -12,8 +12,8 @@ class OrderReceiptItem(Document):
 		is linked or the linked product no longer exists in Ascend."""
 		if not hasattr(self, "_ascend_field_cache"):
 			self._ascend_field_cache = (
-				VendorProduct.get_values(self.product, ["description", "vpn"])
-				if self.product else None
+				VendorProduct.get_values(self.vpn, ["description"])
+				if self.vpn else None
 			)
 		return self._ascend_field_cache
 
@@ -22,7 +22,4 @@ class OrderReceiptItem(Document):
 		fields = self._ascend_fields()
 		return fields.get("description") if fields else None
 
-	@property
-	def vpn(self):
-		fields = self._ascend_fields()
-		return fields.get("upc") if fields else None
+	
