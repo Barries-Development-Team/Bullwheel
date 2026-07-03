@@ -249,6 +249,34 @@ class AbstractVirtualDocType(Document):
 		super(Document, self).__init__(to_document_dict(records[0]))
 	
 	@classmethod
+	def get_values(cls, name, fields: list) -> frappe._dict | None:
+		"""Fetch a subset of mapped fields for a single record by primary key, in one query.
+		Column names are resolved from SCHEMA_CONFIG so they stay single-sourced. Returns a
+		frappe dict of the requested fields, or None when no matching record exists.
+
+		Intended for cheap cross-references (e.g. a child table's virtual fields mirroring a
+		few columns of the linked record) where loading the full document is unnecessary."""
+		query_clauses = []
+		# SELECT
+		query_clauses.append(cls._build_select_clause(fields))
+		# FROM
+		query_clauses.append(f'FROM {cls.TABLE_NAME}')
+		# JOIN
+		if cls.JOIN_CONFIG is not None:
+			query_clauses.append(cls._build_join_clause())
+		# WHERE
+		query_clauses.append(f'WHERE {cls.SCHEMA_CONFIG.get("name")} = %s')
+
+		with MSSQLDatabase(get_default_ascend_database()) as db:
+			records = db.sql(
+				query=' '.join(query_clauses),
+				values=[name],
+				as_dict=True
+			)
+
+		return to_document_dict(records[0]) if records else None
+
+	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, or_filters: list = [], as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
 		
 		cls._validate_and_clean_fields(fields, doctype)

@@ -231,6 +231,69 @@ a null `sql_column`. Bracket-quoting is stripped before the column comparison.
 
 ---
 
+## Reading a subset of fields — `get_values`
+
+`load_from_db` fetches the **whole** record (`SELECT *`, plus any JOINs). When you
+only need a couple of columns from a linked record — for example a child table
+whose virtual fields mirror the linked product's `description` and `upc` — loading
+the full document is wasteful, and reading each field separately would issue one
+query per field.
+
+`AbstractVirtualDocType.get_values(name, fields)` is the lean alternative: it
+runs a **single** query selecting only the requested fields, resolving their SQL
+columns from `SCHEMA_CONFIG` so column names stay single-sourced. It returns a
+`frappe._dict` of the requested fields, or `None` when no record matches.
+
+```python
+from bullwheel.ascend.doctype.ascend_product.ascend_product import AscendProduct
+
+values = AscendProduct.get_values("012345678905", ["description", "upc"])
+# -> {'description': 'Rossignol Experience 80', 'upc': '0012345678905'} or None
+```
+
+**Pattern — virtual fields on a child table that mirror a linked record.** Memoize
+one `get_values` call on the document instance so multiple virtual-field properties
+share a single query per row. This is exactly how `Location Inventory` populates its
+`description` and `upc` fields from the linked `Ascend Product`:
+
+```python
+class LocationInventory(Document):
+
+    def _ascend_fields(self):
+        """Fetch and memoize the linked Ascend Product's mirrored fields so both
+        virtual fields share a single SQL query per document instance."""
+        if not hasattr(self, "_ascend_field_cache"):
+            self._ascend_field_cache = (
+                AscendProduct.get_values(self.product, ["description", "upc"])
+                if self.product else None
+            )
+        return self._ascend_field_cache
+
+    @property
+    def description(self):
+        fields = self._ascend_fields()
+        return fields.get("description") if fields else None
+
+    @property
+    def upc(self):
+        fields = self._ascend_fields()
+        return fields.get("upc") if fields else None
+```
+
+Notes:
+- The lookup is by the primary key — `get_values` filters on `SCHEMA_CONFIG["name"]`,
+  so `name` here is the linked record's Frappe identifier (for `Ascend Product`, the
+  `[Store UPC]`).
+- Guard against an empty link (`if self.product else None`) and a missing record
+  (`get_values` returns `None`) so the properties degrade to `None` rather than raising.
+- `JOIN_CONFIG` is still applied, so fields sourced from a joined table resolve
+  correctly. If your requested fields don't need the JOIN, it is emitted but harmless.
+- This is a per-row query. For a large grid where every row references a different
+  record, that is N queries; a grid-wide `WHERE <pk> IN (...)` prefetch on the parent
+  would collapse it to one, at the cost of more wiring.
+
+---
+
 ## Gotchas & Known Limitations
 
 **GUID / `uniqueidentifier` primary keys — handled automatically.** Many Ascend

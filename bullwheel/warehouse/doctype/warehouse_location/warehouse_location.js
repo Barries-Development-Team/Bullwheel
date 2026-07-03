@@ -109,7 +109,10 @@ frappe.ui.form.on('Warehouse Location', {
 							frappe.model.set_value(existing_row.doctype, existing_row.name, 'quantity', existing_row.quantity + 1);
 						} else {
 							frm.add_child('location_inventory_quantities', {
+								// Preview values for description and upc will be replaced after save by virtual field implementation.
 								product: store_upc,
+								description: product["Description"],
+								upc: product["UPC"],
 								quantity: 1
 							});
 						}

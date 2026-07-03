@@ -8,6 +8,8 @@
  "field_order": [
   "location_inventory_section",
   "product",
+  "description",
+  "upc",
   "quantity"
  ],
  "fields": [
@@ -20,7 +22,7 @@
    "fieldname": "product",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Product",
+   "label": "Product ID",
    "options": "Ascend Product",
    "reqd": 1
   },
@@ -28,16 +30,30 @@
    "fieldname": "quantity",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Quantity",
+   "label": "Qty",
    "non_negative": 1,
    "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "fieldname": "upc",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "UPC",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-06-02 15:11:14.608114",
+ "modified": "2026-07-02 18:19:34.078833",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Location Inventory",

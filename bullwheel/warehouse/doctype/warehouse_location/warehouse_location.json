@@ -104,15 +104,16 @@
   {
    "fieldname": "scan_here",
    "fieldtype": "Data",
-   "label": "Scan Here",
-   "options": "Barcode"
+   "label": "Add Item",
+   "options": "Barcode",
+   "placeholder": "Scan here"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_tree": 1,
  "links": [],
- "modified": "2026-06-20 13:15:11.508693",
+ "modified": "2026-07-02 18:22:02.479798",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Warehouse Location",
