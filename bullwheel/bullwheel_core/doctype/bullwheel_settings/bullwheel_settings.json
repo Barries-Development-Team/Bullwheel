@@ -5,27 +5,66 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "ascend_configuration_tab",
   "ascend_configuration_section",
-  "default_database"
+  "default_database",
+  "tab_2_tab",
+  "labels_section",
+  "ascend_product",
+  "swap_tag",
+  "warehouse_location"
  ],
  "fields": [
   {
    "fieldname": "ascend_configuration_section",
    "fieldtype": "Section Break",
-   "label": "Ascend Configuration"
+   "label": "Database"
   },
   {
    "fieldname": "default_database",
    "fieldtype": "Link",
    "label": "Default Ascend Database",
    "options": "SQL Server"
+  },
+  {
+   "fieldname": "ascend_configuration_tab",
+   "fieldtype": "Tab Break",
+   "label": "Ascend Configuration"
+  },
+  {
+   "fieldname": "tab_2_tab",
+   "fieldtype": "Tab Break",
+   "label": "Printing"
+  },
+  {
+   "fieldname": "labels_section",
+   "fieldtype": "Section Break",
+   "label": "Labels"
+  },
+  {
+   "fieldname": "ascend_product",
+   "fieldtype": "Link",
+   "label": "Ascend Product",
+   "options": "Zebra Printer Label"
+  },
+  {
+   "fieldname": "swap_tag",
+   "fieldtype": "Link",
+   "label": "Swap Tag",
+   "options": "Zebra Printer Label"
+  },
+  {
+   "fieldname": "warehouse_location",
+   "fieldtype": "Link",
+   "label": "Warehouse Location",
+   "options": "Zebra Printer Label"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-06-23 12:43:23.569182",
+ "modified": "2026-07-03 16:25:33.030227",
  "modified_by": "Administrator",
  "module": "Bullwheel Core",
  "name": "Bullwheel Settings",
