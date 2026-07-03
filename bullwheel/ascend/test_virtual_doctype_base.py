@@ -52,6 +52,28 @@ class _UnaliasedJoinVirtualDocType(AbstractVirtualDocType):
 	}
 
 
+class _NameExpressionVirtualDocType(AbstractVirtualDocType):
+	"""Primary key is a computed SQL expression; 'name' is omitted from SCHEMA_CONFIG."""
+	TABLE_NAME = "Things"
+	NAME_EXPRESSION = "CONCAT(StyleNumber, '-', Size)"
+	SCHEMA_CONFIG = {
+		'description': 'Description',
+		'size':        'Size',
+	}
+
+
+class _NameExpressionJoinVirtualDocType(AbstractVirtualDocType):
+	"""NAME_EXPRESSION that references a declared join alias and the primary table."""
+	TABLE_NAME = "Products"
+	JOIN_CONFIG = [
+		{'join': 'LEFT JOIN', 'table': 'Categories', 'alias': 'cat', 'on': 'Products.TopicID = cat.ID'}
+	]
+	NAME_EXPRESSION = "CONCAT(Products.ID, '-', cat.Topic)"
+	SCHEMA_CONFIG = {
+		'description': 'Products.Description',
+	}
+
+
 # ─── validate_schema_config ───────────────────────────────────────────────────
 
 
@@ -128,6 +150,61 @@ class UnitTestValidateSchemaConfig(UnitTestCase):
 			)
 
 
+# ─── validate_schema_config — NAME_EXPRESSION ─────────────────────────────────
+
+
+class UnitTestValidateNameExpression(UnitTestCase):
+
+	def test_name_expression_without_name_entry_passes(self):
+		"""A NAME_EXPRESSION satisfies the primary-key requirement even when SCHEMA_CONFIG omits 'name'."""
+		self.assertTrue(_NameExpressionVirtualDocType.validate_schema_config())
+
+	def test_name_expression_skips_column_existence_check(self):
+		"""The expression is not a plain column, so it isn't checked against discovered_columns —
+		only the other mapped fields are."""
+		self.assertTrue(
+			_NameExpressionVirtualDocType.validate_schema_config(
+				discovered_columns=['Description', 'Size']  # deliberately omits StyleNumber
+			)
+		)
+
+	def test_neither_name_nor_expression_raises(self):
+		class _NoPrimaryKey(AbstractVirtualDocType):
+			TABLE_NAME = "T"
+			SCHEMA_CONFIG = {'description': 'Description'}
+		with self.assertRaises(ValueError):
+			_NoPrimaryKey.validate_schema_config()
+
+	def test_non_string_name_expression_raises(self):
+		class _BadExpression(AbstractVirtualDocType):
+			TABLE_NAME = "T"
+			NAME_EXPRESSION = 123
+			SCHEMA_CONFIG = {'description': 'Description'}
+		with self.assertRaises(ValueError):
+			_BadExpression.validate_schema_config()
+
+	def test_declared_qualifiers_pass(self):
+		"""Qualifiers resolving to TABLE_NAME or a JOIN_CONFIG alias are accepted."""
+		self.assertTrue(_NameExpressionJoinVirtualDocType.validate_schema_config())
+
+	def test_undeclared_qualifier_raises(self):
+		class _UndeclaredAlias(AbstractVirtualDocType):
+			TABLE_NAME = "Products"
+			NAME_EXPRESSION = "CONCAT(Products.ID, '-', missing.Topic)"
+			SCHEMA_CONFIG = {'description': 'Products.Description'}
+		with self.assertRaises(ValueError) as context:
+			_UndeclaredAlias.validate_schema_config()
+		self.assertIn('missing', str(context.exception))
+
+	def test_dots_inside_brackets_and_literals_do_not_false_positive(self):
+		"""Dots inside bracket-quoted names or string literals must not register as qualifiers."""
+		class _DottedLiteral(AbstractVirtualDocType):
+			TABLE_NAME = "Things"
+			NAME_EXPRESSION = "CONCAT([Style.No], '.', Size)"
+			SCHEMA_CONFIG = {'description': 'Description'}
+		self.assertTrue(_DottedLiteral.validate_schema_config())
+
+
 # ─── _build_select_clause ─────────────────────────────────────────────────────
 
 
@@ -151,6 +228,12 @@ class UnitTestBuildSelectClause(UnitTestCase):
 	def test_unmapped_fields_are_skipped(self):
 		result = _SimpleVirtualDocType._build_select_clause(['name', 'nonexistent', 'description'])
 		self.assertEqual(result, 'SELECT TOP 20 ID AS name, Description AS description')
+
+	def test_name_expression_is_projected_in_default_select(self):
+		"""With NAME_EXPRESSION set and 'name' omitted from SCHEMA_CONFIG, the default projection
+		still emits the expression aliased as name."""
+		result = _NameExpressionVirtualDocType._build_select_clause()
+		self.assertIn("CONCAT(StyleNumber, '-', Size) AS name", result)
 
 
 # ─── _build_join_clause ───────────────────────────────────────────────────────
@@ -229,6 +312,16 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		)
 		self.assertEqual(result, 'WHERE (Quantity > %s) AND (Description LIKE %s)')
 		self.assertEqual(values, [0, '%ski%'])
+
+	def test_name_filter_uses_expression(self):
+		"""A filter on 'name' resolves to NAME_EXPRESSION, so link-title and list name lookups
+		match against the same expression used in the projection."""
+		values = []
+		result = _NameExpressionVirtualDocType._build_where_clause(
+			[('Thing', 'name', '=', 'SN-100-M')], [], values
+		)
+		self.assertEqual(result, "WHERE (CONCAT(StyleNumber, '-', Size) = %s)")
+		self.assertEqual(values, ['SN-100-M'])
 
 
 # ─── _build_order_by_clause ───────────────────────────────────────────────────

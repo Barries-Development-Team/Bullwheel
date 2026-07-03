@@ -7,8 +7,10 @@
  "engine": "InnoDB",
  "field_order": [
   "received",
-  "item_type",
   "vpn",
+  "item_type",
+  "item_name",
+  "description",
   "quantity",
   "cost",
   "comments"
@@ -18,15 +20,16 @@
    "default": "0",
    "fieldname": "received",
    "fieldtype": "Check",
+   "in_list_view": 1,
    "label": "Rec'd"
   },
   {
-   "default": "Ascend Product",
+   "default": "Vendor Product",
    "fieldname": "item_type",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Item Type",
-   "options": "Ascend Product\nNew Product",
+   "options": "Vendor Product\nNew Product",
    "reqd": 1
   },
   {
@@ -46,23 +49,38 @@
   {
    "fieldname": "comments",
    "fieldtype": "Small Text",
+   "in_list_view": 1,
    "label": "Comments"
   },
   {
-   "fieldname": "vpn",
+   "fieldname": "item_name",
    "fieldtype": "Dynamic Link",
    "in_list_view": 1,
-   "label": "Vendor Part #",
+   "label": "Item ID",
    "options": "item_type",
    "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "is_virtual": 1,
+   "label": "Description"
+  },
+  {
+   "fieldname": "vpn",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "is_virtual": 1,
+   "label": "Vendor Part #"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-03 10:53:38.818993",
- "modified_by": "carterluker13@gmail.com",
+ "modified": "2026-07-03 11:56:58.318354",
+ "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt Item",
  "owner": "Administrator",

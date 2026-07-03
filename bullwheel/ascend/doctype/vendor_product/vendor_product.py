@@ -8,9 +8,9 @@ class VendorProduct(AbstractVirtualDocType):
 	TABLE_NAME = "VendorProducts"     # Ascend SQL table name
 	JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b          
 	SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console if frappe tries to lookup an unmapped field.
+	NAME_EXPRESSION = "CONCAT(VendorProducts.PartNumber, ' (', Vendor.Name, ')')"  # Optional SQL expression to generate the 'name' field for the virtual doctype.
 	SCHEMA_CONFIG = {
-        'name': 'ID',
-        'id': 'ID',
+        'id': 'VendorProducts.ID',
         'vendor_id': 'VendorProducts.VendorID',
 		'vendor': 'Vendor.Name',
         'product_id': 'VendorProducts.ProductID',

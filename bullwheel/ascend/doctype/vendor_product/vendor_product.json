@@ -2,6 +2,7 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
+ "autoname": "field:id",
  "creation": "2026-07-03 11:07:07.541319",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -24,24 +25,31 @@
   {
    "fieldname": "vendor",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Vendor",
-   "options": "Vendor"
+   "options": "Vendor",
+   "read_only": 1
   },
   {
    "fieldname": "product",
    "fieldtype": "Link",
    "label": "In-Store Product",
-   "options": "Ascend Product"
+   "options": "Ascend Product",
+   "read_only": 1
   },
   {
    "fieldname": "description",
    "fieldtype": "Data",
-   "label": "Description"
+   "in_list_view": 1,
+   "label": "Description",
+   "read_only": 1
   },
   {
    "fieldname": "part_number",
    "fieldtype": "Data",
-   "label": "Part Number"
+   "in_list_view": 1,
+   "label": "Part Number",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_inpz",
@@ -50,22 +58,28 @@
   {
    "fieldname": "cost",
    "fieldtype": "Currency",
-   "label": "Cost"
+   "in_list_view": 1,
+   "label": "Cost",
+   "read_only": 1
   },
   {
    "fieldname": "case_quantity",
    "fieldtype": "Int",
-   "label": "Case Quantity"
+   "in_list_view": 1,
+   "label": "Case Quantity",
+   "read_only": 1
   },
   {
    "fieldname": "case_upc",
    "fieldtype": "Data",
-   "label": "Case UPC"
+   "label": "Case UPC",
+   "read_only": 1
   },
   {
    "fieldname": "case_msrp",
    "fieldtype": "Currency",
-   "label": "Case MSRP"
+   "label": "Case MSRP",
+   "read_only": 1
   },
   {
    "collapsible": 1,
@@ -76,27 +90,32 @@
   {
    "fieldname": "id",
    "fieldtype": "Data",
-   "label": "Database ID"
+   "label": "Database ID",
+   "read_only": 1,
+   "unique": 1
   },
   {
    "fieldname": "vendor_id",
    "fieldtype": "Data",
-   "label": "Vendor ID"
+   "label": "Vendor ID",
+   "read_only": 1
   },
   {
    "fieldname": "product_id",
    "fieldtype": "Data",
-   "label": "Product ID"
+   "label": "Product ID",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-03 11:33:01.329152",
+ "modified": "2026-07-03 11:43:42.560232",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Vendor Product",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {
@@ -116,5 +135,6 @@
  "rows_threshold_for_grid_search": 20,
  "sort_field": "creation",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "title_field": "description"
 }

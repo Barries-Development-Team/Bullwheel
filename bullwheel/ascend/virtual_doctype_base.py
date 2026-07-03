@@ -52,39 +52,70 @@ class AbstractVirtualDocType(Document):
 	TABLE_NAME: str = None       		# Ascend SQL table name, e.g. "Products"
 	JOIN_CONFIG: list = None     		# List of JOIN descriptors — see _build_join_clause for the dict shape
 	SCHEMA_CONFIG: dict = None    		# Fieldname -> SQL Column. Must include a "name" entry whose sql_column is the primary key.
+	NAME_EXPRESSION: str = None    		# Optional raw SQL expression for the primary key. When set, overrides
+	                             		# SCHEMA_CONFIG['name'] as the SQL for `name` in SELECT, WHERE, filters, and
+	                             		# ORDER BY (and makes the SCHEMA_CONFIG 'name' entry optional).
 	SHOW_FIELD_WARNINGS: bool = True	# Display a warning in the console if an expected field has no mapping in SCHEMA_CONFIG
 
 
 	# ─── Helper Methods  ──────────────────────────────────────────────────────
 
 	@classmethod
+	def _column_for(cls, field: str) -> str | None:
+		"""Resolve a fieldname to the SQL it maps to. The primary key ('name') resolves to
+		NAME_EXPRESSION when that attribute is set; every other field (and 'name' when
+		NAME_EXPRESSION is unset) resolves straight from SCHEMA_CONFIG."""
+		if field == 'name' and cls.NAME_EXPRESSION:
+			return cls.NAME_EXPRESSION
+		return cls.SCHEMA_CONFIG.get(field)
+
+	@classmethod
+	def _known_table_qualifiers(cls) -> set:
+		"""Table names and aliases a qualified column reference may legally use: the primary
+		TABLE_NAME plus every table/alias declared in JOIN_CONFIG."""
+		qualifiers = {cls.TABLE_NAME}
+		for config in (cls.JOIN_CONFIG or []):
+			if config.get('alias'):
+				qualifiers.add(config['alias'])
+			if config.get('table'):
+				qualifiers.add(config['table'])
+		return qualifiers
+
+	@classmethod
 	def validate_schema_config(cls, discovered_columns=None, additional_discovered_columns=None) -> bool:
 		"""Validate this class's SCHEMA_CONFIG for structural correctness.
 
-		Always checks that SCHEMA_CONFIG is not empty, that a 'name' entry exists mapping
-		to a non-null primary key column, and that all values are strings or None.
+		Always checks that SCHEMA_CONFIG is not empty, that the primary key is defined
+		(either a non-null 'name' entry or a NAME_EXPRESSION), and that all values are
+		strings or None. When NAME_EXPRESSION is set, its table/alias qualifiers are
+		checked against TABLE_NAME + JOIN_CONFIG so an undeclared join surfaces here
+		instead of as an opaque SQL bind error at query time.
 
 		When discovered_columns is provided (an iterable of SQL column names from the primary
 		table, e.g. from introspect_table_schema), confirms that unqualified column references
 		exist in that set. When additional_discovered_columns is provided (column names from
 		joined tables), confirms that table-qualified references (containing '.') resolve to a
 		known column. Qualified columns are skipped when additional_discovered_columns is not
-		provided.
+		provided. The 'name' entry is skipped from column-existence checks when NAME_EXPRESSION
+		is set, since an expression is not a plain column.
 
 		Returns True on success; raises ValueError describing the first problem found.
 		"""
 		schema_config = cls.SCHEMA_CONFIG
+		name_expression = cls.NAME_EXPRESSION
 
 		if not schema_config:
 			raise ValueError(f"{cls.__name__}: SCHEMA_CONFIG is empty or None.")
 
-		if 'name' not in schema_config:
+		# The primary key must be defined either as a NAME_EXPRESSION or a non-null 'name' entry.
+		if not name_expression and not schema_config.get('name'):
 			raise ValueError(
-				f"{cls.__name__}: SCHEMA_CONFIG must include a 'name' entry mapping to the primary key column."
+				f"{cls.__name__}: define the primary key via a non-null SCHEMA_CONFIG 'name' entry "
+				f"or by setting NAME_EXPRESSION."
 			)
-		if not schema_config.get('name'):
+		if name_expression is not None and not isinstance(name_expression, str):
 			raise ValueError(
-				f"{cls.__name__}: SCHEMA_CONFIG 'name' entry must have a non-null SQL column (the primary key)."
+				f"{cls.__name__}: NAME_EXPRESSION must be a string SQL expression, got {name_expression!r}."
 			)
 
 		for fieldname, sql_column in schema_config.items():
@@ -94,6 +125,20 @@ class AbstractVirtualDocType(Document):
 					f"Expected a string SQL column name or None."
 				)
 
+		# Guardrail: every table/alias a NAME_EXPRESSION qualifies with must be declared, otherwise the
+		# query throws a bind error at runtime. Strip bracket-quoted names and string literals first so
+		# their internal dots/text don't register as spurious qualifiers.
+		if name_expression:
+			scannable = re.sub(r"\[[^\]]*\]|'[^']*'", '', name_expression)
+			referenced = set(re.findall(r'([A-Za-z_][A-Za-z0-9_]*)\s*\.', scannable))
+			unknown = referenced - cls._known_table_qualifiers()
+			if unknown:
+				raise ValueError(
+					f"{cls.__name__}: NAME_EXPRESSION references undeclared table/alias qualifier(s) "
+					f"{sorted(unknown)}. Add them to JOIN_CONFIG or qualify with the primary table "
+					f"'{cls.TABLE_NAME}'."
+				)
+
 		if discovered_columns is not None or additional_discovered_columns is not None:
 			primary_columns = {bare_column(col) for col in discovered_columns} if discovered_columns else None
 			joined_columns = {bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
@@ -101,6 +146,8 @@ class AbstractVirtualDocType(Document):
 			for fieldname, sql_column in schema_config.items():
 				if not sql_column:
 					continue
+				if fieldname == 'name' and name_expression:
+					continue  # An expression-backed primary key is not a plain column.
 				is_table_qualified = '.' in sql_column
 				bare = bare_column(sql_column)
 				if is_table_qualified:
@@ -120,13 +167,17 @@ class AbstractVirtualDocType(Document):
 
 	@classmethod
 	def _build_select_clause(cls, fields: list = []) -> str:
-		"""Generate an SQL Select clause to fetch the provided fields. If no fields are provided, all are selected."""
+		"""Generate an SQL Select clause to fetch the provided fields. If no fields are provided, all are selected.
+		The primary key ('name') is always projected — even when NAME_EXPRESSION is set and 'name' is
+		omitted from SCHEMA_CONFIG — so load_from_db and list views always receive an identifier."""
 		if len(fields) <= 0:
-			fields = cls.SCHEMA_CONFIG.keys()
+			fields = list(cls.SCHEMA_CONFIG.keys())
+			if 'name' not in fields:
+				fields.insert(0, 'name')
 
 		select_statements = []
 		for field in fields:
-			sql_column = cls.SCHEMA_CONFIG.get(field)
+			sql_column = cls._column_for(field)
 			if sql_column is not None:
 				select_statements.append(f'{sql_column} AS {field}')
 
@@ -157,7 +208,7 @@ class AbstractVirtualDocType(Document):
 		# AND Filters: (Condition 1 AND Condition 2 AND ... AND Condition n)
 		and_statements = []
 		for _, field, operator, value in filters: # Tuple unpacking supports both list-formatted and tuple-formatted filters.
-			and_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} {operator} %s')
+			and_statements.append(f'{cls._column_for(field)} {operator} %s')
 			values.append(value) # Appends the value to the list of values passed as an argument.
 		if len(and_statements) > 0:
 			where_statements.append('(' + ' AND '.join(and_statements) + ')')
@@ -165,7 +216,7 @@ class AbstractVirtualDocType(Document):
 		# OR Filters: (Condition 1 OR ... OR Condition n)
 		or_statements = []
 		for _, field, operator, value in or_filters:
-			or_statements.append(f'{cls.SCHEMA_CONFIG.get(field)} {operator} %s')
+			or_statements.append(f'{cls._column_for(field)} {operator} %s')
 			values.append(value)
 		if len(or_statements) > 0:
 			where_statements.append('(' + ' OR '.join(or_statements) + ')')
@@ -189,7 +240,7 @@ class AbstractVirtualDocType(Document):
 				continue
 			field = clean_fieldname(tokens[0])
 			order = tokens[1].upper() if len(tokens) > 1 else 'ASC'
-			sql_column = cls.SCHEMA_CONFIG.get(field)
+			sql_column = cls._column_for(field)
 			if sql_column is not None:
 				order_by_statements.append(f'{field} {order}')
 			else:
@@ -234,7 +285,7 @@ class AbstractVirtualDocType(Document):
 		if self.JOIN_CONFIG is not None:
 			query_clauses.append(self._build_join_clause())
 		# WHERE
-		query_clauses.append(f'WHERE {self.SCHEMA_CONFIG.get('name')} = %s')
+		query_clauses.append(f'WHERE {self._column_for('name')} = %s')
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(
@@ -265,7 +316,7 @@ class AbstractVirtualDocType(Document):
 		if cls.JOIN_CONFIG is not None:
 			query_clauses.append(cls._build_join_clause())
 		# WHERE
-		query_clauses.append(f'WHERE {cls.SCHEMA_CONFIG.get("name")} = %s')
+		query_clauses.append(f'WHERE {cls._column_for("name")} = %s')
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(
