@@ -11,8 +11,19 @@ def get_default_ascend_database():
 		except:
 			raise AscendDatabaseNotConfigured
 
+def get_label(slot):
+	"""Return the Zebra Printer Label configured for a Bullwheel Settings label slot
+	(e.g. 'warehouse_location'), raising PrintLabelNotConfigured if the slot is unset."""
+	label_name = frappe.db.get_single_value('Bullwheel Settings', slot)
+	if not label_name:
+		raise PrintLabelNotConfigured
+	return frappe.get_doc("Zebra Printer Label", label_name)
+
 class BullwheelSettings(Document):
 	pass
 
 class AscendDatabaseNotConfigured(Exception):
+	pass
+
+class PrintLabelNotConfigured(Exception):
 	pass

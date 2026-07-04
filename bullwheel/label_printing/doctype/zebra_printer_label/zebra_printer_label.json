@@ -10,7 +10,7 @@
   "label_name",
   "recommended_print_media",
   "column_break_tarv",
-  "length",
+  "height",
   "width",
   "section_break_dptq",
   "zpl"
@@ -40,11 +40,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "length",
-   "fieldtype": "Float",
-   "label": "Length"
-  },
-  {
    "fieldname": "width",
    "fieldtype": "Float",
    "label": "Width"
@@ -52,12 +47,17 @@
   {
    "fieldname": "section_break_dptq",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "height",
+   "fieldtype": "Float",
+   "label": "Height"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-03 16:07:44.513325",
+ "modified": "2026-07-03 18:01:32.578181",
  "modified_by": "Administrator",
  "module": "Label Printing",
  "name": "Zebra Printer Label",

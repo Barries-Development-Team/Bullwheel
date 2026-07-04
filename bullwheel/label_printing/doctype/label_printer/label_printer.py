@@ -6,6 +6,10 @@ import json
 import frappe
 from frappe.model.document import Document
 
+from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import (
+	PrintLabelNotConfigured,
+	get_label,
+)
 from bullwheel.label_printing.ZebraPrinter import ZebraPrinter
 from bullwheel.label_printing.exceptions import PrinterException
 
@@ -70,3 +74,20 @@ def print_zpl(printer_name, zpl):
 		printer.send(zpl)
 
 	return {"status": "success", "printer": printer_name}
+
+
+@frappe.whitelist()
+def print_label(printer_name, slot, doctype, docname):
+	"""Render the Zebra Printer Label configured for the given Bullwheel Settings slot
+	against the source document, then send it to the printer. This is the label-driven
+	counterpart of print_zpl, which sends caller-supplied raw ZPL."""
+	try:
+		label = get_label(slot)
+	except PrintLabelNotConfigured:
+		frappe.throw(f"No label is configured for '{slot}' in Bullwheel Settings ▸ Printing ▸ Labels.")
+
+	source_document = frappe.get_doc(doctype, docname)
+	printer_document = frappe.get_doc("Label Printer", printer_name)
+	zpl = label.render(source_document, printer_document)
+
+	return print_zpl(printer_name, zpl)
