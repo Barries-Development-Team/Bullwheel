@@ -1,4 +1,4 @@
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 
 from bullwheel.overrides.virtual_link_title import apply as _apply_virtual_link_title_patch
 from bullwheel.overrides.google_oauth_patch import apply as _apply_google_oauth_patch
