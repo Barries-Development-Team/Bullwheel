@@ -14,6 +14,7 @@
   {
    "fieldname": "product",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Product",
    "options": "Ascend Product",
    "set_only_once": 1
@@ -21,12 +22,14 @@
   {
    "fieldname": "price",
    "fieldtype": "Currency",
+   "in_list_view": 1,
    "label": "Price"
   },
   {
    "default": "Ski Swap Price",
    "fieldname": "pricing_type",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Pricing Type",
    "options": "Ski Swap Price\nOnline Listing Price",
    "set_only_once": 1
@@ -35,7 +38,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-06 13:30:45.523787",
+ "modified": "2026-07-06 14:10:58.468327",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Product Price",

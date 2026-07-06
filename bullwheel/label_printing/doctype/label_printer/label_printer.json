@@ -24,7 +24,6 @@
   {
    "fieldname": "printer_name",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Printer Name",
    "reqd": 1,
    "unique": 1
@@ -33,7 +32,6 @@
    "depends_on": "eval:doc.connection_method === \"Network\"",
    "fieldname": "ip",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "IP Address",
    "mandatory_depends_on": "eval:doc.connection_method === \"Network\""
   },
@@ -50,7 +48,6 @@
    "default": "5",
    "fieldname": "timeout",
    "fieldtype": "Int",
-   "in_list_view": 1,
    "label": "Connection Timeout Interval (seconds)",
    "reqd": 1
   },
@@ -67,11 +64,13 @@
   {
    "fieldname": "location",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Location"
   },
   {
    "fieldname": "type",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Media Type",
    "options": "Direct Thermal\nThermal Transfer"
   },
@@ -84,6 +83,7 @@
    "default": "203",
    "fieldname": "dpi",
    "fieldtype": "Int",
+   "in_list_view": 1,
    "label": "DPI",
    "non_negative": 1,
    "reqd": 1
@@ -108,7 +108,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-03 14:42:06.772265",
+ "modified": "2026-07-06 14:32:38.490167",
  "modified_by": "Administrator",
  "module": "Label Printing",
  "name": "Label Printer",

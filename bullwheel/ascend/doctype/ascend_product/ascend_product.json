@@ -25,7 +25,9 @@
   "average_cost",
   "column_break_hjtk",
   "swap_price",
+  "edit_swap_price",
   "online_price",
+  "edit_online_price",
   "ids_and_barcodes_section",
   "store_sku",
   "upc",
@@ -189,7 +191,7 @@
   },
   {
    "fieldname": "online_price",
-   "fieldtype": "Data",
+   "fieldtype": "Currency",
    "is_virtual": 1,
    "label": "Online Price"
   },
@@ -200,6 +202,18 @@
   {
    "fieldname": "column_break_bhbt",
    "fieldtype": "Column Break"
+  },
+  {
+   "button_color": "Info",
+   "fieldname": "edit_swap_price",
+   "fieldtype": "Button",
+   "label": "Edit Swap Price"
+  },
+  {
+   "button_color": "Info",
+   "fieldname": "edit_online_price",
+   "fieldtype": "Button",
+   "label": "Edit Online Price"
   }
  ],
  "grid_page_length": 50,
@@ -207,7 +221,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-06 13:46:09.891600",
+ "modified": "2026-07-06 14:28:21.517641",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
