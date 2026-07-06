@@ -48,8 +48,7 @@
    "description": "e.i. \"Basement\", \"Aisle B\", etc. ",
    "fieldname": "is_group",
    "fieldtype": "Check",
-   "label": "Is Group",
-   "set_only_once": 1
+   "label": "Is Group"
   },
   {
    "fieldname": "old_parent",
@@ -113,7 +112,7 @@
  "index_web_pages_for_search": 1,
  "is_tree": 1,
  "links": [],
- "modified": "2026-07-02 18:22:02.479798",
+ "modified": "2026-07-06 14:06:09.198891",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Warehouse Location",
