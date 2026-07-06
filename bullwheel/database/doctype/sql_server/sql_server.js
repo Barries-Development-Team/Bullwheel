@@ -3,7 +3,7 @@
 
 frappe.ui.form.on('SQL Server', {
     refresh(frm) {
-        frm.add_custom_button(__('Test Connection'), () => {
+        const button = frm.add_custom_button(__('Test Connection'), () => {
             frappe.show_alert({ message: __('Testing connection...'), indicator: 'blue' });
 
             frappe.call({
@@ -11,6 +11,8 @@ frappe.ui.form.on('SQL Server', {
                 args: { doc: frm.doc },
             });
         });
+
+        button.prop('disabled', frm.is_new());
     }
 });
 
