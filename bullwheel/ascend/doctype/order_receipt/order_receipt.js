@@ -26,10 +26,9 @@ frappe.ui.form.on("Order Receipt", {
 					const [status, record] = response.message || [];
 
 					if (status === 'vpn found') {
-						// record is the Vendor Product's docname, e.g. "12345 (Specialized)".
-						const vpn = record;
+						// record.vpn is the Vendor Product's docname, e.g. "12345 (Specialized)".
 						const existing_row = (frm.doc.order_items || []).find(
-							row => row.item_type === 'Vendor Product' && row.vpn === vpn
+							row => row.item_type === 'Vendor Product' && row.vpn === record.vpn
 						);
 
 						if (existing_row) {
@@ -37,29 +36,64 @@ frappe.ui.form.on("Order Receipt", {
 						} else {
 							frm.add_child('order_items', {
 								item_type: 'Vendor Product',
-								vpn: vpn,
-								quantity: 1
+								vpn: record.vpn,
+								description: record.description,
+								upc: record.upc,
+								quantity: 1,
+								cost: record.cost
 							});
 						}
 						frm.refresh_field('order_items');
 						frappe.show_alert({
-							message: `Added: ${frappe.utils.escape_html(vpn)}`,
+							message: `Added: ${frappe.utils.escape_html(record.vpn)}`,
 							indicator: 'green'
 						});
-					} else {
-						// No Vendor Product on file — stage a New Product entry for review.
-						// record (when present) carries the matched Product's UPC; otherwise
-						// fall back to whatever was scanned.
-						const upc = (record && record.upc) || scanned_value;
-
-						frm.add_child('table_tvbc', {upc: upc});
-						frm.refresh_field('table_tvbc');
-						frappe.show_alert({
-							message: `New product needed for: ${frappe.utils.escape_html(upc)}`,
-							indicator: 'orange'
+					} else if (status === 'product found') {
+						// Ascend has this product, but this vendor has no Vendor Product
+						// on file for it yet — stage a New Product entry to record the
+						// new vendor association.
+						stage_new_product(frm, {
+							upc: record.upc,
+							description: record.description,
+							comments: 'Existing product receiving a new vendor product association.'
 						});
+					} else {
+						// No record of this item anywhere — confirm before creating one from scratch.
+						frappe.confirm(
+							`No product found for "${frappe.utils.escape_html(scanned_value)}". Create a new product record?`,
+							() => stage_new_product(frm, {
+								upc: scanned_value,
+								description: null,
+								comments: 'New product — no existing record found.'
+							})
+						);
 					}
 				});
 			});
  	},
 });
+
+function stage_new_product(frm, {upc, description, comments}) {
+	// Every "New Product" entry needs a placeholder VPN since it has no
+	// Vendor Product on file yet; the real one is filled in during review.
+	const new_product_row = frm.add_child('new_products', {
+		vpn: frappe.utils.get_random(10),
+		upc: upc,
+		description: description
+	});
+	frm.refresh_field('new_products');
+
+	// Link the order item back to the New Product row we just staged.
+	frm.add_child('order_items', {
+		item_type: 'New Product',
+		vpn: new_product_row.name,
+		quantity: 1,
+		comments: comments
+	});
+	frm.refresh_field('order_items');
+
+	frappe.show_alert({
+		message: `New product staged for: ${frappe.utils.escape_html(upc)}`,
+		indicator: 'orange'
+	});
+}

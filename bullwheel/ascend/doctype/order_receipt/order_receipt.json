@@ -18,7 +18,7 @@
   "add_item",
   "order_items",
   "new_products_tab",
-  "table_tvbc"
+  "new_products"
  ],
  "fields": [
   {
@@ -98,7 +98,7 @@
    "label": "New Products"
   },
   {
-   "fieldname": "table_tvbc",
+   "fieldname": "new_products",
    "fieldtype": "Table",
    "options": "New Product"
   }

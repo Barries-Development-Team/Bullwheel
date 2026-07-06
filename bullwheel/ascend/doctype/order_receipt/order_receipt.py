@@ -28,10 +28,10 @@ class OrderReceipt(Document):
 
 		# Determine if Vendor Product exists for the scanned item.
 
-		vpn_query = ('SELECT PartNumber as vpn '
-				'FROM VendorProducts '
-				'JOIN Products ON VendorProducts.ProductID = Products.ID '
-				'WHERE VendorID = %s AND (Products.UPC = %s OR Products.[Store UPC] = %s OR Products.MfgrPartNo = %s)'
+		vpn_query = ('SELECT VP.PartNumber as vpn, VP.Cost as cost, P.Description as description, P.UPC as upc  '
+				'FROM VendorProducts as VP '
+				'JOIN Products as P ON VP.ProductID = P.ID '
+				'WHERE VP.VendorID = %s AND (P.UPC = %s OR P.[Store UPC] = %s OR P.MfgrPartNo = %s)'
 		)
 
 		values = [vendor_id, id, id, id]
@@ -44,16 +44,14 @@ class OrderReceipt(Document):
 			)
 
 			if len(result) > 0:
-				# The "Vendor Product" virtual doctype names records as
-				# "<PartNumber> (<VendorName>)" (see VendorProduct.NAME_EXPRESSION).
-				# self.vendor already *is* the Vendor's name, so build the same
-				# docname here rather than returning the bare part number.
-				vendor_product_name = f"{result[0]['vpn']} ({self.vendor})"
-				return ['vpn found', vendor_product_name]
+				record = result[0]
+				vendor_product_name = f"{result[0]['vpn']} ({self.vendor})" # e.g. "12345 (Barrie's Ski and Sports)"
+				record['vpn'] = vendor_product_name
+				return ('vpn found', record)
 			
 			# Determine if Product exists for the scanned item.
 
-			product_query = ('SELECT [Store UPC] as store_sku, UPC as upc '
+			product_query = ('SELECT [Store UPC] as store_sku, UPC as upc, Description as description, Cost as cost '
 				'FROM Products '
 				'WHERE UPC = %s OR [Store UPC] = %s OR MfgrPartNo = %s'
 			)
