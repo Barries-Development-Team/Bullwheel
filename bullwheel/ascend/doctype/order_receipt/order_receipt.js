@@ -22,43 +22,41 @@ frappe.ui.form.on("Order Receipt", {
 				$(input).val('');
 				frm.doc.add_item = '';
 
-				frappe.call({
-					method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_product_dict',
-					args: {id: scanned_value, type: 'summary'},
-					callback(response) {
-						const product = response.message;
-						// get_product_dict returns the product record (truthy object)
-						// when found, or null when no product matches the scan.
-						if (!product) {
-							frappe.show_alert({
-								message: `No product found for: ${frappe.utils.escape_html(scanned_value)}`,
-								indicator: 'red'
-							});
-							return;
-						}
+				frm.call('scan_item', {id: scanned_value}).then((response) => {
+					const [status, record] = response.message || [];
 
-						// The Link field stores the Ascend Product's name (the ID
-						// column), not the scanned barcode.
-						const store_upc = product["Store UPC"];
+					if (status === 'vpn found') {
+						// record is the Vendor Product's docname, e.g. "12345 (Specialized)".
+						const vpn = record;
 						const existing_row = (frm.doc.order_items || []).find(
-							row => row.product === store_upc
+							row => row.item_type === 'Vendor Product' && row.vpn === vpn
 						);
 
 						if (existing_row) {
 							frappe.model.set_value(existing_row.doctype, existing_row.name, 'quantity', existing_row.quantity + 1);
 						} else {
 							frm.add_child('order_items', {
-								// Preview values for description and upc will be replaced after save by virtual field implementation.
-								product: store_upc,
-								description: product["Description"],
-								upc: product["UPC"],
+								item_type: 'Vendor Product',
+								vpn: vpn,
 								quantity: 1
 							});
 						}
 						frm.refresh_field('order_items');
 						frappe.show_alert({
-							message: `Added: ${frappe.utils.escape_html(product.Description || product["Store UPC"])}`,
+							message: `Added: ${frappe.utils.escape_html(vpn)}`,
 							indicator: 'green'
+						});
+					} else {
+						// No Vendor Product on file — stage a New Product entry for review.
+						// record (when present) carries the matched Product's UPC; otherwise
+						// fall back to whatever was scanned.
+						const upc = (record && record.upc) || scanned_value;
+
+						frm.add_child('table_tvbc', {upc: upc});
+						frm.refresh_field('table_tvbc');
+						frappe.show_alert({
+							message: `New product needed for: ${frappe.utils.escape_html(upc)}`,
+							indicator: 'orange'
 						});
 					}
 				});

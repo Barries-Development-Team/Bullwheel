@@ -6,6 +6,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "ski_details_section",
   "ski",
   "description",
   "column_break_lyjk",
@@ -15,16 +16,17 @@
   "column_break_vxhy",
   "release_year",
   "gender",
-  "section_break_crtx",
-  "binding_brand_and_model",
-  "din_range",
-  "column_break_neng",
+  "additional_ski_information_section",
+  "radius",
+  "tip_waist_tail",
+  "column_break_rgjh",
   "condition",
   "top_condition",
   "base_condition",
-  "additional_ski_information_section",
-  "tip_waist_tail",
-  "radius"
+  "section_break_crtx",
+  "binding_brand_and_model",
+  "column_break_neng",
+  "din_range"
  ],
  "fields": [
   {
@@ -95,12 +97,14 @@
   },
   {
    "fieldname": "section_break_crtx",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Binding Details"
   },
   {
    "fieldname": "description",
    "fieldtype": "Data",
    "is_virtual": 1,
+   "in_list_view": 1,
    "label": "Description",
    "read_only": 1
   },
@@ -139,12 +143,21 @@
   {
    "fieldname": "column_break_vxhy",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ski_details_section",
+   "fieldtype": "Section Break",
+   "label": "Ski Details"
+  },
+  {
+   "fieldname": "column_break_rgjh",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-06 15:57:22.351509",
+ "modified": "2026-07-06 16:00:08.941033",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ski with Bindings",
