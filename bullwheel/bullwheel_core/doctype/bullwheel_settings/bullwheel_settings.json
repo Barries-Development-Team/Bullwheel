@@ -11,6 +11,7 @@
   "tab_2_tab",
   "labels_section",
   "ascend_product",
+  "online_tag",
   "swap_tag",
   "warehouse_location"
  ],
@@ -50,7 +51,7 @@
   {
    "fieldname": "swap_tag",
    "fieldtype": "Link",
-   "label": "Swap Tag",
+   "label": "Ski Swap Tag",
    "options": "Zebra Printer Label"
   },
   {
@@ -58,13 +59,19 @@
    "fieldtype": "Link",
    "label": "Warehouse Location",
    "options": "Zebra Printer Label"
+  },
+  {
+   "fieldname": "online_tag",
+   "fieldtype": "Link",
+   "label": "Online Listing Tag",
+   "options": "Zebra Printer Label"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-03 16:25:33.030227",
+ "modified": "2026-07-06 13:51:35.079705",
  "modified_by": "Administrator",
  "module": "Bullwheel Core",
  "name": "Bullwheel Settings",
