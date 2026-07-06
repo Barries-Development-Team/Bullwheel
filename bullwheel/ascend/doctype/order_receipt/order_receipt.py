@@ -51,7 +51,7 @@ class OrderReceipt(Document):
 			
 			# Determine if Product exists for the scanned item.
 
-			product_query = ('SELECT [Store UPC] as store_sku, UPC as upc, Description as description, Cost as cost '
+			product_query = ('SELECT [Store UPC] as store_sku, UPC as upc, Description as description, EstCost as cost '
 				'FROM Products '
 				'WHERE UPC = %s OR [Store UPC] = %s OR MfgrPartNo = %s'
 			)
