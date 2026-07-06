@@ -2,7 +2,6 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "PRICE-.{pricing_type}.-.{product}.-.###",
  "creation": "2026-07-06 10:19:09.571439",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -16,7 +15,8 @@
    "fieldname": "product",
    "fieldtype": "Link",
    "label": "Product",
-   "options": "Ascend Product"
+   "options": "Ascend Product",
+   "set_only_once": 1
   },
   {
    "fieldname": "price",
@@ -24,21 +24,22 @@
    "label": "Price"
   },
   {
-   "default": "Swap Price",
+   "default": "Ski Swap Price",
    "fieldname": "pricing_type",
    "fieldtype": "Select",
    "label": "Pricing Type",
-   "options": "Swap Price\nOnline Price"
+   "options": "Ski Swap Price\nOnline Listing Price",
+   "set_only_once": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-06 10:42:24.002571",
+ "modified": "2026-07-06 13:30:45.523787",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Product Price",
- "naming_rule": "Expression",
+ "naming_rule": "By script",
  "owner": "Administrator",
  "permissions": [
   {

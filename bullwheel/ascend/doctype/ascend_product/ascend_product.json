@@ -5,17 +5,17 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "product_details_section",
   "description",
+  "product_details_section",
   "keyword",
   "category",
   "quantity",
   "column_break_czad",
   "brand",
-  "color",
-  "size",
-  "style_number",
   "style_name",
+  "size",
+  "color",
+  "column_break_bhbt",
   "gender",
   "season",
   "year",
@@ -30,6 +30,7 @@
   "store_sku",
   "upc",
   "manufacturers_part_number",
+  "style_number",
   "column_break_xrdr",
   "id"
  ],
@@ -124,7 +125,7 @@
   {
    "fieldname": "style_name",
    "fieldtype": "Data",
-   "label": "Style Name",
+   "label": "Style (Model) Name",
    "read_only": 1
   },
   {
@@ -195,6 +196,10 @@
   {
    "fieldname": "column_break_xrdr",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_bhbt",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
@@ -202,7 +207,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-06 10:18:25.613431",
+ "modified": "2026-07-06 13:46:09.891600",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
