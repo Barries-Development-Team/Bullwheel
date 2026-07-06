@@ -1,16 +1,25 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "UUID",
+ "autoname": "SKI-BIND-.{ski}.-.{binding_brand_and_model}.-.####",
  "creation": "2026-06-20 16:01:21.800679",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "ski",
+  "description",
+  "column_break_lyjk",
+  "brand",
+  "model",
+  "ski_length",
+  "column_break_vxhy",
+  "release_year",
+  "gender",
+  "section_break_crtx",
   "binding_brand_and_model",
   "din_range",
   "column_break_neng",
-  "used",
+  "condition",
   "top_condition",
   "base_condition",
   "additional_ski_information_section",
@@ -37,7 +46,7 @@
   {
    "fieldname": "din_range",
    "fieldtype": "Data",
-   "label": "DIN Range"
+   "label": "Max DIN"
   },
   {
    "fieldname": "additional_ski_information_section",
@@ -59,32 +68,87 @@
    "fieldtype": "Column Break"
   },
   {
-   "default": "0",
-   "fieldname": "used",
-   "fieldtype": "Check",
-   "label": "Used"
-  },
-  {
-   "depends_on": "eval:doc.used",
+   "depends_on": "eval:doc.condition == \"Used\"",
    "fieldname": "top_condition",
    "fieldtype": "Int",
    "label": "Top Condition"
   },
   {
-   "depends_on": "eval:doc.used",
+   "depends_on": "eval:doc.condition == \"Used\"",
    "fieldname": "base_condition",
    "fieldtype": "Int",
    "label": "Base Condition"
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "Brand",
+   "read_only": 1
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "Model",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_crtx",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ski_length",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "Ski Length",
+   "read_only": 1
+  },
+  {
+   "default": "New",
+   "fieldname": "condition",
+   "fieldtype": "Select",
+   "label": "Condition",
+   "options": "New\nUsed"
+  },
+  {
+   "fieldname": "release_year",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "Release Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gender",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "Gender",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_lyjk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_vxhy",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-20 16:51:26.366771",
+ "modified": "2026-07-06 15:57:22.351509",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ski with Bindings",
- "naming_rule": "UUID",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {
