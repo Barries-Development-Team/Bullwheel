@@ -23,11 +23,15 @@
   "price",
   "estimated_cost",
   "average_cost",
+  "column_break_hjtk",
+  "swap_price",
+  "online_price",
   "ids_and_barcodes_section",
-  "id",
   "store_sku",
   "upc",
-  "manufacturers_part_number"
+  "manufacturers_part_number",
+  "column_break_xrdr",
+  "id"
  ],
  "fields": [
   {
@@ -63,7 +67,7 @@
   {
    "fieldname": "price",
    "fieldtype": "Currency",
-   "label": "Price",
+   "label": "MSRP",
    "read_only": 1
   },
   {
@@ -171,6 +175,26 @@
    "label": "Ascend Database ID",
    "read_only": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "column_break_hjtk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "swap_price",
+   "fieldtype": "Currency",
+   "is_virtual": 1,
+   "label": "Swap Price"
+  },
+  {
+   "fieldname": "online_price",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "Online Price"
+  },
+  {
+   "fieldname": "column_break_xrdr",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
@@ -178,7 +202,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-03 15:58:29.693217",
+ "modified": "2026-07-06 10:18:25.613431",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
