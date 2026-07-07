@@ -256,6 +256,18 @@ These conventions were explicitly requested by Carter and should be maintained g
 
 ---
 
+## Performance Considerations: frappe.call vs frm.call
+
+For performance-sensitive operations (e.g., rapid scanning of items into a table):
+
+- **Prefer `frappe.call`** with whitelisted static methods over `frm.call` with document methods
+- **Why:** `frm.call` requires instantiating a document on the server (costly); `frappe.call` to a static method avoids this overhead
+- **Implementation:** Create required server-side functions as static, whitelisted methods. Pass needed values as client-side arguments instead of retrieving them from the document instance on the server
+
+This pattern significantly reduces latency for high-frequency operations.
+
+---
+
 ## Label Printing (Zebra / ZPL)
 
 The **Label Printing** module prints to Zebra printers using **raw ZPL over a TCP socket** — no driver, spooler, or CUPS on the Bullwheel side. There is **no extra dependency**: the transport is Python's stdlib `socket`. Zebra printers listen on port **9100** and execute whatever ZPL bytes arrive.
