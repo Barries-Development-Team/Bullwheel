@@ -79,6 +79,7 @@
   {
    "fieldname": "upc",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "UPC (or custom barcode #)"
   },
   {
@@ -161,7 +162,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-07 16:46:13.073216",
+ "modified": "2026-07-07 16:47:08.442529",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",
