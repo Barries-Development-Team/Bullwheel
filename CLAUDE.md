@@ -1,7 +1,7 @@
 # Agent Context File
 # Project: Barrie's "Bullwheel" App
 # Generated from development conversation with Carter
-# Date: 2026-05-26
+# Updated: July 7, 2026
 
 ---
 
