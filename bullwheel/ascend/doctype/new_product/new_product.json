@@ -95,7 +95,7 @@
   {
    "fieldname": "style_name",
    "fieldtype": "Data",
-   "label": "Style Name"
+   "label": "Style Name (Model)"
   },
   {
    "fieldname": "style_number",
@@ -191,7 +191,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-07 17:06:12.233779",
+ "modified": "2026-07-07 17:08:11.450433",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",
