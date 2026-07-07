@@ -28,6 +28,7 @@
    "label": "Purchase Order (PO)",
    "placeholder": "e.g. Specialized 0626678",
    "reqd": 1,
+   "set_only_once": 1,
    "unique": 1
   },
   {
@@ -36,7 +37,8 @@
    "in_list_view": 1,
    "label": "Vendor",
    "options": "Vendor",
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "fieldname": "order_items",
@@ -106,8 +108,8 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-03 10:52:26.515672",
- "modified_by": "carterluker13@gmail.com",
+ "modified": "2026-07-07 12:56:31.849065",
+ "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
  "naming_rule": "By fieldname",
