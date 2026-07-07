@@ -8,18 +8,21 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "product_details_section",
+  "description_section",
   "description",
   "category",
+  "column_break_xvvt",
+  "description_template",
+  "product_details_section",
   "brand",
   "style_name",
-  "style_number",
   "color",
   "size",
-  "year",
   "gender",
-  "season",
   "column_break_swll",
+  "year",
+  "season",
+  "column_break_xrag",
   "cost",
   "msrp",
   "case",
@@ -29,6 +32,8 @@
   "section_break_reim",
   "vpn",
   "upc",
+  "column_break_qcum",
+  "style_number",
   "mpn"
  ],
  "fields": [
@@ -156,13 +161,37 @@
    "fieldname": "brand",
    "fieldtype": "Data",
    "label": "Brand"
+  },
+  {
+   "fieldname": "description_section",
+   "fieldtype": "Section Break",
+   "label": "Description"
+  },
+  {
+   "default": "None",
+   "fieldname": "description_template",
+   "fieldtype": "Select",
+   "label": "Description Template",
+   "options": "None"
+  },
+  {
+   "fieldname": "column_break_xvvt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_xrag",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_qcum",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-07 16:47:08.442529",
+ "modified": "2026-07-07 17:06:12.233779",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",
