@@ -77,7 +77,7 @@ def introspect_schema(context, table_name, server_name=None, suggest=False, prim
 					"# the primary key column before using this config, e.g.:\n"
 					'#   "name": {"sql_column": "ID", "fieldtype": "Data", "display": "hidden", "searchable": False},\n'
 				)
-			click.echo(_format_suggested_config(suggest_schema_config(schema, primary_key_column)))
+			click.echo(_format_suggested_config(suggest_schema_config(schema, table_name, primary_key_column)))
 	finally:
 		frappe.destroy()
 
