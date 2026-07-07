@@ -22,7 +22,10 @@ frappe.ui.form.on("Order Receipt", {
 				$(input).val('');
 				frm.doc.add_item = '';
 
-				frm.call('scan_item', {id: scanned_value}).then((response) => {
+				frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.scan_item', {
+					id: scanned_value,
+					vendor: frm.doc.vendor
+				}).then((response) => {
 					const [status, record] = response.message || [];
 
 					if (status === 'vpn found') {
