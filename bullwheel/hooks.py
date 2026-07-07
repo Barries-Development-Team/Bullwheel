@@ -28,7 +28,13 @@ app_license = "unlicense"
 # ------------------
 
 fixtures = [
-    "Zebra Printer Label"
+    "Zebra Printer Label",
+    """{
+        'dt': 'Workspace',
+        'filters': [
+            ['app', '=', 'bullwheel'],
+        ]
+    }"""
 ]
 
 # Includes in <head>

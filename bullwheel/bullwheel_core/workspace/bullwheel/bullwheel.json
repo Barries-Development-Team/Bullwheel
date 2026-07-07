@@ -1,0 +1,62 @@
+{
+ "app": "bullwheel",
+ "charts": [],
+ "content": "[{\"id\":\"WSejTEWdtA\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Bullwheel Home</span>\",\"col\":12}},{\"id\":\"ixVcnouGER\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Bullwheel Settings\",\"col\":3}},{\"id\":\"PERX2BPZto\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"SQL Server Configurations\",\"col\":3}},{\"id\":\"DaF793D83I\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"UCdj_lem8U\",\"type\":\"paragraph\",\"data\":{\"text\":\"Print Settings\",\"col\":12}},{\"id\":\"3jcryreTbG\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zebra Printer Label Designs\",\"col\":3}},{\"id\":\"GAN-Z6QNrd\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Label Printers\",\"col\":3}}]",
+ "creation": "2026-07-07 12:10:44.742661",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "ship-wheel",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Bullwheel",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-07-07 12:32:48.220243",
+ "modified_by": "Administrator",
+ "module": "Bullwheel Core",
+ "name": "Bullwheel",
+ "number_cards": [],
+ "owner": "Administrator",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Bullwheel Settings",
+   "link_to": "Bullwheel Settings",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "SQL Server Configurations",
+   "link_to": "SQL Server",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Zebra Printer Label Designs",
+   "link_to": "Zebra Printer Label",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Label Printers",
+   "link_to": "Label Printer",
+   "stats_filter": "[]",
+   "type": "DocType"
+  }
+ ],
+ "title": "Bullwheel",
+ "type": "Workspace"
+}
