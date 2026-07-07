@@ -8,9 +8,6 @@ from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
 from bullwheel.ascend.doctype.vendor.vendor import Vendor
 
-# FOR DEBUGGING
-from time import perf_counter
-
 
 class OrderReceipt(Document):
 	pass
