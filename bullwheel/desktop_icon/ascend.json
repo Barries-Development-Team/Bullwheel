@@ -1,0 +1,21 @@
+{
+ "app": "bullwheel",
+ "bg_color": "blue",
+ "creation": "2026-07-07 12:20:38.607536",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_type": "Link",
+ "idx": 0,
+ "label": "Ascend",
+ "link_to": "Ascend",
+ "link_type": "Workspace Sidebar",
+ "modified": "2026-07-08 13:43:20.688123",
+ "modified_by": "Administrator",
+ "name": "Ascend",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "sidebar": "Ascend",
+ "standard": 1
+}

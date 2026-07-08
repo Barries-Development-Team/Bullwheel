@@ -1,0 +1,101 @@
+{
+ "app": "bullwheel",
+ "creation": "2026-07-07 12:20:38.586085",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "idx": 1,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "mountain-snow",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Ascend Home",
+   "link_to": "Ascend",
+   "link_type": "Workspace",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "box",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Ascend Product",
+   "link_to": "Ascend Product",
+   "link_type": "DocType",
+   "navigate_to_tab": "",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "list-alt",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Ski with Bindings",
+   "link_to": "Ski with Bindings",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "folder-tree",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Product Category",
+   "link_to": "Product Category",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "clipboard-list",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Orders",
+   "link_to": "Order Receipt",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "store",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Vendors",
+   "link_to": "Vendor",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "boxes",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Vendor Products",
+   "link_to": "Vendor Product",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-07-08 13:44:21.466573",
+ "modified_by": "Administrator",
+ "module": "Ascend",
+ "name": "Ascend",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "Ascend"
+}

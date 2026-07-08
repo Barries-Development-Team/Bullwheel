@@ -1,0 +1,41 @@
+{
+ "app": "bullwheel",
+ "creation": "2026-07-07 12:10:44.770983",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "header_icon": "ship-wheel",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "home",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Bullwheel Home",
+   "link_to": "Bullwheel",
+   "link_type": "Workspace",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "ship-wheel",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Bullwheel Settings",
+   "link_to": "Bullwheel Settings",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-07-08 13:44:09.209678",
+ "modified_by": "Administrator",
+ "module": "Bullwheel Core",
+ "name": "Bullwheel",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "Bullwheel"
+}

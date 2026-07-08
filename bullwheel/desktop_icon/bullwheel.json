@@ -1,0 +1,20 @@
+{
+ "app": "bullwheel",
+ "bg_color": "gray",
+ "creation": "2026-07-07 12:10:44.821318",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_type": "Link",
+ "idx": 0,
+ "label": "Bullwheel",
+ "link_to": "Bullwheel",
+ "link_type": "Workspace Sidebar",
+ "modified": "2026-07-08 13:43:28.311938",
+ "modified_by": "Administrator",
+ "name": "Bullwheel",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "standard": 1
+}
