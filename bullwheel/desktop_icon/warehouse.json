@@ -1,0 +1,20 @@
+{
+ "app": "bullwheel",
+ "bg_color": "gray",
+ "creation": "2026-07-07 11:25:44.260240",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_type": "Link",
+ "idx": 0,
+ "label": "Warehouse",
+ "link_to": "Warehouse",
+ "link_type": "Workspace Sidebar",
+ "modified": "2026-07-08 13:43:37.901384",
+ "modified_by": "Administrator",
+ "name": "Warehouse",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "standard": 1
+}
