@@ -1,7 +1,7 @@
 {
  "app": "bullwheel",
  "charts": [],
- "content": "[]",
+ "content": "[{\"id\":\"6R6TFUyWAV\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Welcome to the Ascend workspace</span>\",\"col\":12}},{\"id\":\"AvJHpVfhEW\",\"type\":\"paragraph\",\"data\":{\"text\":\"Test\",\"col\":12}}]",
  "creation": "2026-07-07 12:20:38.566411",
  "custom_blocks": [],
  "docstatus": 0,
@@ -14,7 +14,7 @@
  "label": "Ascend",
  "link_type": "DocType",
  "links": [],
- "modified": "2026-07-07 12:33:29.063659",
+ "modified": "2026-07-08 12:56:35.219192",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend",
