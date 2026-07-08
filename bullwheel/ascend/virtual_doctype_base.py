@@ -370,7 +370,7 @@ class AbstractVirtualDocType(Document):
 		return [to_document_dict(record) for record in records]
 	
 	@classmethod
-	def get_count(cls, doctype: str, filters: list, fields: list, distinct, limit, save_user_settings, strict, or_filters: list = [], **args):
+	def get_count(cls, doctype: str, filters: list, fields: list, distinct, save_user_settings, strict, or_filters: list = [], limit: int = None, **args):
 		query_clauses = []
 		values = []
 
