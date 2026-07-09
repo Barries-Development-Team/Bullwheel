@@ -298,7 +298,7 @@ class AbstractVirtualDocType(Document):
 				or_filters.append(
 					(None, field, '=', self.name)
 				)
-			query_clauses.append(self._build_where_clause(or_filters=or_filters))
+			query_clauses.append(self._build_where_clause(values=values, or_filters=or_filters))
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(

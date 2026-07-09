@@ -99,7 +99,9 @@ class AscendProduct(AbstractVirtualDocType):
 		return frappe.db.get_value('Product Price', f'PRICE-ONLINE-{self.name}', 'price')
 	
 	def load_from_db(self, alt_name_resolution_fields = ['upc']):
-		"""Override of parent method to support loading from UPC, in addition to SKU."""
+		"""Override to support Product lookup by UPC in addition to Store SKU (canonical name).
+		Enables Data Import users to provide either identifier; the import resolves UPC to Store SKU."""
+
 		return super().load_from_db(alt_name_resolution_fields)
 	
 	@classmethod
