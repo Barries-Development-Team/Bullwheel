@@ -58,11 +58,11 @@ frappe.ui.form.on('Warehouse Location', {
 				frm.doc.scan_here = '';
 
 				frappe.call({
-					method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_product_dict',
-					args: {id: scanned_value, type: 'summary'},
+					method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_values',
+					args: {name: scanned_value, fields: ['name', 'description', 'upc']},
 					callback(response) {
 						const product = response.message;
-						// get_product_dict returns the product record (truthy object)
+						// get_values returns the product record (truthy object)
 						// when found, or null when no product matches the scan.
 						if (!product) {
 							frappe.show_alert({
@@ -74,7 +74,7 @@ frappe.ui.form.on('Warehouse Location', {
 
 						// The Link field stores the Ascend Product's name (the ID
 						// column), not the scanned barcode.
-						const store_upc = product["Store UPC"];
+						const store_upc = product.name;
 						const existing_row = (frm.doc.location_inventory_quantities || []).find(
 							row => row.product === store_upc
 						);
@@ -85,14 +85,14 @@ frappe.ui.form.on('Warehouse Location', {
 							frm.add_child('location_inventory_quantities', {
 								// Preview values for description and upc will be replaced after save by virtual field implementation.
 								product: store_upc,
-								description: product["Description"],
-								upc: product["UPC"],
+								description: product.description,
+								upc: product.upc,
 								quantity: 1
 							});
 						}
 						frm.refresh_field('location_inventory_quantities');
 						frappe.show_alert({
-							message: `Added: ${frappe.utils.escape_html(product.Description || product["Store UPC"])}`,
+							message: `Added: ${frappe.utils.escape_html(product.description || stored_upc)}`,
 							indicator: 'green'
 						});
 					}

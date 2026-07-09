@@ -13,7 +13,9 @@ are all derived from it.
 See bullwheel/ascend/VIRTUAL_DOCTYPE_DEVELOPMENT.md for the full workflow.
 """
 
+import json
 import frappe
+
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType, to_document_dict
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
@@ -95,29 +97,34 @@ class AscendProduct(AbstractVirtualDocType):
 	@property
 	def online_price(self):
 		return frappe.db.get_value('Product Price', f'PRICE-ONLINE-{self.name}', 'price')
+	
+	@classmethod
+	def get_values(cls, name, fields: list) -> frappe._dict | None:
+		"""Override of parent get_values method to support either SKUs and UPCs when passed as the name."""
+		query_clauses = []
+		# SELECT
+		query_clauses.append(cls._build_select_clause(fields))
+		# FROM
+		query_clauses.append(f'FROM {cls.TABLE_NAME}')
+		# JOIN
+		if cls.JOIN_CONFIG is not None:
+			query_clauses.append(cls._build_join_clause())
+		# WHERE
+		query_clauses.append(f'WHERE [Store UPC] = %s OR UPC = %s')
+
+		with MSSQLDatabase(get_default_ascend_database()) as db:
+			records = db.sql(
+				query=' '.join(query_clauses),
+				values=[name, name],
+				as_dict=True
+			)
+
+		return to_document_dict(records[0]) if records else None
 
 
 @frappe.whitelist()
-def get_product_dict(id: str, type: str = 'full') -> dict | None:
-	"""Look up a single product by its Store UPC or UPC. Returns the product
-	# record as a dict, or None when no matching product exists so callers can
-	# distinguish "found" from "not found" without catching an exception.
-	# Optionally, using 'type' you can select to return the full dict or just a summary.
-	# the summary includes only the Description, Ascend SKU, and UPC."""
-
-	if type == 'full':
-		query = 'SELECT * FROM Products WHERE [Store UPC] = %s OR UPC = %s'
-	elif type == 'summary':
-		query = 'SELECT Description, [Store UPC], UPC FROM Products WHERE [Store UPC] = %s OR UPC = %s'
-	else:
-		raise ValueError("Type options are \'full\' and \'summary\'.")
-
-	with MSSQLDatabase(get_default_ascend_database()) as ascend:
-		result = ascend.sql(
-			query=query,
-			values=(id, id),
-			as_dict=True
-		)
-	if not result:
-		return None
-	return to_document_dict(result[0])
+def get_values(name: str, fields) -> frappe._dict | None:
+	"""Helper function to call the get_values method of AscendProduct class."""
+	if type(fields) is str:
+		fields = json.loads(fields)
+	return AscendProduct.get_values(name, fields)
