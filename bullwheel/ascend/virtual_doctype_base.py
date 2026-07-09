@@ -57,6 +57,9 @@ class AbstractVirtualDocType(Document):
 	                             		# SCHEMA_CONFIG['name'] as the SQL for `name` in SELECT, WHERE, filters, and
 	                             		# ORDER BY (and makes the SCHEMA_CONFIG 'name' entry optional).
 	SHOW_FIELD_WARNINGS: bool = True	# Display a warning in the console if an expected field has no mapping in SCHEMA_CONFIG
+	ALT_NAME_RESOLUTION_FIELDS: list = None	# Optional list of additional SCHEMA_CONFIG fieldnames a record can also be
+	                             		# identified by, in addition to 'name' (e.g. ['upc'] lets a Store-SKU-keyed
+	                             		# doctype also be looked up by UPC).
 
 
 	# ─── Helper Methods  ──────────────────────────────────────────────────────
@@ -201,30 +204,37 @@ class AbstractVirtualDocType(Document):
 		return ' '.join(join_statements)
 	
 	@classmethod
-	def _build_where_clause(cls, filters: list, or_filters: list = [], values: list = []) -> str:
-		"""Build the WHERE clause from a list of filters. Filter values are appended to the passed values list."""
+	def _condition_sql(cls, field: str, operator: str, value, values: list) -> str:
+		"""Build a single SQL condition fragment for one filter tuple, appending its bound value(s)
+		to `values`. A condition on 'name' is widened to an OR across 'name' plus every field in
+		ALT_NAME_RESOLUTION_FIELDS, so a record can be identified by those fields too."""
+		if field == 'name' and cls.ALT_NAME_RESOLUTION_FIELDS:
+			sub_conditions = []
+			for alt_field in ('name', *cls.ALT_NAME_RESOLUTION_FIELDS):
+				sub_conditions.append(f'{cls._column_for(alt_field)} {operator} %s')
+				values.append(value)
+			return '(' + ' OR '.join(sub_conditions) + ')'
 
+		values.append(value)
+		return f'{cls._column_for(field)} {operator} %s'
+
+	@classmethod
+	def _build_where_clause(cls, values: list, filters: list = [], or_filters: list = []) -> str:
+		"""Build the WHERE clause from a list of filters. Filter values are appended to the passed
+		values list. Conditions on 'name' are automatically widened per ALT_NAME_RESOLUTION_FIELDS."""
 		where_statements = []
 
-		# AND Filters: (Condition 1 AND Condition 2 AND ... AND Condition n)
-		and_statements = []
-		for _, field, operator, value in filters: # Tuple unpacking supports both list-formatted and tuple-formatted filters.
-			and_statements.append(f'{cls._column_for(field)} {operator} %s')
-			values.append(value) # Appends the value to the list of values passed as an argument.
-		if len(and_statements) > 0:
+		and_statements = [cls._condition_sql(field, operator, value, values) for _, field, operator, value in filters]
+		if and_statements:
 			where_statements.append('(' + ' AND '.join(and_statements) + ')')
 
-		# OR Filters: (Condition 1 OR ... OR Condition n)
-		or_statements = []
-		for _, field, operator, value in or_filters:
-			or_statements.append(f'{cls._column_for(field)} {operator} %s')
-			values.append(value)
-		if len(or_statements) > 0:
+		or_statements = [cls._condition_sql(field, operator, value, values) for _, field, operator, value in or_filters]
+		if or_statements:
 			where_statements.append('(' + ' OR '.join(or_statements) + ')')
 
-		if len(where_statements) <= 0:
-			return 'WHERE 1=1' # Equivalent to having no where clause at all.
-		
+		if not where_statements:
+			return 'WHERE 1=1'
+
 		return 'WHERE ' + ' AND '.join(where_statements)
 	
 	@classmethod
@@ -278,24 +288,21 @@ class AbstractVirtualDocType(Document):
 	# ─── Read Operations ──────────────────────────────────────────────────────
 
 
-	def load_from_db(self):
+	def load_from_db(self) -> None:
+		"""Load this document by primary key. When ALT_NAME_RESOLUTION_FIELDS is set, self.name is
+		also matched against those additional columns (e.g. UPC as well as Store SKU for Ascend
+		Product), so a Link field can be populated with either identifier."""
 		query_clauses = []
-		# SELECT
+		values = []
+
 		query_clauses.append(self._build_select_clause())
-		# FROM
 		query_clauses.append(f'FROM {self.TABLE_NAME}')
-		# JOIN
 		if self.JOIN_CONFIG is not None:
 			query_clauses.append(self._build_join_clause())
-		# WHERE
-		query_clauses.append(f'WHERE {self._column_for('name')} = %s')
+		query_clauses.append(self._build_where_clause(values=values, filters=[(None, 'name', '=', self.name)]))
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
-			records = db.sql(
-				query=' '.join(query_clauses),
-				values=[self.name],
-				as_dict=True
-			)
+			records = db.sql(query=' '.join(query_clauses), values=values, as_dict=True)
 
 		if not records:
 			raise frappe.DoesNotExistError(f"{self.doctype} '{self.name}' not found.")
@@ -311,6 +318,7 @@ class AbstractVirtualDocType(Document):
 		Intended for cheap cross-references (e.g. a child table's virtual fields mirroring a
 		few columns of the linked record) where loading the full document is unnecessary."""
 		query_clauses = []
+		values=[]
 		# SELECT
 		query_clauses.append(cls._build_select_clause(fields))
 		# FROM
@@ -319,27 +327,65 @@ class AbstractVirtualDocType(Document):
 		if cls.JOIN_CONFIG is not None:
 			query_clauses.append(cls._build_join_clause())
 		# WHERE
-		query_clauses.append(f'WHERE {cls._column_for("name")} = %s')
+		query_clauses.append(cls._build_where_clause(values=values, filters=[(None, 'name', '=', name)]))
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(
 				query=' '.join(query_clauses),
-				values=[name],
+				values=values,
 				as_dict=True
 			)
 
 		return to_document_dict(records[0]) if records else None
 
 	@classmethod
+	def _search_values_for_name_condition(cls, filters: list, or_filters: list) -> set | None:
+		"""Collect every value used in a condition on 'name' across `filters`/`or_filters`. Returns
+		None when there is no such condition, so callers can skip the echo-back step entirely."""
+		values = set()
+		for _, field, operator, value in [*filters, *or_filters]:
+			if field != 'name':
+				continue
+			if operator.lower() == 'in':
+				values.update(str(v) for v in value)
+			else:
+				values.add(str(value))
+		return values or None
+
+	@classmethod
+	def _echo_matched_identifier(cls, records: list, search_values: set) -> list:
+		"""Rewrite each record's 'name' to whichever of (name, *ALT_NAME_RESOLUTION_FIELDS) actually
+		equals one of the searched values, instead of always the canonical primary key. Frappe's
+		batched Link-existence check (Column.validate_values) compares returned names against the
+		raw input strings via set membership, so a record found only via an alt field (e.g. UPC)
+		must echo that value back as 'name' or it is reported as missing even though a match was
+		found."""
+		candidate_fields = ['name', *cls.ALT_NAME_RESOLUTION_FIELDS]
+		echoed = []
+		for record in records:
+			record = dict(record)
+			record['name'] = next(
+				(record[field] for field in candidate_fields if str(record.get(field)) in search_values),
+				record.get('name'),
+			)
+			echoed.append(record)
+		return echoed
+
+	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, or_filters: list = [], as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
-		
+
 		cls._validate_and_clean_fields(fields, doctype)
+
+		search_values = cls._search_values_for_name_condition(filters, or_filters) if cls.ALT_NAME_RESOLUTION_FIELDS else None
+		select_fields = fields
+		if search_values:
+			select_fields = list(dict.fromkeys([*fields, 'name', *cls.ALT_NAME_RESOLUTION_FIELDS]))
 
 		query_clauses = []
 		values = []
 
 		# SELECT
-		query_clauses.append(cls._build_select_clause(fields))
+		query_clauses.append(cls._build_select_clause(select_fields))
 		# FROM
 		query_clauses.append(f'FROM {cls.TABLE_NAME}')
 		# JOIN
@@ -347,7 +393,7 @@ class AbstractVirtualDocType(Document):
 			query_clauses.append(cls._build_join_clause())
 		# WHERE
 		if len(filters) > 0 or len(or_filters) > 0:
-			query_clauses.append(cls._build_where_clause(filters, or_filters, values)) # Values appended to list.
+			query_clauses.append(cls._build_where_clause(values=values, filters=filters, or_filters=or_filters))
 		# ORDER BY (required before OFFSET/FETCH)
 		query_clauses.append(cls._build_order_by_clause(order_by) if order_by else 'ORDER BY (SELECT NULL)')
 		# OFFSET/FETCH
@@ -364,8 +410,13 @@ class AbstractVirtualDocType(Document):
 		if has_duplicates(records):
 			print_console_warning(f"Ascend Virtual Doc Warning: Duplicate results found in {doctype} query. JOIN_CONFIG for {doctype} may be incorrect.")
 
+		if search_values:
+			records = cls._echo_matched_identifier(records, search_values)
+			if select_fields != fields:
+				records = [{field: record.get(field) for field in fields} for record in records]
+
 		if as_list:
-			return [[record.get(field) for field in fields] for record in records] # Order of fields in returned list enforced by field parameter.
+			return [[record.get(field) for field in fields] for record in records]
 
 		return [to_document_dict(record) for record in records]
 	

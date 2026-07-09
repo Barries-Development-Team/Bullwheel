@@ -224,6 +224,23 @@ Unqualified columns are validated against the primary table; qualified
 
 ---
 
+## Step 3c — Alternative name resolution fields (optional)
+
+If you find it ideal to be able to load a record using a field value other than the assigned `name` field, then you can wrap the framework's `load_from_db` method to pass the additional fields as arguments. The additional fields MUST be unique in Ascend's database.
+
+For example, for `Ascend Products`, I want to be able to load using UPC in addition to the Store SKU.
+
+```
+class AscendProduct(AbstractVirtualDocType):
+
+  . . .
+
+  def load_from_db(self, alt_name_resolution_fields = ['upc']):
+		"""Override of parent method to support loading from UPC, in addition to SKU."""
+		return super().load_from_db(alt_name_resolution_fields)
+    
+```
+
 ## Step 4 — Create the DocType JSON
 
 Create the DocType in the editor (`is_virtual = 1`), or scaffold its `fields`
