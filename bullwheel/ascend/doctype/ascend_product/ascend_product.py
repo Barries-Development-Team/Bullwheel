@@ -25,6 +25,7 @@ class AscendProduct(AbstractVirtualDocType):
 	"""Read-only virtual DocType mapping the Ascend RMS `Products` table."""
 
 	TABLE_NAME = "Products"
+	ALT_NAME_RESOLUTION_FIELDS = ['upc']
 
 	SCHEMA_CONFIG = {
 		'name': 'Products.[Store UPC]',
@@ -97,35 +98,6 @@ class AscendProduct(AbstractVirtualDocType):
 	@property
 	def online_price(self):
 		return frappe.db.get_value('Product Price', f'PRICE-ONLINE-{self.name}', 'price')
-	
-	def load_from_db(self, alt_name_resolution_fields = ['upc']):
-		"""Override to support Product lookup by UPC in addition to Store SKU (canonical name).
-		Enables Data Import users to provide either identifier; the import resolves UPC to Store SKU."""
-
-		return super().load_from_db(alt_name_resolution_fields)
-	
-	@classmethod
-	def get_values(cls, name, fields: list) -> frappe._dict | None:
-		"""Override of parent get_values method to support either SKUs and UPCs when passed as the name."""
-		query_clauses = []
-		# SELECT
-		query_clauses.append(cls._build_select_clause(fields))
-		# FROM
-		query_clauses.append(f'FROM {cls.TABLE_NAME}')
-		# JOIN
-		if cls.JOIN_CONFIG is not None:
-			query_clauses.append(cls._build_join_clause())
-		# WHERE
-		query_clauses.append(f'WHERE [Store UPC] = %s OR UPC = %s')
-
-		with MSSQLDatabase(get_default_ascend_database()) as db:
-			records = db.sql(
-				query=' '.join(query_clauses),
-				values=[name, name],
-				as_dict=True
-			)
-
-		return to_document_dict(records[0]) if records else None
 
 
 @frappe.whitelist()
