@@ -201,7 +201,7 @@ class AbstractVirtualDocType(Document):
 		return ' '.join(join_statements)
 	
 	@classmethod
-	def _build_where_clause(cls, filters: list, or_filters: list = [], values: list = []) -> str:
+	def _build_where_clause(cls, filters: list = [], or_filters: list = [], values: list = []) -> str:
 		"""Build the WHERE clause from a list of filters. Filter values are appended to the passed values list."""
 
 		where_statements = []
@@ -278,7 +278,7 @@ class AbstractVirtualDocType(Document):
 	# ─── Read Operations ──────────────────────────────────────────────────────
 
 
-	def load_from_db(self):
+	def load_from_db(self, alt_name_resolution_fields: list = None) -> None:
 		query_clauses = []
 		# SELECT
 		query_clauses.append(self._build_select_clause())
@@ -288,7 +288,12 @@ class AbstractVirtualDocType(Document):
 		if self.JOIN_CONFIG is not None:
 			query_clauses.append(self._build_join_clause())
 		# WHERE
-		query_clauses.append(f'WHERE {self._column_for('name')} = %s')
+		if alt_name_resolution_fields is None:
+			query_clauses.append(f'WHERE {self._column_for("name")} = %s')
+		else:
+			# Build a WHERE clause that checks for the name in any of the specified fields
+			
+			query_clauses.append(self._build_where_clause())
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(
