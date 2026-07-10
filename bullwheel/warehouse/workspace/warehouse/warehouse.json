@@ -1,9 +1,14 @@
 {
  "app": "bullwheel",
  "charts": [],
- "content": "[{\"id\":\"TPSYDXDUlp\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Warehouse Home</span>\",\"col\":12}},{\"id\":\"6dea3MhSOm\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Warehouse Location Tree\",\"col\":3}},{\"id\":\"Y5H0v9CeWJ\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Find Product\",\"col\":3}}]",
+ "content": "[{\"id\":\"TPSYDXDUlp\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Warehouse Home</span>\",\"col\":12}},{\"id\":\"HdI4zIbdj3\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Open Bay\",\"col\":12}},{\"id\":\"6dea3MhSOm\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Warehouse Location Tree\",\"col\":3}},{\"id\":\"Y5H0v9CeWJ\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Find Product\",\"col\":3}}]",
  "creation": "2026-07-07 11:25:44.131551",
- "custom_blocks": [],
+ "custom_blocks": [
+  {
+   "custom_block_name": "Open Bay",
+   "label": "Open Bay"
+  }
+ ],
  "docstatus": 0,
  "doctype": "Workspace",
  "hide_custom": 0,
@@ -14,7 +19,7 @@
  "label": "Warehouse",
  "link_type": "DocType",
  "links": [],
- "modified": "2026-07-07 12:09:40.849130",
+ "modified": "2026-07-10 13:28:42.977534",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Warehouse",
