@@ -1,0 +1,223 @@
+# Copyright (c) 2026 Barrie's Ski and Sports
+# All Rights Reserved
+# Unauthorized copying or distribution of this file is prohibited.
+
+"""Validation for Virtual DocType SCHEMA_CONFIGs.
+
+All schema-validation concerns for the Virtual DocType framework live here, keeping
+`virtual_doctype_base.py` purely runtime. `validate_schema_config` checks a single
+controller's config for structural correctness (and, optionally, against introspected
+SQL Server columns). `validate_all_virtual_doctype_schemas` runs it for every virtual
+DocType in the site and is wired to the `before_migrate` hook, so a misconfigured
+controller blocks `bench migrate` with the exact problem named instead of failing at
+query time with invalid SQL.
+"""
+
+import re
+
+import frappe
+from frappe.model import no_value_fields
+from frappe.model.base_document import get_controller
+
+from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
+from bullwheel.ascend.schema_introspection import introspect_table_schema, introspect_join_schemas
+from bullwheel.bullwheel_core import print_console_warning
+from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
+
+
+def bare_column(sql_column: str) -> str:
+	"""Extract the bare, lowercase column name from a SQL column reference for comparison.
+	Handles table-qualified references ('Products.ID', 'cat.Topic') and bracket-quoted
+	names ('[Store UPC]', '[Year]'). 'Products.[Store UPC]' -> 'store upc'."""
+	return sql_column.split('.')[-1].strip('[]').lower()
+
+
+def _known_table_qualifiers(doctype_class) -> set:
+	"""Table names and aliases a qualified column reference may legally use: the primary
+	TABLE_NAME plus every table/alias declared in JOIN_CONFIG."""
+	qualifiers = {doctype_class.TABLE_NAME}
+	for config in (doctype_class.JOIN_CONFIG or []):
+		if config.get('alias'):
+			qualifiers.add(config['alias'])
+		if config.get('table'):
+			qualifiers.add(config['table'])
+	return qualifiers
+
+
+def validate_schema_config(doctype_class, discovered_columns=None, additional_discovered_columns=None) -> bool:
+	"""Validate a virtual DocType class's SCHEMA_CONFIG for structural correctness.
+
+	Always checks that SCHEMA_CONFIG is not empty, that the primary key is defined
+	(either a non-null 'name' entry or a NAME_EXPRESSION), that all values are strings
+	or None, and that every ALT_NAME_RESOLUTION_FIELDS entry has a non-null mapping.
+	When NAME_EXPRESSION is set, its table/alias qualifiers are checked against
+	TABLE_NAME + JOIN_CONFIG so an undeclared join surfaces here instead of as an
+	opaque SQL bind error at query time.
+
+	When discovered_columns is provided (an iterable of SQL column names from the primary
+	table, e.g. from introspect_table_schema), confirms that unqualified column references
+	exist in that set. When additional_discovered_columns is provided (column names from
+	joined tables), confirms that table-qualified references (containing '.') resolve to a
+	known column. Qualified columns are skipped when additional_discovered_columns is not
+	provided. The 'name' entry is skipped from column-existence checks when NAME_EXPRESSION
+	is set, since an expression is not a plain column.
+
+	Returns True on success; raises ValueError describing the first problem found.
+	"""
+	class_name = doctype_class.__name__
+	schema_config = doctype_class.SCHEMA_CONFIG
+	name_expression = doctype_class.NAME_EXPRESSION
+
+	if not schema_config:
+		raise ValueError(f"{class_name}: SCHEMA_CONFIG is empty or None.")
+
+	# The primary key must be defined either as a NAME_EXPRESSION or a non-null 'name' entry.
+	if not name_expression and not schema_config.get('name'):
+		raise ValueError(
+			f"{class_name}: define the primary key via a non-null SCHEMA_CONFIG 'name' entry "
+			f"or by setting NAME_EXPRESSION."
+		)
+	if name_expression is not None and not isinstance(name_expression, str):
+		raise ValueError(
+			f"{class_name}: NAME_EXPRESSION must be a string SQL expression, got {name_expression!r}."
+		)
+
+	for fieldname, sql_column in schema_config.items():
+		if sql_column is not None and not isinstance(sql_column, str):
+			raise ValueError(
+				f"{class_name}: Field '{fieldname}' has an invalid value {sql_column!r}. "
+				f"Expected a string SQL column name or None."
+			)
+
+	# Every alternative name-resolution field must resolve to a real mapping, since
+	# _condition_sql widens 'name' filters across them without re-checking.
+	for alt_field in (doctype_class.ALT_NAME_RESOLUTION_FIELDS or []):
+		if not schema_config.get(alt_field):
+			raise ValueError(
+				f"{class_name}: ALT_NAME_RESOLUTION_FIELDS entry '{alt_field}' has no "
+				f"SCHEMA_CONFIG mapping."
+			)
+
+	# Guardrail: every table/alias a qualified sql_column references must be the primary table
+	# or declared in JOIN_CONFIG, otherwise the query fails at runtime with an unknown-name error.
+	known_qualifiers = _known_table_qualifiers(doctype_class)
+	for fieldname, sql_column in schema_config.items():
+		if sql_column and '.' in sql_column:
+			qualifier = sql_column.split('.')[0]
+			if qualifier not in known_qualifiers:
+				raise ValueError(
+					f"{class_name}: Field '{fieldname}' maps to '{sql_column}', but qualifier "
+					f"'{qualifier}' is neither TABLE_NAME nor a table/alias declared in JOIN_CONFIG."
+				)
+
+	# Guardrail: every table/alias a NAME_EXPRESSION qualifies with must be declared, otherwise the
+	# query throws a bind error at runtime. Strip bracket-quoted names and string literals first so
+	# their internal dots/text don't register as spurious qualifiers.
+	if name_expression:
+		scannable = re.sub(r"\[[^\]]*\]|'[^']*'", '', name_expression)
+		referenced = set(re.findall(r'([A-Za-z_][A-Za-z0-9_]*)\s*\.', scannable))
+		unknown = referenced - _known_table_qualifiers(doctype_class)
+		if unknown:
+			raise ValueError(
+				f"{class_name}: NAME_EXPRESSION references undeclared table/alias qualifier(s) "
+				f"{sorted(unknown)}. Add them to JOIN_CONFIG or qualify with the primary table "
+				f"'{doctype_class.TABLE_NAME}'."
+			)
+
+	if discovered_columns is not None or additional_discovered_columns is not None:
+		primary_columns = {bare_column(col) for col in discovered_columns} if discovered_columns else None
+		joined_columns = {bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
+
+		for fieldname, sql_column in schema_config.items():
+			if not sql_column:
+				continue
+			if fieldname == 'name' and name_expression:
+				continue  # An expression-backed primary key is not a plain column.
+			# Route by qualifier: a column qualified with the primary table (or unqualified)
+			# is checked against the primary schema; a column qualified with a JOIN table or
+			# alias is checked against the joined-table schema.
+			qualifier = sql_column.split('.')[0] if '.' in sql_column else None
+			bare = bare_column(sql_column)
+			if qualifier is not None and qualifier != doctype_class.TABLE_NAME:
+				if joined_columns is not None and bare not in joined_columns:
+					raise ValueError(
+						f"{class_name}: Field '{fieldname}' maps to joined column '{sql_column}', "
+						f"which was not found in the introspected joined-table schema."
+					)
+			else:
+				if primary_columns is not None and bare not in primary_columns:
+					raise ValueError(
+						f"{class_name}: Field '{fieldname}' maps to SQL column '{sql_column}', "
+						f"which was not found in the introspected primary table schema."
+					)
+
+	return True
+
+
+def _virtual_doctype_controllers() -> list:
+	"""Collect (doctype name, controller class) pairs for every virtual DocType in the site
+	whose controller inherits AbstractVirtualDocType."""
+	controllers = []
+	for doctype_name in frappe.get_all('DocType', filters={'is_virtual': 1}, pluck='name'):
+		try:
+			controller = get_controller(doctype_name)
+		except Exception:
+			continue  # Controllers from other apps (or broken imports) are not ours to validate.
+		if isinstance(controller, type) and issubclass(controller, AbstractVirtualDocType):
+			controllers.append((doctype_name, controller))
+	return controllers
+
+
+def _warn_unmapped_json_fields(doctype_name: str, controller) -> None:
+	"""Warn about DocType JSON fields with no SCHEMA_CONFIG mapping. These are the invalid-SQL
+	filters of the future: the desk lets users filter on any declared field, and an unmapped
+	one raises at query time. Layout and property-backed virtual fields are exempt."""
+	meta = frappe.get_meta(doctype_name)
+	for field in meta.fields:
+		if field.fieldtype in no_value_fields or field.get('is_virtual'):
+			continue
+		if controller.SCHEMA_CONFIG.get(field.fieldname) is None:
+			print_console_warning(
+				f"Virtual DocType Validation: field '{field.fieldname}' is declared on "
+				f"{doctype_name} but has no SCHEMA_CONFIG mapping in {controller.__name__} — "
+				f"filtering on it will raise an error."
+			)
+
+
+def _introspected_columns_for(controller, server_document) -> tuple:
+	"""Introspect the controller's primary table and joined tables from the live Ascend
+	database. Returns (primary column names, joined column names)."""
+	primary_schema = introspect_table_schema(server_document, controller.TABLE_NAME)
+	joined_schema = introspect_join_schemas(server_document, controller.JOIN_CONFIG)
+	return list(primary_schema.keys()), list(joined_schema.keys())
+
+
+def validate_all_virtual_doctype_schemas() -> None:
+	"""Validate every Bullwheel virtual DocType's SCHEMA_CONFIG. Wired to the before_migrate
+	hook: structural problems raise and block the migration, while an unreachable Ascend
+	database only downgrades the live column-existence pass to a console warning."""
+	controllers = _virtual_doctype_controllers()
+
+	for doctype_name, controller in controllers:
+		validate_schema_config(controller)
+		_warn_unmapped_json_fields(doctype_name, controller)
+
+	for doctype_name, controller in controllers:
+		try:
+			primary_columns, joined_columns = _introspected_columns_for(
+				controller, get_default_ascend_database()
+			)
+		except Exception as error:
+			print_console_warning(
+				f"Virtual DocType Validation: could not introspect the Ascend database for "
+				f"{doctype_name} ({error}); skipping live column checks."
+			)
+			continue
+		validate_schema_config(
+			controller,
+			discovered_columns=primary_columns,
+			additional_discovered_columns=joined_columns or None,
+		)
+
+	if controllers:
+		print(f"Virtual DocType Validation: {len(controllers)} SCHEMA_CONFIG(s) validated.")

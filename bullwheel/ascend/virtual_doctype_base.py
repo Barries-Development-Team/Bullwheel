@@ -40,11 +40,31 @@ def parse_parameter(parameter: str) -> list[str]:
 	"""Split a string on whitespace, but text inside backtick pairs is treated as a single token."""
 	return re.findall(r'(?:`[^`]*`|\S)+', parameter)
 
-def bare_column(sql_column: str) -> str:
-	"""Extract the bare, lowercase column name from a SQL column reference for comparison.
-	Handles table-qualified references ('Products.ID', 'cat.Topic') and bracket-quoted
-	names ('[Store UPC]', '[Year]'). 'Products.[Store UPC]' -> 'store upc'."""
-	return sql_column.split('.')[-1].strip('[]').lower()
+
+# Frappe meta-fields that desk features (tags, assignments, likes, sidebar counts) filter on
+# even though virtual DocTypes rarely map them. A filter on one of these is silently skipped
+# when unmapped; a filter on any other unmapped field raises. A SCHEMA_CONFIG mapping, when
+# present, always takes precedence over this list.
+IGNORED_STANDARD_FIELDS = frozenset({
+	'_user_tags', '_comments', '_assign', '_liked_by', '_seen',
+	'docstatus', 'idx', 'owner', 'modified_by', 'creation', 'modified',
+	'parent', 'parentfield', 'parenttype',
+})
+
+# Whitelist of filter operators and their SQL renderings. The 'is' operator ("is set" /
+# "not set" list-view filters) is handled separately since it renders as IS [NOT] NULL.
+OPERATOR_MAP = {
+	'=': '=',
+	'!=': '!=',
+	'<': '<',
+	'<=': '<=',
+	'>': '>',
+	'>=': '>=',
+	'like': 'LIKE',
+	'not like': 'NOT LIKE',
+	'in': 'IN',
+	'not in': 'NOT IN',
+}
 
 
 class AbstractVirtualDocType(Document):
@@ -74,116 +94,92 @@ class AbstractVirtualDocType(Document):
 		return cls.SCHEMA_CONFIG.get(field)
 
 	@classmethod
-	def _known_table_qualifiers(cls) -> set:
-		"""Table names and aliases a qualified column reference may legally use: the primary
-		TABLE_NAME plus every table/alias declared in JOIN_CONFIG."""
-		qualifiers = {cls.TABLE_NAME}
-		for config in (cls.JOIN_CONFIG or []):
-			if config.get('alias'):
-				qualifiers.add(config['alias'])
-			if config.get('table'):
-				qualifiers.add(config['table'])
-		return qualifiers
+	def _required_column_for(cls, field: str) -> str | None:
+		"""Resolve a filter fieldname to its SQL column, enforcing the unmapped-field policy:
+		Frappe's own meta-fields (tags, assignments, timestamps, ...) are skipped with a console
+		warning so stock desk features keep working, while any other unmapped field raises a
+		clear error instead of producing invalid SQL."""
+		sql_column = cls._column_for(field)
+		if sql_column is not None:
+			return sql_column
+		if field in IGNORED_STANDARD_FIELDS:
+			if cls.SHOW_FIELD_WARNINGS:
+				print_console_warning(
+					f"Ascend Virtual Doc Warning: Ignoring filter on standard field '{field}' — "
+					f"no mapping in {cls.__name__}.SCHEMA_CONFIG."
+				)
+			return None
+		frappe.throw(f"Cannot filter {cls.__name__} by '{field}': no SCHEMA_CONFIG mapping exists.")
 
 	@classmethod
-	def validate_schema_config(cls, discovered_columns=None, additional_discovered_columns=None) -> bool:
-		"""Validate this class's SCHEMA_CONFIG for structural correctness.
+	def _normalize_filter_conditions(cls, filters) -> list[tuple]:
+		"""Normalize every filter shape Frappe dispatches into uniform (field, operator, value)
+		triples. Accepts a dict ({field: value} or {field: (operator, value)}) or a list of
+		3-/4-element conditions ([field, operator, value] or [doctype, field, operator, value]).
+		Fieldnames are cleaned of backtick/table qualification so SCHEMA_CONFIG lookups always
+		see bare fieldnames."""
+		if not filters:
+			return []
 
-		Always checks that SCHEMA_CONFIG is not empty, that the primary key is defined
-		(either a non-null 'name' entry or a NAME_EXPRESSION), and that all values are
-		strings or None. When NAME_EXPRESSION is set, its table/alias qualifiers are
-		checked against TABLE_NAME + JOIN_CONFIG so an undeclared join surfaces here
-		instead of as an opaque SQL bind error at query time.
+		conditions = []
 
-		When discovered_columns is provided (an iterable of SQL column names from the primary
-		table, e.g. from introspect_table_schema), confirms that unqualified column references
-		exist in that set. When additional_discovered_columns is provided (column names from
-		joined tables), confirms that table-qualified references (containing '.') resolve to a
-		known column. Qualified columns are skipped when additional_discovered_columns is not
-		provided. The 'name' entry is skipped from column-existence checks when NAME_EXPRESSION
-		is set, since an expression is not a plain column.
-
-		Returns True on success; raises ValueError describing the first problem found.
-		"""
-		schema_config = cls.SCHEMA_CONFIG
-		name_expression = cls.NAME_EXPRESSION
-
-		if not schema_config:
-			raise ValueError(f"{cls.__name__}: SCHEMA_CONFIG is empty or None.")
-
-		# The primary key must be defined either as a NAME_EXPRESSION or a non-null 'name' entry.
-		if not name_expression and not schema_config.get('name'):
-			raise ValueError(
-				f"{cls.__name__}: define the primary key via a non-null SCHEMA_CONFIG 'name' entry "
-				f"or by setting NAME_EXPRESSION."
-			)
-		if name_expression is not None and not isinstance(name_expression, str):
-			raise ValueError(
-				f"{cls.__name__}: NAME_EXPRESSION must be a string SQL expression, got {name_expression!r}."
-			)
-
-		for fieldname, sql_column in schema_config.items():
-			if sql_column is not None and not isinstance(sql_column, str):
-				raise ValueError(
-					f"{cls.__name__}: Field '{fieldname}' has an invalid value {sql_column!r}. "
-					f"Expected a string SQL column name or None."
-				)
-
-		# Guardrail: every table/alias a NAME_EXPRESSION qualifies with must be declared, otherwise the
-		# query throws a bind error at runtime. Strip bracket-quoted names and string literals first so
-		# their internal dots/text don't register as spurious qualifiers.
-		if name_expression:
-			scannable = re.sub(r"\[[^\]]*\]|'[^']*'", '', name_expression)
-			referenced = set(re.findall(r'([A-Za-z_][A-Za-z0-9_]*)\s*\.', scannable))
-			unknown = referenced - cls._known_table_qualifiers()
-			if unknown:
-				raise ValueError(
-					f"{cls.__name__}: NAME_EXPRESSION references undeclared table/alias qualifier(s) "
-					f"{sorted(unknown)}. Add them to JOIN_CONFIG or qualify with the primary table "
-					f"'{cls.TABLE_NAME}'."
-				)
-
-		if discovered_columns is not None or additional_discovered_columns is not None:
-			primary_columns = {bare_column(col) for col in discovered_columns} if discovered_columns else None
-			joined_columns = {bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
-
-			for fieldname, sql_column in schema_config.items():
-				if not sql_column:
-					continue
-				if fieldname == 'name' and name_expression:
-					continue  # An expression-backed primary key is not a plain column.
-				is_table_qualified = '.' in sql_column
-				bare = bare_column(sql_column)
-				if is_table_qualified:
-					if joined_columns is not None and bare not in joined_columns:
-						raise ValueError(
-							f"{cls.__name__}: Field '{fieldname}' maps to joined column '{sql_column}', "
-							f"which was not found in the introspected joined-table schema."
-						)
+		if isinstance(filters, dict):
+			for field, value in filters.items():
+				if isinstance(value, (list, tuple)) and len(value) == 2 and isinstance(value[0], str):
+					operator, operand = value
 				else:
-					if primary_columns is not None and bare not in primary_columns:
-						raise ValueError(
-							f"{cls.__name__}: Field '{fieldname}' maps to SQL column '{sql_column}', "
-							f"which was not found in the introspected primary table schema."
-						)
+					operator, operand = '=', value
+				conditions.append((clean_fieldname(field), operator, operand))
+			return conditions
 
-		return True
+		for condition in filters:
+			if not isinstance(condition, (list, tuple)):
+				frappe.throw(f"Unsupported filter condition {condition!r}.")
+			if len(condition) == 3:
+				field, operator, value = condition
+			elif len(condition) == 4:
+				_doctype, field, operator, value = condition
+			else:
+				frappe.throw(f"Unsupported filter condition {condition!r}. Expected 3 or 4 elements.")
+			conditions.append((clean_fieldname(field), operator, value))
+
+		return conditions
 
 	@classmethod
-	def _build_select_clause(cls, fields: list = []) -> str:
+	def _build_select_clause(cls, fields: list = [], strict: bool = False) -> str:
 		"""Generate an SQL Select clause to fetch the provided fields. If no fields are provided, all are selected.
 		The primary key ('name') is always projected — even when NAME_EXPRESSION is set and 'name' is
-		omitted from SCHEMA_CONFIG — so load_from_db and list views always receive an identifier."""
+		omitted from SCHEMA_CONFIG — so load_from_db and list views always receive an identifier.
+		Unmapped fields are skipped with a console warning, or raise a ValueError when strict is set;
+		either way, resolving zero fields raises rather than emitting invalid SQL."""
 		if len(fields) <= 0:
 			fields = list(cls.SCHEMA_CONFIG.keys())
 			if 'name' not in fields:
 				fields.insert(0, 'name')
 
 		select_statements = []
+		unmapped_fields = []
 		for field in fields:
 			sql_column = cls._column_for(field)
 			if sql_column is not None:
 				select_statements.append(f'{sql_column} AS {field}')
+			else:
+				unmapped_fields.append(field)
+
+		if unmapped_fields:
+			if strict:
+				raise ValueError(
+					f"{cls.__name__}: no SCHEMA_CONFIG mapping exists for requested field(s) {unmapped_fields}."
+				)
+			if cls.SHOW_FIELD_WARNINGS:
+				for field in unmapped_fields:
+					print_console_warning(f"Ascend Virtual Doc Warning: No field mapping exists for {field} in {cls.__name__}.")
+				print_console_warning(f"If this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.")
+
+		if not select_statements:
+			frappe.throw(
+				f"None of the requested fields for {cls.__name__} resolve to a SQL column: {fields}."
+			)
 
 		return 'SELECT ' + ', '.join(select_statements)
 
@@ -204,31 +200,58 @@ class AbstractVirtualDocType(Document):
 		return ' '.join(join_statements)
 	
 	@classmethod
-	def _condition_sql(cls, field: str, operator: str, value, values: list) -> str:
-		"""Build a single SQL condition fragment for one filter tuple, appending its bound value(s)
-		to `values`. A condition on 'name' is widened to an OR across 'name' plus every field in
-		ALT_NAME_RESOLUTION_FIELDS, so a record can be identified by those fields too."""
+	def _format_condition(cls, sql_column: str, operator: str, value, values: list) -> str:
+		"""Render one 'column operator value' SQL fragment, appending its bound value to `values`.
+		The operator must appear in OPERATOR_MAP; the 'is' operator ("set"/"not set" list-view
+		filters) translates to an IS [NOT] NULL check with no bound value."""
+		operator_key = str(operator).lower()
+		if operator_key == 'is':
+			return f'{sql_column} IS NOT NULL' if str(value).lower() == 'set' else f'{sql_column} IS NULL'
+
+		sql_operator = OPERATOR_MAP.get(operator_key)
+		if sql_operator is None:
+			frappe.throw(f"Unsupported filter operator '{operator}' for {cls.__name__}.")
+
+		values.append(value)
+		return f'{sql_column} {sql_operator} %s'
+
+	@classmethod
+	def _condition_sql(cls, field: str, operator: str, value, values: list) -> str | None:
+		"""Build a single SQL condition fragment for one filter condition, appending its bound
+		value(s) to `values`. A condition on 'name' is widened to an OR across 'name' plus every
+		field in ALT_NAME_RESOLUTION_FIELDS, so a record can be identified by those fields too.
+		Returns None (condition dropped) for unmapped standard Frappe fields; raises for any
+		other unmapped field."""
+		sql_column = cls._required_column_for(field)
+		if sql_column is None:
+			return None
+
 		if field == 'name' and cls.ALT_NAME_RESOLUTION_FIELDS:
 			sub_conditions = []
 			for alt_field in ('name', *cls.ALT_NAME_RESOLUTION_FIELDS):
-				sub_conditions.append(f'{cls._column_for(alt_field)} {operator} %s')
-				values.append(value)
+				sub_conditions.append(cls._format_condition(cls._column_for(alt_field), operator, value, values))
 			return '(' + ' OR '.join(sub_conditions) + ')'
 
-		values.append(value)
-		return f'{cls._column_for(field)} {operator} %s'
+		return cls._format_condition(sql_column, operator, value, values)
 
 	@classmethod
-	def _build_where_clause(cls, values: list, filters: list = [], or_filters: list = []) -> str:
-		"""Build the WHERE clause from a list of filters. Filter values are appended to the passed
-		values list. Conditions on 'name' are automatically widened per ALT_NAME_RESOLUTION_FIELDS."""
+	def _build_where_clause(cls, values: list, filters=None, or_filters=None) -> str:
+		"""Build the WHERE clause from Frappe filters (list or dict format). Filter values are
+		appended to the passed values list. Conditions on 'name' are automatically widened per
+		ALT_NAME_RESOLUTION_FIELDS; conditions on unmapped standard Frappe fields are dropped."""
 		where_statements = []
 
-		and_statements = [cls._condition_sql(field, operator, value, values) for _, field, operator, value in filters]
+		and_statements = [
+			statement for field, operator, value in cls._normalize_filter_conditions(filters)
+			if (statement := cls._condition_sql(field, operator, value, values)) is not None
+		]
 		if and_statements:
 			where_statements.append('(' + ' AND '.join(and_statements) + ')')
 
-		or_statements = [cls._condition_sql(field, operator, value, values) for _, field, operator, value in or_filters]
+		or_statements = [
+			statement for field, operator, value in cls._normalize_filter_conditions(or_filters)
+			if (statement := cls._condition_sql(field, operator, value, values)) is not None
+		]
 		if or_statements:
 			where_statements.append('(' + ' OR '.join(or_statements) + ')')
 
@@ -250,7 +273,11 @@ class AbstractVirtualDocType(Document):
 			if not tokens:
 				continue
 			field = clean_fieldname(tokens[0])
+			# The direction token comes from the client, so anything but ASC/DESC is discarded
+			# rather than interpolated into the query.
 			order = tokens[1].upper() if len(tokens) > 1 else 'ASC'
+			if order not in ('ASC', 'DESC'):
+				order = 'ASC'
 			sql_column = cls._column_for(field)
 			if sql_column is not None:
 				order_by_statements.append(f'{field} {order}')
@@ -263,9 +290,10 @@ class AbstractVirtualDocType(Document):
 		return 'ORDER BY ' + ', '.join(order_by_statements)
 	
 	@classmethod
-	def _validate_and_clean_fields(cls, fields, doctype) -> None:
+	def _validate_and_clean_fields(cls, fields) -> None:
 		"""Reformat incorrectly assumed table names from fields list. E.g. '`tabAscend Product`.`name`' to 'name'.
-		Removes improper field argument types (e.i. not a string). Field argument is edited directly."""
+		Removes improper field argument types (e.i. not a string). Field argument is edited directly.
+		Unmapped-field reporting is owned by _build_select_clause and the WHERE-clause policy."""
 		valid_fields = []
 		for field in fields:
 			if not isinstance(field, str):
@@ -273,16 +301,6 @@ class AbstractVirtualDocType(Document):
 				continue
 			valid_fields.append(clean_fieldname(field))
 		fields[:] = valid_fields  # In-place replacement so the caller's list is updated.
-
-		# Display a warning to the console if an expected field has no mapping in the schema config.
-		if cls.SHOW_FIELD_WARNINGS:
-			unmapped = [field for field in fields if cls.SCHEMA_CONFIG.get(field) is None]
-			if unmapped:
-				for field in unmapped:
-					if field == 'name' and cls.NAME_EXPRESSION is not None:
-						continue  # The primary key is backed by an expression, so no mapping is expected.
-					print_console_warning(f"Ascend Virtual Doc Warning: No field mapping exists for {field} in {doctype}.")
-				print_console_warning(f"If this is expected, you can disable this warning with SHOW_FIELD_WARNINGS = False.")
 
 	
 	# ─── Read Operations ──────────────────────────────────────────────────────
@@ -316,11 +334,16 @@ class AbstractVirtualDocType(Document):
 		frappe dict of the requested fields, or None when no matching record exists.
 
 		Intended for cheap cross-references (e.g. a child table's virtual fields mirroring a
-		few columns of the linked record) where loading the full document is unnecessary."""
+		few columns of the linked record) where loading the full document is unnecessary.
+		The field list is developer-authored, so it is strict: an unmapped or empty request
+		raises a ValueError instead of being silently narrowed."""
+		if not isinstance(fields, (list, tuple)) or len(fields) == 0:
+			raise ValueError(f"{cls.__name__}.get_values requires a non-empty list of fieldnames, got {fields!r}.")
+
 		query_clauses = []
 		values=[]
 		# SELECT
-		query_clauses.append(cls._build_select_clause(fields))
+		query_clauses.append(cls._build_select_clause(list(fields), strict=True))
 		# FROM
 		query_clauses.append(f'FROM {cls.TABLE_NAME}')
 		# JOIN
@@ -339,14 +362,15 @@ class AbstractVirtualDocType(Document):
 		return to_document_dict(records[0]) if records else None
 
 	@classmethod
-	def _search_values_for_name_condition(cls, filters: list, or_filters: list) -> set | None:
+	def _search_values_for_name_condition(cls, filters, or_filters) -> set | None:
 		"""Collect every value used in a condition on 'name' across `filters`/`or_filters`. Returns
 		None when there is no such condition, so callers can skip the echo-back step entirely."""
 		values = set()
-		for _, field, operator, value in [*filters, *or_filters]:
+		conditions = [*cls._normalize_filter_conditions(filters), *cls._normalize_filter_conditions(or_filters)]
+		for field, operator, value in conditions:
 			if field != 'name':
 				continue
-			if operator.lower() == 'in':
+			if str(operator).lower() == 'in':
 				values.update(str(v) for v in value)
 			else:
 				values.add(str(value))
@@ -374,7 +398,7 @@ class AbstractVirtualDocType(Document):
 	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, or_filters: list = [], as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
 
-		cls._validate_and_clean_fields(fields, doctype)
+		cls._validate_and_clean_fields(fields)
 
 		search_values = cls._search_values_for_name_condition(filters, or_filters) if cls.ALT_NAME_RESOLUTION_FIELDS else None
 		select_fields = fields
@@ -392,7 +416,7 @@ class AbstractVirtualDocType(Document):
 		if cls.JOIN_CONFIG is not None:
 			query_clauses.append(cls._build_join_clause())
 		# WHERE
-		if len(filters) > 0 or len(or_filters) > 0:
+		if filters or or_filters:
 			query_clauses.append(cls._build_where_clause(values=values, filters=filters, or_filters=or_filters))
 		# ORDER BY (required before OFFSET/FETCH)
 		query_clauses.append(cls._build_order_by_clause(order_by) if order_by else 'ORDER BY (SELECT NULL)')
@@ -431,8 +455,8 @@ class AbstractVirtualDocType(Document):
 		if cls.JOIN_CONFIG is not None:
 			query_clauses.append(cls._build_join_clause())
 		# WHERE
-		if len(filters) > 0 or len(or_filters) > 0:
-			query_clauses.append(cls._build_where_clause(filters, or_filters, values))
+		if filters or or_filters:
+			query_clauses.append(cls._build_where_clause(values=values, filters=filters, or_filters=or_filters))
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(
