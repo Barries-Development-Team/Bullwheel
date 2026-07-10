@@ -185,14 +185,14 @@ bullwheel/
 **`MSSQLDatabase` (`database/SQLServer.py`)**
 The connection and execution primitive. Owns: connection lifecycle (`connect`, `close`, `__enter__`/`__exit__`), raw query execution (`sql`), transaction management (`commit`, `rollback`, `begin`), and health check (`test_connection`). The Virtual DocType Framework uses it directly for all Ascend queries — controllers write no SQL and do not interact with `MSSQLDatabase` directly.
 
-**Virtual DocType controllers** (e.g. `ascend_product.py`) inherit from `AbstractVirtualDocType` and declare only a `SCHEMA_CONFIG` dict plus `TABLE_NAME` and `PRIMARY_KEY_COLUMN`. The base class derives `FIELD_TO_COLUMN`, the `SELECT` clause, and `SEARCH_COLUMNS` from `SCHEMA_CONFIG` and owns all query logic (`get_list`, `get_count`, `load_from_db`).
+**Virtual DocType controllers** (e.g. `ascend_product.py`) inherit from `AbstractVirtualDocType` and declare only a `SCHEMA_CONFIG` dict plus `TABLE_NAME` (and optionally `JOIN_CONFIG`, `NAME_EXPRESSION`, `ALT_NAME_RESOLUTION_FIELDS`). The base class derives the `SELECT` clause and field→column resolution from `SCHEMA_CONFIG` and owns all query logic (`get_list`, `get_count`, `load_from_db`, `get_values`).
 
 ```python
 with MSSQLDatabase(get_default_ascend_database()) as ascend:
     results = ascend.sql(query=query, values=values, as_dict=True)
 ```
 
-**`_build_where_clause`** (in `virtual_doctype_base.py`) handles both dict-format and list-format Frappe filters, operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `NOT LIKE`, `IN`, `NOT IN`, and appends OR LIKE search across `search_columns` when text is present.
+**`_build_where_clause`** (in `virtual_doctype_base.py`) handles dict-format and list-format (3- or 4-element) Frappe filters with a whitelisted operator set (`=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `NOT LIKE`, `IN`, `NOT IN`, `is set`/`not set` → `IS [NOT] NULL`). Filters on fields with no `SCHEMA_CONFIG` mapping raise a clear error, except Frappe standard fields (`IGNORED_STANDARD_FIELDS`), which are silently dropped.
 
 ### Design Note
 
@@ -444,13 +444,11 @@ These columns exist in the Ascend `Products` table but are intentionally **not**
 
 `AscendProduct` now inherits from `AbstractVirtualDocType` and is the **reference implementation** of the Virtual DocType Framework. The entire controller is:
 
-- `TABLE_NAME = "Products"`, `PRIMARY_KEY_COLUMN = "ID"`
-- a single `SCHEMA_CONFIG` dict (one entry per field: `sql_column`, `fieldtype`, `display`, `searchable`)
-- one line binding the search hook: `ascend_product_search = AscendProduct.make_search_function(display_fields=["description", "store_sku"])`
+- `TABLE_NAME = "Products"`, `ALT_NAME_RESOLUTION_FIELDS = ['upc']`
+- a single flat `SCHEMA_CONFIG` dict (`fieldname -> sql_column`, with a required `'name'` entry mapping the primary key — `Products.[Store UPC]`)
+- a `JOIN_CONFIG` joining `Categories AS cat` so `category` maps to `cat.Topic`
 
-`FIELD_TO_COLUMN`, the `SELECT` clause, and `SEARCH_COLUMNS` (`["Description", "[Store UPC]", "UPC"]`) are **derived** from `SCHEMA_CONFIG` by the base class — they are no longer hand-written. `get_list`, `get_count`, `load_from_db`, and the read-only guards are all inherited. `get_list` resolves the list view's `order_by` to a real SQL `ORDER BY` (the prior sorting bug is fixed for every subclass).
-
-The framework still maps `name → ID` (so Frappe's meta-field resolves in filters) and still projects `category` as `NULL` until its `Products` column is confirmed.
+The `SELECT` clause and field→column resolution are **derived** from `SCHEMA_CONFIG` by the base class — they are not hand-written. `get_list`, `get_count`, `load_from_db`, `get_values`, and the read-only guards are all inherited. `get_list` resolves the list view's `order_by` to a real SQL `ORDER BY` (the prior sorting bug is fixed for every subclass).
 
 **Resolved during the framework refactor:** the controller previously keyed its constants on the misspelled `sytle_number` while the DocType JSON field is `style_number` — a latent mismatch that meant the style number never populated. `SCHEMA_CONFIG` now uses `style_number` (→ `StyleNumber`), matching the JSON.
 
@@ -466,24 +464,21 @@ A reusable framework for building read-only virtual DocTypes over Ascend SQL Ser
 
 | File | Role |
 |---|---|
-| `ascend/virtual_doctype_base.py` | `AbstractVirtualDocType` — inherit this. Derives constants from `SCHEMA_CONFIG`, inherits `load_from_db`/`get_list`/`get_count`, wires `order_by` through to SQL, and provides read-only guards + `make_search_function`. |
-| `ascend/schema_config_builder.py` | Pure converters: `build_field_to_column`, `build_select_clause`, `build_search_columns`, `build_json_schema`, `find_primary_key_field`, `validate_schema_config`. No DB access. |
-| `ascend/schema_introspection.py` | `introspect_table_schema` (queries `INFORMATION_SCHEMA.COLUMNS` via `MSSQLDatabase`), `suggest_schema_config`, `format_schema_table`. |
-| `ascend/search_hook_helper.py` | `create_virtual_doctype_search` — generates the Link-autocomplete function registered under `standard_queries`. |
-| `commands.py` | Bench CLI: `bench --site <site> introspect-schema --table <Table> [--suggest]`. |
+| `ascend/virtual_doctype_base.py` | `AbstractVirtualDocType` — inherit this. Derives everything from `SCHEMA_CONFIG`, inherits `load_from_db`/`get_list`/`get_count`/`get_values`, wires `order_by` through to SQL, enforces the fieldname/operator policy (below), and provides read-only guards. |
+| `ascend/validate_virtual_doctypes.py` | `validate_schema_config(doctype_class, ...)` (structural + optional live column checks) and `validate_all_virtual_doctype_schemas` — wired to the `before_migrate` hook so a misconfigured controller blocks `bench migrate` with the exact problem named. |
+| `ascend/schema_introspection.py` | `introspect_table_schema` / `introspect_join_schemas` (query `INFORMATION_SCHEMA.COLUMNS` via `MSSQLDatabase`), `suggest_schema_config`, `format_schema_table`. |
+| `commands.py` | Bench CLI: `bench --site <site> introspect-schema --table <Table> [--join-table <T>] [--suggest] [--primary-key <Col>]`. |
 
-**`SCHEMA_CONFIG`** — single source of truth, one entry per fieldname:
+**`SCHEMA_CONFIG`** — single source of truth, one flat `fieldname -> sql_column` entry per field:
 
 ```python
 SCHEMA_CONFIG = {
-    "description": {"sql_column": "Description", "fieldtype": "Data", "display": "primary", "searchable": True},
-    # sql_column: bracket-quote names with spaces ([Store UPC]); None => SELECT NULL
-    # display:    "hidden" | "primary" | "secondary" | None  (list/autocomplete exposure)
-    # searchable: include in the OR LIKE Link autocomplete
+    "name":        "Products.[Store UPC]",  # required (or set NAME_EXPRESSION) — the primary key
+    "description": "Products.Description",  # bracket-quote column names with spaces
 }
 ```
 
-Exactly one entry must map `sql_column` to `PRIMARY_KEY_COLUMN`; that field becomes Frappe's `name`.
+**Unmapped-fieldname policy** (the recurring invalid-SQL bug class, fixed 2026-07): SELECT fields with no mapping are skipped with a console warning (zero resolvable fields raises); WHERE filters on unmapped fields `frappe.throw` a clear error, except Frappe standard fields (`_user_tags`, `_assign`, `owner`, `docstatus`, … — `IGNORED_STANDARD_FIELDS`), which are silently dropped so desk features keep working; `order_by` falls back to `(SELECT NULL)`; `get_values` is strict and raises `ValueError` on any unmapped requested field. Filter operators are whitelisted via `OPERATOR_MAP` (plus `is set`/`not set` → `IS [NOT] NULL`).
 
 **GUID primary keys:** SQL Server `uniqueidentifier` columns come back from pymssql as `uuid.UUID` objects. The base class runs every record through `normalize_record` (in `schema_config_builder.py`), stringifying UUIDs so `name`, Link values, and filters work. Without this, a UUID-keyed virtual DocType raises `Unsupported filters type: UUID`.
 
@@ -491,7 +486,7 @@ Exactly one entry must map `sql_column` to `PRIMARY_KEY_COLUMN`; that field beco
 
 **Sorting fix:** `AbstractVirtualDocType.get_list` parses Frappe's `order_by` (backtick-aware, so DocType names with spaces like `` `tabAscend Product` `` work), maps the fieldname to its SQL column via `field_to_column()`, and injects it directly into the SQL query. Unmapped fields (e.g. the default `creation`) fall back to ordering by `primary_key_field()`.
 
-**Tests:** `ascend/test_schema_config_builder.py` (11 builder tests) and `ascend/test_virtual_doctype_base.py` (6 order-by/derivation tests). Both are fast `UnitTestCase`s with no DB dependency. Run: `bench --site <site> run-tests --app bullwheel`.
+**Tests:** `ascend/test_virtual_doctype_base.py` — fast `UnitTestCase`s covering the query builders, the fieldname/operator policy, and `validate_schema_config`, with no SQL Server dependency. Run: `bench --site <site> run-tests --app bullwheel`.
 
 ---
 
