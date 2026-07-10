@@ -15,6 +15,7 @@ class VendorProduct(AbstractVirtualDocType):
 		'vendor': 'Vendor.Name',
         'product_id': 'VendorProducts.ProductID',
 		'product': 'Product.[Store UPC]',
+		'upc': 'Product.UPC',
         'description': 'VendorProducts.Description',
         'part_number': 'VendorProducts.PartNumber',
         'cost': 'VendorProducts.Cost',

@@ -100,6 +100,11 @@ fixtures = [
 # Migration
 # ------------
 
+# Validate every virtual DocType's SCHEMA_CONFIG before migrating, so a misconfigured
+# controller fails the migration with the exact problem named instead of failing at
+# query time with invalid SQL.
+before_migrate = ["bullwheel.ascend.validate_virtual_doctypes.validate_all_virtual_doctype_schemas"]
+
 
 # Installation
 # ------------

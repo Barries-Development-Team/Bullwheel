@@ -39,7 +39,7 @@ class AscendProduct(AbstractVirtualDocType):
 		'maximum': 'Products.Maximum',
 		'commission': 'Products.Commission',
 		'upc': 'Products.UPC',
-		'mfgr_part_no': 'Products.MfgrPartNo',
+		'manufacturers_part_number': 'Products.MfgrPartNo',
 		'reconciled': 'Products.Reconciled',
 		'store_sku': 'Products.[Store UPC]',
 		'keyword': 'Products.Keyword',
