@@ -45,6 +45,7 @@
   {
    "fieldname": "description",
    "fieldtype": "Data",
+   "in_global_search": 1,
    "in_list_view": 1,
    "label": "Description",
    "read_only": 1,
@@ -87,12 +88,14 @@
   {
    "fieldname": "store_sku",
    "fieldtype": "Data",
+   "in_global_search": 1,
    "label": "Store SKU",
    "read_only": 1
   },
   {
    "fieldname": "upc",
    "fieldtype": "Data",
+   "in_global_search": 1,
    "in_list_view": 1,
    "label": "UPC",
    "read_only": 1
@@ -100,6 +103,7 @@
   {
    "fieldname": "manufacturers_part_number",
    "fieldtype": "Data",
+   "in_global_search": 1,
    "label": "Manufacturer's Part Number",
    "read_only": 1
   },
@@ -168,6 +172,7 @@
   {
    "fieldname": "style_number",
    "fieldtype": "Data",
+   "in_global_search": 1,
    "label": "Style Number",
    "read_only": 1
   },
@@ -220,7 +225,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-09 17:14:13.356172",
+ "modified": "2026-07-10 16:34:48.798444",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
@@ -242,6 +247,7 @@
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
  "search_fields": "description, upc, keyword",
+ "show_name_in_global_search": 1,
  "sort_field": "description",
  "sort_order": "ASC",
  "states": [],
