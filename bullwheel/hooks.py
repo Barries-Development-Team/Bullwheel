@@ -29,7 +29,8 @@ app_license = "unlicense"
 
 fixtures = [
     "Zebra Printer Label",
-    "Global Search Settings"
+    "Global Search Settings",
+    "Custom HTML Block"
 ]
 
 # Includes in <head>
