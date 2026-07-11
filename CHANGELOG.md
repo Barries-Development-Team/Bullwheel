@@ -2,6 +2,17 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [0.0.8] - July 10, 2026
+
+### Features
+
+- Added an "Open Warehouse Bay" shortcut to the Warehouse Workspace for easy scanning and access of individual warehouse locations.
+- Added some fancy new icons!
+
+### Bug Fixes
+
+- Fix numerous major backend bugs related to Ascend Virtual Doctypes.
+
 ## [0.0.7] - July 9, 2026
 
 ### Features
