@@ -16,7 +16,7 @@
   "height": 1.0,
   "label_name": "Warehouse Location Label - Default",
   "modified": "2026-07-03 18:32:06.315502",
-  "name": "Warehouse Location Labe - Default",
+  "name": "Warehouse Location Label - Default",
   "recommended_print_media": "Direct Thermal",
   "width": 2.0,
   "zpl": "{%- set dots = (label.width * printer.dpi) | int -%}\n{%- set location = doc.name | replace('^', ' ') | replace('~', ' ') -%}\n{%- set module_width = 2 -%}\n{%- set barcode_width = (11 * (location | length) + 35) * module_width -%}\n{%- set barcode_x = [(dots - barcode_width) // 2, 0] | max -%}\n^XA\n^PW{{ dots }}\n^FO0,20^FB{{ dots }},1,0,C^A0N,30,30^FDBarrie's Warehouse^FS\n^FO0,60^FB{{ dots }},1,0,C^A0N,40,40^FDLocation: {{ location }}^FS\n^FO{{ barcode_x }},110^BY{{ module_width }}^BCN,80,N,N,N^FD{{ location }}^FS\n^XZ\n"
