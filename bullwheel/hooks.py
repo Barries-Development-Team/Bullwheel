@@ -29,12 +29,8 @@ app_license = "unlicense"
 
 fixtures = [
     "Zebra Printer Label",
-    """{
-        'dt': 'Workspace',
-        'filters': [
-            ['app', '=', 'bullwheel'],
-        ]
-    }"""
+    "Global Search Settings",
+    "Custom HTML Block"
 ]
 
 # Includes in <head>

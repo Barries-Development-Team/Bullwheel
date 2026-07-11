@@ -1,0 +1,13 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Custom HTML Block",
+  "html": "<div class=\"warehouse-bay-block\">\n\t<button type=\"button\" class=\"btn btn-primary btn-open-bay\">\n\t\tOpen Warehouse Bay\n\t</button>\n</div>\n",
+  "modified": "2026-07-10 18:14:33.305744",
+  "name": "Open Bay",
+  "private": 0,
+  "roles": [],
+  "script": "let open_button = root_element.querySelector(\".btn-open-bay\");\n\nopen_button.addEventListener(\"click\", () => {\n\tlet dialog = new frappe.ui.Dialog({\n\t\ttitle: \"Open Warehouse Bay\",\n\t\tfields: [\n\t\t\t{\n\t\t\t\tfieldname: \"location_name\",\n\t\t\t\tfieldtype: \"Data\",\n\t\t\t\tlabel: \"Warehouse Location\",\n\t\t\t\treqd: 1,\n\t\t\t},\n\t\t],\n\t\tprimary_action_label: \"Open\",\n\t\tprimary_action(values) {\n\t\t\tdialog.hide();\n\t\t\tgo_to_warehouse_location(values.location_name.trim());\n\t\t},\n\t});\n\n\tdialog.show();\n\n\t// Enter key reuses the primary button's own click handler, so validation\n\t// and the primary_action callback stay in sync with clicking \"Open\".\n\tdialog.fields_dict.location_name.$input.on(\"keydown\", (event) => {\n\t\tif (event.key === \"Enter\") {\n\t\t\tevent.preventDefault();\n\t\t\tdialog.get_primary_btn().trigger(\"click\");\n\t\t}\n\t});\n});\n\nfunction go_to_warehouse_location(location_name) {\n\tfrappe.db.exists(\"Warehouse Location\", location_name).then((exists) => {\n\t\tif (exists) {\n\t\t\tfrappe.set_route(\"Form\", \"Warehouse Location\", location_name);\n\t\t} else {\n\t\t\tfrappe.route_options = {\n\t\t\t\tlocation_name: [\"like\", `%${location_name}%`],\n\t\t\t};\n\t\t\tfrappe.set_route(\"List\", \"Warehouse Location\", \"List\");\n\t\t}\n\t});\n}\n",
+  "style": ".warehouse-bay-block {\n\tdisplay: flex;\n\tjustify-content: center;\n\tpadding: 8px 0;\n}\n"
+ }
+]
