@@ -66,14 +66,17 @@ def _names_from_filters(filters):
 	  ``{"name": ("in", ["PROD-0001", "PROD-0002"])}``
 	* list-format filters referencing only name — ``[["name", "=", "PROD-0001"]]`` or
 	  ``[["Ascend Product", "name", "in", [...]]]``
+	* Int name (e.g. UPC) - ``194151633641``
 
 	Returns ``None`` for any other shape so the caller falls back to the original,
 	table-based implementation untouched. Returning ``None`` (rather than an empty list)
 	is deliberate: an empty list is a valid "no names requested" result, whereas ``None``
 	means "this is not a name-only lookup — do not intercept".
 	"""
+
 	if isinstance(filters, str):
 		return [filters]
+	
 
 	if isinstance(filters, dict):
 		if set(filters) != {"name"}:
@@ -91,6 +94,9 @@ def _names_from_filters(filters):
 				return None
 			names.extend(extracted)
 		return names
+	
+	if isinstance(filters, int):
+		return [str(filters)] # Convert integer names to string
 
 	return None
 

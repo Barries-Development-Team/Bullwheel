@@ -13,7 +13,9 @@ are all derived from it.
 See bullwheel/ascend/VIRTUAL_DOCTYPE_DEVELOPMENT.md for the full workflow.
 """
 
+import json
 import frappe
+
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType, to_document_dict
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
@@ -23,6 +25,7 @@ class AscendProduct(AbstractVirtualDocType):
 	"""Read-only virtual DocType mapping the Ascend RMS `Products` table."""
 
 	TABLE_NAME = "Products"
+	ALT_NAME_RESOLUTION_FIELDS = ['upc']
 
 	SCHEMA_CONFIG = {
 		'name': 'Products.[Store UPC]',
@@ -36,7 +39,7 @@ class AscendProduct(AbstractVirtualDocType):
 		'maximum': 'Products.Maximum',
 		'commission': 'Products.Commission',
 		'upc': 'Products.UPC',
-		'mfgr_part_no': 'Products.MfgrPartNo',
+		'manufacturers_part_number': 'Products.MfgrPartNo',
 		'reconciled': 'Products.Reconciled',
 		'store_sku': 'Products.[Store UPC]',
 		'keyword': 'Products.Keyword',
@@ -98,26 +101,8 @@ class AscendProduct(AbstractVirtualDocType):
 
 
 @frappe.whitelist()
-def get_product_dict(id: str, type: str = 'full') -> dict | None:
-	"""Look up a single product by its Store UPC or UPC. Returns the product
-	# record as a dict, or None when no matching product exists so callers can
-	# distinguish "found" from "not found" without catching an exception.
-	# Optionally, using 'type' you can select to return the full dict or just a summary.
-	# the summary includes only the Description, Ascend SKU, and UPC."""
-
-	if type == 'full':
-		query = 'SELECT * FROM Products WHERE [Store UPC] = %s OR UPC = %s'
-	elif type == 'summary':
-		query = 'SELECT Description, [Store UPC], UPC FROM Products WHERE [Store UPC] = %s OR UPC = %s'
-	else:
-		raise ValueError("Type options are \'full\' and \'summary\'.")
-
-	with MSSQLDatabase(get_default_ascend_database()) as ascend:
-		result = ascend.sql(
-			query=query,
-			values=(id, id),
-			as_dict=True
-		)
-	if not result:
-		return None
-	return to_document_dict(result[0])
+def get_values(name: str, fields) -> frappe._dict | None:
+	"""Helper function to call the get_values method of AscendProduct class."""
+	if type(fields) is str:
+		fields = json.loads(fields)
+	return AscendProduct.get_values(name, fields)

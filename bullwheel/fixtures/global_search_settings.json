@@ -1,0 +1,28 @@
+[
+ {
+  "allowed_in_global_search": [
+   {
+    "document_type": "Ascend Product"
+   },
+   {
+    "document_type": "Warehouse Location"
+   },
+   {
+    "document_type": "Vendor"
+   },
+   {
+    "document_type": "Vendor Product"
+   },
+   {
+    "document_type": "Order Receipt"
+   },
+   {
+    "document_type": "Ski with Bindings"
+   }
+  ],
+  "docstatus": 0,
+  "doctype": "Global Search Settings",
+  "modified": "2026-07-10 14:00:05.155286",
+  "name": "Global Search Settings"
+ }
+]

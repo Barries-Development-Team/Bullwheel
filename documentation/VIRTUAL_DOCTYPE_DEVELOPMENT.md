@@ -15,9 +15,10 @@ hand-written SQL, filter logic, pagination, or sorting code.
 bullwheel/ascend/
 ├── doctype/
 │   └── example_doc/
-│       └── example_doc.py    Python controller file — inherits Abstract Doctype Controller
-├── virtual_doctype_base.py   AbstractVirtualDocType — inherit this
-└── schema_introspection.py   discover SQL Server columns + suggest a config
+│       └── example_doc.py           Python controller file — inherits Abstract Doctype Controller
+├── virtual_doctype_base.py          AbstractVirtualDocType — inherit this
+├── validate_virtual_doctypes.py     SCHEMA_CONFIG validation (runs automatically on bench migrate)
+└── schema_introspection.py          discover SQL Server columns + suggest a config
 ```
 
 One `SCHEMA_CONFIG` dict on your controller is the single source of truth. The
@@ -126,10 +127,9 @@ round-tripping by `name` stays consistent.
 - **JOIN dependency.** If the expression references a joined table/alias (e.g.
   `cat.Topic`), that table must be declared in `JOIN_CONFIG` — the framework
   emits the JOIN in every query, but an *undeclared* qualifier throws an opaque
-  SQL bind error at runtime. `validate_schema_config` catches this statically:
-  after authoring an expression with table-qualified columns, run it (see
-  *Validating a config in code*) — it raises `ValueError` naming any qualifier
-  not found in `TABLE_NAME` + `JOIN_CONFIG`.
+  SQL bind error at runtime. `validate_schema_config` catches this statically —
+  it runs automatically on `bench migrate` (see *Validating a config*) and raises
+  `ValueError` naming any qualifier not found in `TABLE_NAME` + `JOIN_CONFIG`.
 - **autoname.** Keep the DocType's `autoname`/mirrored id field pointing at a real
   field; the framework populates `name` from the projection regardless.
 
@@ -145,12 +145,28 @@ class AscendThing(AbstractVirtualDocType):
     TABLE_NAME = "Things"             # Ascend SQL table name
     JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b
     SCHEMA_CONFIG = { ... }           # From Step 2 — must include a "name" entry
-    SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console if frappe tries to lookup an unmapped field.
+    SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console when a lookup on an unmapped field is skipped.
 
 ```
 
 That's the whole controller. `load_from_db`, `get_list`, `get_count`, sorting,
 and the read-only guards are all inherited.
+
+### How unmapped fieldnames are handled
+
+Every fieldname Frappe passes in is resolved through `SCHEMA_CONFIG`; what happens
+when there is no mapping depends on where the field appears:
+
+| Where | Unmapped-field behavior |
+|---|---|
+| `fields` (SELECT) | Skipped with a console warning (`SHOW_FIELD_WARNINGS`). If *no* requested field resolves, the query raises instead of emitting invalid SQL. |
+| `filters` / `or_filters` (WHERE) | **Raises a clear error** naming the field — except Frappe's own standard fields (`_user_tags`, `_assign`, `owner`, `docstatus`, …), whose conditions are silently dropped so stock desk features (tags, assignments) keep working. See `IGNORED_STANDARD_FIELDS` in `virtual_doctype_base.py`. |
+| `order_by` | Falls back to `(SELECT NULL)` — Frappe's default `modified desc` sorts harmlessly. |
+| `get_values(name, fields)` | **Strict** — raises `ValueError` on any unmapped field, since these field lists are developer-authored (a silent skip would hide a typo as a permanent `None`). |
+
+Filter operators are also whitelisted (`=`, `!=`, `<`, `<=`, `>`, `>=`, `like`,
+`not like`, `in`, `not in`, plus the list view's `is set` / `not set`, which render
+as `IS [NOT] NULL`); anything else raises rather than reaching the query.
 
 ## Step 3b — Working with JOINs (optional)
 
@@ -182,10 +198,10 @@ uses its `sql_column` directly in the `WHERE` clause:
 
 ```python
 SCHEMA_CONFIG = {
-    "name":               {"sql_column": "Products.ID",          "fieldtype": "Data", "display": "hidden",  "searchable": False},
-    "ascend_database_id": {"sql_column": "Products.ID",          "fieldtype": "Data", "display": "hidden",  "searchable": False},
-    "description":        {"sql_column": "Products.Description",  "fieldtype": "Data", "display": "primary", "searchable": True},
-    "category":           {"sql_column": "cat.Topic",             "fieldtype": "Data", "display": None,      "searchable": False},
+    "name":               "Products.ID",
+    "ascend_database_id": "Products.ID",
+    "description":        "Products.Description",
+    "category":           "cat.Topic",
 }
 ```
 
@@ -203,36 +219,48 @@ bench --site <site> introspect-schema --table Products --join-table Categories -
 
 ### Validating a JOIN config
 
-Pass the joined-table columns as `additional_discovered_columns` to catch typos
-in qualified `sql_column` references early:
+`bench migrate` validates this automatically (see *Validating a config*). To run
+the same check by hand, pass the joined-table columns as
+`additional_discovered_columns`:
 
 ```python
-from bullwheel.ascend.virtual_doctype_base import get_default_ascend_database
+from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
 from bullwheel.ascend.schema_introspection import introspect_table_schema, introspect_join_schemas
-from bullwheel.ascend.schema_config_builder import validate_schema_config
+from bullwheel.ascend.validate_virtual_doctypes import validate_schema_config
+from bullwheel.ascend.doctype.ascend_thing.ascend_thing import AscendThing
 
 server = get_default_ascend_database()
-primary_schema  = introspect_table_schema(server, "Products")
-joined_schema   = introspect_join_schemas(server, JOIN_CONFIG)
+primary_schema  = introspect_table_schema(server, AscendThing.TABLE_NAME)
+joined_schema   = introspect_join_schemas(server, AscendThing.JOIN_CONFIG)
 
-validate_schema_config(SCHEMA_CONFIG, primary_schema.keys(), joined_schema.keys())
+validate_schema_config(AscendThing, primary_schema.keys(), joined_schema.keys())
 ```
 
-Unqualified columns are validated against the primary table; qualified
-`table.column` references are validated against the joined tables. Omitting
-`additional_discovered_columns` skips validation for qualified columns.
+Columns qualified with the primary table (or unqualified) are validated against
+the primary table; columns qualified with a JOIN table/alias are validated against
+the joined tables. A qualifier that is neither `TABLE_NAME` nor declared in
+`JOIN_CONFIG` is a structural error, caught even without introspected columns.
+Omitting `additional_discovered_columns` skips validation for join-qualified
+columns.
 
 ---
 
-## Step 4 — Create the DocType JSON
+## Step 3c — Alternative name resolution fields (optional)
 
-Create the DocType in the editor (`is_virtual = 1`), or scaffold its `fields`
-array from your config:
+If you find it ideal to be able to load a record using a field value other than the assigned `name` field, declare the additional fields in the `ALT_NAME_RESOLUTION_FIELDS` class attribute. Every filter on `name` (including `load_from_db` and Link resolution) is then widened to an OR across `name` plus those fields. The additional fields MUST be unique in Ascend's database, and each must have a `SCHEMA_CONFIG` mapping (validated on `bench migrate`).
+
+For example, `Ascend Product` can be loaded by UPC in addition to the Store SKU:
 
 ```python
-from bullwheel.ascend.schema_config_builder import build_json_schema
-build_json_schema(SCHEMA_CONFIG)  # -> list of field dicts to drop into doctype.json
+class AscendProduct(AbstractVirtualDocType):
+    TABLE_NAME = "Products"
+    ALT_NAME_RESOLUTION_FIELDS = ['upc']
+    SCHEMA_CONFIG = { ... }  # must include an 'upc' entry
 ```
+
+## Step 4 — Create the DocType JSON
+
+Create the DocType in the editor (`is_virtual = 1`).
 
 Set on the DocType:
 - `is_virtual = 1`
@@ -240,9 +268,11 @@ Set on the DocType:
 - `title_field = <your "primary" display field>`
 - The primary-key field marked `unique`; keep it out of `in_list_view` (it's a UUID).
 
-The fieldnames in the JSON **must** match the keys in `SCHEMA_CONFIG`. The `"name"`
-key in `SCHEMA_CONFIG` is handled by the framework and does not correspond to a
-declared DocType field — omit it from the JSON.
+The fieldnames in the JSON **must** match the keys in `SCHEMA_CONFIG` — `bench
+migrate` warns about any JSON field with no mapping, since filtering on such a
+field raises an error at runtime. The `"name"` key in `SCHEMA_CONFIG` is handled
+by the framework and does not correspond to a declared DocType field — omit it
+from the JSON.
 
 
 ## Step 5 — Migrate and verify
@@ -257,23 +287,36 @@ at the DocType autocompletes.
 
 ---
 
-## Validating a config in code
+## Validating a config
 
-`validate_schema_config` cross-checks your config against the live table so typos
-surface early instead of as SQL errors:
+**Validation runs automatically on `bench migrate`.** The `before_migrate` hook
+(`bullwheel/ascend/validate_virtual_doctypes.py`) checks every virtual DocType
+whose controller inherits `AbstractVirtualDocType`:
+
+1. **Structural checks** (always): SCHEMA_CONFIG non-empty, a primary key defined
+   (a non-null `"name"` entry or a `NAME_EXPRESSION`), string values, every
+   `ALT_NAME_RESOLUTION_FIELDS` entry mapped, and every table/alias qualifier
+   (in `sql_column` values and `NAME_EXPRESSION`) declared in `TABLE_NAME` +
+   `JOIN_CONFIG`. A failure raises `ValueError` and **blocks the migration** with
+   the exact problem named.
+2. **DocType JSON alignment**: a console warning for any declared JSON field with
+   no SCHEMA_CONFIG mapping.
+3. **Live column checks** (when the Ascend database is reachable): every
+   `sql_column` is confirmed to exist in the introspected primary/joined table
+   schema. If the server is unreachable, this pass is skipped with a warning so
+   migration is not blocked. Bracket-quoting is stripped before comparison.
+
+To run the same check by hand (e.g. while authoring a config):
 
 ```python
-from bullwheel.ascend.virtual_doctype_base import get_default_ascend_database
+from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
 from bullwheel.ascend.schema_introspection import introspect_table_schema
-from bullwheel.ascend.schema_config_builder import validate_schema_config
+from bullwheel.ascend.validate_virtual_doctypes import validate_schema_config
+from bullwheel.ascend.doctype.ascend_thing.ascend_thing import AscendThing
 
-schema = introspect_table_schema(get_default_ascend_database(), "Things")
-validate_schema_config(SCHEMA_CONFIG, discovered_columns=schema.keys())
+schema = introspect_table_schema(get_default_ascend_database(), AscendThing.TABLE_NAME)
+validate_schema_config(AscendThing, discovered_columns=schema.keys())
 ```
-
-It raises `ValueError` if any `sql_column` doesn't exist in the table, a `display`
-value is invalid, a required key is missing, or the `"name"` entry is absent or has
-a null `sql_column`. Bracket-quoting is stripped before the column comparison.
 
 ---
 
@@ -289,6 +332,10 @@ query per field.
 runs a **single** query selecting only the requested fields, resolving their SQL
 columns from `SCHEMA_CONFIG` so column names stay single-sourced. It returns a
 `frappe._dict` of the requested fields, or `None` when no record matches.
+
+`get_values` is **strict**: because its field lists are developer-authored, an
+empty/non-list `fields` argument or a field with no `SCHEMA_CONFIG` mapping raises
+a `ValueError` naming the field, instead of silently returning `None` for it.
 
 ```python
 from bullwheel.ascend.doctype.ascend_product.ascend_product import AscendProduct

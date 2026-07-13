@@ -144,7 +144,7 @@ bullwheel/
 **`MSSQLDatabase` (`database/SQLServer.py`)**
 The connection and execution primitive. Owns: connection lifecycle (`connect`, `close`, `__enter__`/`__exit__`), raw query execution (`sql`), transaction management (`commit`, `rollback`, `begin`), and health check (`test_connection`). The Virtual DocType Framework uses it directly for all Ascend queries — controllers write no SQL and do not interact with `MSSQLDatabase` directly.
 
-**Virtual DocType controllers** (e.g. `ascend_product.py`) inherit from `AbstractVirtualDocType` and declare only a `SCHEMA_CONFIG` dict plus `TABLE_NAME` and `PRIMARY_KEY_COLUMN`. The base class derives `FIELD_TO_COLUMN`, the `SELECT` clause, and `SEARCH_COLUMNS` from `SCHEMA_CONFIG` and owns all query logic (`get_list`, `get_count`, `load_from_db`).
+**Virtual DocType controllers** (e.g. `ascend_product.py`) inherit from `AbstractVirtualDocType` and declare only a `SCHEMA_CONFIG` dict plus `TABLE_NAME` (and optionally `JOIN_CONFIG`, `NAME_EXPRESSION`, `ALT_NAME_RESOLUTION_FIELDS`). The base class derives the `SELECT` clause and field→column resolution from `SCHEMA_CONFIG` and owns all query logic (`get_list`, `get_count`, `load_from_db`, `get_values`).
 
 **`_build_where_clause`** (in `virtual_doctype_base.py`) handles both dict-format and list-format Frappe filters, operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `NOT LIKE`, `IN`, `NOT IN`, and appends OR LIKE search across `search_columns` when text is present.
 
@@ -292,20 +292,21 @@ A reusable framework for building read-only virtual DocTypes over Ascend SQL Ser
 
 | File | Role |
 |---|---|
-| `ascend/virtual_doctype_base.py` | `AbstractVirtualDocType` — inherit this. Derives constants from `SCHEMA_CONFIG`, inherits `load_from_db`/`get_list`/`get_count`, wires `order_by` through to SQL, and provides read-only guards + `make_search_function`. |
-| `ascend/schema_introspection.py` | `introspect_table_schema` (queries `INFORMATION_SCHEMA.COLUMNS` via `MSSQLDatabase`), `suggest_schema_config`, `format_schema_table`. |
-| `commands.py` | Bench CLI: `bench --site <site> introspect-schema --table <Table> [--suggest]`. |
+| `ascend/virtual_doctype_base.py` | `AbstractVirtualDocType` — inherit this. Derives everything from `SCHEMA_CONFIG`, inherits `load_from_db`/`get_list`/`get_count`/`get_values`, wires `order_by` through to SQL, enforces the fieldname/operator policy (below), and provides read-only guards. |
+| `ascend/validate_virtual_doctypes.py` | `validate_schema_config(doctype_class, ...)` (structural + optional live column checks) and `validate_all_virtual_doctype_schemas` — wired to the `before_migrate` hook so a misconfigured controller blocks `bench migrate` with the exact problem named. |
+| `ascend/schema_introspection.py` | `introspect_table_schema` / `introspect_join_schemas` (query `INFORMATION_SCHEMA.COLUMNS` via `MSSQLDatabase`), `suggest_schema_config`, `format_schema_table`. |
+| `commands.py` | Bench CLI: `bench --site <site> introspect-schema --table <Table> [--join-table <T>] [--suggest] [--primary-key <Col>]`. |
 
-**`SCHEMA_CONFIG`** — single source of truth, one entry per fieldname:
+**`SCHEMA_CONFIG`** — single source of truth, one flat `fieldname -> sql_column` entry per field:
 
 ```python
 SCHEMA_CONFIG = {
-    "fieldname": "sql_column",
-    # sql_column: bracket-quote names with spaces ([Store UPC]); None => SELECT NULL
+    "name":        "Products.[Store UPC]",  # required (or set NAME_EXPRESSION) — the primary key
+    "description": "Products.Description",  # bracket-quote column names with spaces
 }
 ```
 
-Exactly one entry must map Frappe's `name` to `PRIMARY_KEY_COLUMN`.
+**Unmapped-fieldname policy** (the recurring invalid-SQL bug class, fixed 2026-07): SELECT fields with no mapping are skipped with a console warning (zero resolvable fields raises); WHERE filters on unmapped fields `frappe.throw` a clear error, except Frappe standard fields (`_user_tags`, `_assign`, `owner`, `docstatus`, … — `IGNORED_STANDARD_FIELDS`), which are silently dropped so desk features keep working; `order_by` falls back to `(SELECT NULL)`; `get_values` is strict and raises `ValueError` on any unmapped requested field. Filter operators are whitelisted via `OPERATOR_MAP` (plus `is set`/`not set` → `IS [NOT] NULL`).
 
 **GUID primary keys:** SQL Server `uniqueidentifier` columns come back from pymssql as `uuid.UUID` objects. The base class runs every record through `normalize_record`, stringifying UUIDs so `name`, Link values, and filters work. Without this, a UUID-keyed virtual DocType raises `Unsupported filters type: UUID`.
 
