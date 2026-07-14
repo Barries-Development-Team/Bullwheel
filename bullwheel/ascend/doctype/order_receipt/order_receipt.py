@@ -12,6 +12,53 @@ from bullwheel.ascend.doctype.vendor.vendor import Vendor
 class OrderReceipt(Document):
 	pass
 
+def lock_row(docname):
+	"""Locks a Doctype row to prevent dataloss when multiple workers run CRUD operations simultaneously.
+	This should ALWAYS be called first, before any read or writes to the row."""
+
+	frappe.db.sql(
+        "SELECT `name` FROM `tabJob Edit Prototype` WHERE `name`=%s FOR UPDATE",
+        docname,
+    )
+
+def update_table(docname, job):
+
+	if job not in ['add', 'edit', 'remove']:
+		raise ValueError('Incorrect job argument. Valid arguments are "add", "edit", and "remove".')
+
+	lock_row(docname)
+
+	try:
+		doc = frappe.get_doc("Job Edit Prototype", docname)
+		
+		match job:
+			case 'add':
+				doc.append("item_table", {
+					"text": "test"
+				})
+			case 'edit':
+				pass
+			case 'remove':
+				pass
+
+		doc.save()
+	finally:
+		frappe.db.commit()
+
+@frappe.whitelist()
+def queue_update_table(docname, job):
+
+	kwargs = {'docname': docname, 'job': job}
+
+	frappe.enqueue(
+		method = 'bullwheel.bullwheel_core.doctype.job_edit_prototype.job_edit_prototype.update_table',
+		queue = 'short',
+		enqueue_after_commit = True,
+		now = False,
+		is_async = True,
+		at_front = False,
+		**kwargs
+	)
 	
 @frappe.whitelist()
 def scan_item(id: str, vendor: str):
