@@ -3,6 +3,23 @@
 
 frappe.ui.form.on("Order Receipt", {
  	refresh(frm) {
+
+		if (!frm.is_new()) {
+			frm.add_custom_button("Add Item", () => {
+            	// Your logic here
+            	frappe.msgprint("Button clicked!");
+			});
+			frm.add_custom_button("Edit Item", () => {
+				// Your logic here
+				frappe.msgprint("Button clicked!");
+			});
+			frm.add_custom_button("Remove Item", () => {
+				// Your logic here
+				frappe.msgprint("Button clicked!");
+			});
+		}
+		
+
         $(frm.wrapper)
 			.off('keydown.scan')
 			.on('keydown.scan', '[data-fieldname="add_item"] input', function (event) {

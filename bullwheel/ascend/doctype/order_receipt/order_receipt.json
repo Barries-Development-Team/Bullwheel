@@ -14,8 +14,8 @@
   "shipping_charges",
   "subtotal",
   "order_total",
-  "section_break_zucl",
-  "add_item",
+  "order_items_section",
+  "scan_item",
   "order_items",
   "new_products_tab",
   "new_products"
@@ -43,13 +43,8 @@
   {
    "fieldname": "order_items",
    "fieldtype": "Table",
-   "options": "Order Receipt Item"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "section_break_zucl",
-   "fieldtype": "Section Break",
-   "label": "Order Items"
+   "options": "Order Receipt Item",
+   "read_only": 1
   },
   {
    "fieldname": "total_order_items",
@@ -89,13 +84,6 @@
    "reqd": 1
   },
   {
-   "fieldname": "add_item",
-   "fieldtype": "Data",
-   "label": "Add Item",
-   "options": "Barcode",
-   "placeholder": "Scan here"
-  },
-  {
    "fieldname": "new_products_tab",
    "fieldtype": "Tab Break",
    "label": "New Products"
@@ -104,12 +92,25 @@
    "fieldname": "new_products",
    "fieldtype": "Table",
    "options": "New Product"
+  },
+  {
+   "depends_on": "eval:!doc.__islocal",
+   "fieldname": "order_items_section",
+   "fieldtype": "Section Break",
+   "label": "Order Items"
+  },
+  {
+   "fieldname": "scan_item",
+   "fieldtype": "Data",
+   "label": "Scan Item",
+   "options": "Barcode",
+   "placeholder": "Scan here"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-14 12:00:14.196189",
+ "modified": "2026-07-14 12:23:43.632020",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
