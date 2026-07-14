@@ -21,7 +21,7 @@ def lock_row(docname):
         docname,
     )
 
-def update_table(docname, job):
+def update_table(docname, table, job):
 
 	if job not in ['add', 'edit', 'remove']:
 		raise ValueError('Incorrect job argument. Valid arguments are "add", "edit", and "remove".')
@@ -33,7 +33,7 @@ def update_table(docname, job):
 		
 		match job:
 			case 'add':
-				doc.append("item_table", {
+				doc.append(table, {
 					"text": "test"
 				})
 			case 'edit':
@@ -46,9 +46,9 @@ def update_table(docname, job):
 		frappe.db.commit()
 
 @frappe.whitelist()
-def queue_update_table(docname, job):
+def queue_update_table(docname, table, job):
 
-	kwargs = {'docname': docname, 'job': job}
+	kwargs = {'docname': docname, 'table': table, 'job': job}
 
 	frappe.enqueue(
 		method = 'bullwheel.bullwheel_core.doctype.job_edit_prototype.job_edit_prototype.update_table',

@@ -6,16 +6,22 @@ frappe.ui.form.on("Order Receipt", {
 
 		if (!frm.is_new()) {
 			frm.add_custom_button("Add Item", () => {
-            	// Your logic here
-            	frappe.msgprint("Button clicked!");
+            	frappe.call({
+            		method: "bullwheel.bullwheel_core.doctype.job_edit_prototype.job_edit_prototype.queue_add_item",
+            		args: {docname: frm.docname, job: 'add'}
+       			})
 			});
 			frm.add_custom_button("Edit Item", () => {
-				// Your logic here
-				frappe.msgprint("Button clicked!");
+				frappe.call({
+            		method: "bullwheel.bullwheel_core.doctype.job_edit_prototype.job_edit_prototype.queue_add_item",
+            		args: {docname: frm.docname, job: 'edit'}
+       			})
 			});
 			frm.add_custom_button("Remove Item", () => {
-				// Your logic here
-				frappe.msgprint("Button clicked!");
+				frappe.call({
+            		method: "bullwheel.bullwheel_core.doctype.job_edit_prototype.job_edit_prototype.queue_add_item",
+            		args: {docname: frm.docname, job: 'remove'}
+       			})
 			});
 		}
 		
