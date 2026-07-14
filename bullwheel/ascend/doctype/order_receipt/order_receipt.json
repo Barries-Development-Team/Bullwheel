@@ -46,6 +46,7 @@
    "options": "Order Receipt Item"
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "section_break_zucl",
    "fieldtype": "Section Break",
    "label": "Order Items"
@@ -108,7 +109,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-07 12:56:31.849065",
+ "modified": "2026-07-14 12:00:14.196189",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
