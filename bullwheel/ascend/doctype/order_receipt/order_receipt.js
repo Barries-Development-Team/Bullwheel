@@ -1,52 +1,18 @@
 // Copyright (c) 2026, Barrie's Ski and Sports and contributors
 // For license information, please see license.txt
 
-// Fields of Order Receipt Item that we round-trip through the edit dialog and the
-// queued update job. Must mirror EDITABLE_ITEM_FIELDS in order_receipt.py.
-const ITEM_FIELDS = ['item_type', 'vpn', 'quantity', 'cost', 'received', 'comments'];
-
-// Route one add/edit/remove for the order_items table through the serialized job.
-// The job's doc.save() publishes doc_update, which auto-refreshes this (non-dirty)
-// form — so there is no manual reload here.
-function queue_item_update(frm, job, doc, row_name = null) {
-	const values = {};
-	ITEM_FIELDS.forEach((field) => (values[field] = doc[field]));
-
-	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.queue_update_table', {
-		docname: frm.doc.name,
+// Per-table config for the Add/Edit/Remove buttons on Order Receipt child tables. Each
+// entry drives a DocType-defined dialog plus a queued, serialized update of that table.
+const TABLE_CONFIGS = [
+	{
 		table: 'order_items',
-		job: job,
-		values: JSON.stringify(values),
-		row_name: row_name
-	}).then(() => frappe.show_alert({message: __('Queued'), indicator: 'blue'}));
-}
-
-// Build the Add/Edit dialog field list from the Order Receipt Item DocType so the form
-// stays driven by the DocType definition rather than a hardcoded list. Uses the same
-// visibility rule as Quick Entry: show fields that are reqd or allow_in_quick_entry, and
-// skip read-only, virtual, and layout fields (so description/upc are excluded).
-function item_dialog_fields(frm) {
-	const layout_types = ['Section Break', 'Column Break', 'Tab Break', 'HTML'];
-	return frappe.get_meta('Order Receipt Item').fields
-		.filter((df) =>
-			(df.reqd || df.allow_in_quick_entry) &&
-			!df.read_only && !df.is_virtual &&
-			!layout_types.includes(df.fieldtype)
-		)
-		.map((df) => {
-			const field = {
-				fieldname: df.fieldname,
-				label: df.label,
-				fieldtype: df.fieldtype,
-				options: df.options,
-				reqd: df.reqd,
-				default: df.default
-			};
-			if (df.fieldname === 'vpn') {
-				// Scope Vendor Product suggestions to this receipt's vendor. Vendor Product
-				// records carry a `vendor` link (Vendor.Name), and their name is formatted
-				// "<vpn> (<vendor>)". New Product rows have no vendor, so no filter applies
-				// for that item type.
+		child_doctype: 'Order Receipt Item',
+		noun: 'Order Item',
+		// Scope the vpn Dynamic Link to this receipt's vendor. Vendor Product records carry
+		// a `vendor` link (Vendor.Name) and are named "<vpn> (<vendor>)"; New Product rows
+		// have no vendor, so no filter is applied for that item type.
+		customize_field: (frm, field) => {
+			if (field.fieldname === 'vpn') {
 				field.get_query = () => {
 					const item_type = cur_dialog && cur_dialog.get_value('item_type');
 					if (item_type === 'Vendor Product' && frm.doc.vendor) {
@@ -55,32 +21,83 @@ function item_dialog_fields(frm) {
 					return {};
 				};
 			}
+		}
+	},
+	{
+		table: 'new_products',
+		child_doctype: 'New Product',
+		noun: 'New Product'
+	}
+];
+
+// A child field is editable through the dialog/queue when it is writable, non-virtual, and
+// value-bearing. Mirrors writable_fieldnames() in order_receipt.py.
+function is_editable_field(df) {
+	return !df.read_only && !df.is_virtual && !frappe.model.no_value_type.includes(df.fieldtype);
+}
+
+// Fieldnames of a child DocType that the dialog edits and the queue writes.
+function editable_fieldnames(child_doctype) {
+	return frappe.get_meta(child_doctype).fields.filter(is_editable_field).map((df) => df.fieldname);
+}
+
+// Route one add/edit/remove for a child table through the serialized job. The job's
+// doc.save() publishes doc_update, which auto-refreshes this (non-dirty) form — so there
+// is no manual reload here.
+function queue_update(frm, config, job, doc, row_name = null) {
+	const values = {};
+	editable_fieldnames(config.child_doctype).forEach((field) => (values[field] = doc[field]));
+
+	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.queue_update_table', {
+		docname: frm.doc.name,
+		table: config.table,
+		job: job,
+		values: JSON.stringify(values),
+		row_name: row_name
+	}).then(() => frappe.show_alert({message: __('Queued'), indicator: 'blue'}));
+}
+
+// Build the Add/Edit dialog field list from the child DocType so the form stays driven by
+// the DocType definition rather than a hardcoded list. Per-table customize_field hooks can
+// adjust individual fields (e.g. the vpn vendor filter for order items).
+function dialog_fields(frm, config) {
+	return frappe.get_meta(config.child_doctype).fields
+		.filter(is_editable_field)
+		.map((df) => {
+			const field = {
+				fieldname: df.fieldname,
+				label: df.label,
+				fieldtype: df.fieldtype,
+				options: df.options,
+				reqd: df.reqd,
+				default: df.default,
+				depends_on: df.depends_on,
+				mandatory_depends_on: df.mandatory_depends_on
+			};
+			if (config.customize_field) config.customize_field(frm, field);
 			return field;
 		});
 }
 
-// Open the Add/Edit item dialog. For edit, `row` prefills the fields and its name targets
-// the queued update. The vpn Dynamic Link resolves its target DocType from the in-dialog
-// item_type (Frappe's dialog handling reads sibling values via cur_dialog).
-function open_item_dialog(frm, job, row = null) {
-	frappe.model.with_doctype('Order Receipt Item', () => {
+// Open the Add/Edit dialog for a child table. For edit, `row` prefills the fields and its
+// name targets the queued update.
+function open_dialog(frm, config, job, row = null) {
+	frappe.model.with_doctype(config.child_doctype, () => {
 		const dialog = new frappe.ui.Dialog({
-			title: job === 'add' ? __('Add Item') : __('Edit Item'),
-			fields: item_dialog_fields(frm),
+			title: job === 'add' ? __('Add {0}', [config.noun]) : __('Edit {0}', [config.noun]),
+			fields: dialog_fields(frm, config),
 			primary_action_label: job === 'add' ? __('Add') : __('Save'),
 			primary_action: (values) => {
 				// get_values() returns null when a required field is missing; it has
 				// already flagged the field, so just stay open for the user to fix it.
 				if (!values) return;
-				queue_item_update(frm, job, values, row ? row.name : null);
+				queue_update(frm, config, job, values, row ? row.name : null);
 				dialog.hide();
 			}
 		});
 
 		if (row) {
-			// item_type is set before vpn (ITEM_FIELDS order) so the Dynamic Link
-			// target is known when its value is applied.
-			ITEM_FIELDS.forEach((field) => {
+			editable_fieldnames(config.child_doctype).forEach((field) => {
 				if (row[field] != null) dialog.set_value(field, row[field]);
 			});
 		}
@@ -89,46 +106,54 @@ function open_item_dialog(frm, job, row = null) {
 	});
 }
 
-// The order_items grid is selectable (for Edit/Remove) but not directly editable:
-// every mutation must go through the queue so concurrent edits stay serialized.
-function make_grid_selectable_only(frm) {
-	const grid = frm.fields_dict.order_items.grid;
+// A child grid is selectable (for Edit/Remove) but not directly editable: every mutation
+// must go through the queue so concurrent edits stay serialized.
+function make_grid_selectable_only(frm, config) {
+	const grid = frm.fields_dict[config.table].grid;
 	grid.cannot_add_rows = true;
 	// Set the flags on the field df too: the "Add row" and "Duplicate rows" selection
 	// actions gate on df.cannot_add_rows (grid.js refresh_duplicate_rows_button ignores
 	// the grid-instance flag), and "Delete" gates on df.cannot_delete_rows.
 	grid.df.cannot_add_rows = true;
 	grid.df.cannot_delete_rows = true;
-	ITEM_FIELDS.forEach((field) => grid.toggle_enable(field, false));
+	editable_fieldnames(config.child_doctype).forEach((field) => grid.toggle_enable(field, false));
 	grid.refresh();
+}
+
+// Wire the Add/Edit/Remove buttons and grid locking for one child table. Buttons are
+// grouped into a "<noun>" dropdown (frm.add_custom_button's 3rd arg) so each table gets
+// one toolbar entry instead of three flat buttons.
+function setup_table_buttons(frm, config) {
+	make_grid_selectable_only(frm, config);
+
+	const group = config.noun;
+
+	frm.add_custom_button(__('Add'), () => open_dialog(frm, config, 'add'), group);
+	frm.add_custom_button(__('Edit'), () => {
+		const rows = frm.fields_dict[config.table].grid.get_selected_children();
+		if (rows.length !== 1) {
+			frappe.msgprint(__('Select exactly one {0} to edit.', [config.noun.toLowerCase()]));
+			return;
+		}
+		open_dialog(frm, config, 'edit', rows[0]);
+	}, group);
+	frm.add_custom_button(__('Remove'), () => {
+		const rows = frm.fields_dict[config.table].grid.get_selected_children();
+		if (!rows.length) {
+			frappe.msgprint(__('Select at least one {0} to remove.', [config.noun.toLowerCase()]));
+			return;
+		}
+		frappe.confirm(__('Remove {0} selected {1}(s)?', [rows.length, config.noun.toLowerCase()]), () => {
+			rows.forEach((row) => queue_update(frm, config, 'remove', {}, row.name));
+		});
+	}, group);
 }
 
 frappe.ui.form.on("Order Receipt", {
  	refresh(frm) {
 
 		if (!frm.is_new()) {
-			make_grid_selectable_only(frm);
-
-			frm.add_custom_button("Add Item", () => open_item_dialog(frm, 'add'));
-			frm.add_custom_button("Edit Item", () => {
-				const rows = frm.fields_dict.order_items.grid.get_selected_children();
-				if (rows.length !== 1) {
-					frappe.msgprint(__('Select exactly one item to edit.'));
-					return;
-				}
-				open_item_dialog(frm, 'edit', rows[0]);
-			});
-			frm.add_custom_button("Remove Item", () => {
-				const rows = frm.fields_dict.order_items.grid.get_selected_children();
-				if (!rows.length) {
-					frappe.msgprint(__('Select at least one item to remove.'));
-					return;
-				}
-
-				frappe.confirm(__('Remove {0} selected item(s)?', [rows.length]), () => {
-					rows.forEach((row) => queue_item_update(frm, 'remove', {}, row.name));
-				});
-			});
+			TABLE_CONFIGS.forEach((config) => setup_table_buttons(frm, config));
 		}
 
 

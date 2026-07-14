@@ -11,14 +11,29 @@ from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings impo
 from bullwheel.ascend.doctype.vendor.vendor import Vendor
 
 
-# Fields on Order Receipt Item that may be set from the client dialog. Anything
-# outside this allowlist is ignored so the whitelisted path cannot write arbitrary
-# fields. Virtual/read-only fields (description, upc) are intentionally excluded.
-EDITABLE_ITEM_FIELDS = ('received', 'item_type', 'vpn', 'quantity', 'cost', 'comments')
-
-
 class OrderReceipt(Document):
 	pass
+
+def child_doctype_for_table(table):
+	"""Return the child DocType of the given Order Receipt table field, throwing if `table`
+	is not actually a child table on Order Receipt. This bounds the whitelisted `table`
+	argument to real child tables (order_items, new_products)."""
+
+	field = frappe.get_meta("Order Receipt").get_field(table)
+	if not field or field.fieldtype != "Table":
+		frappe.throw(f'"{table}" is not a child table of Order Receipt.')
+	return field.options
+
+def writable_fieldnames(table):
+	"""Fieldnames on the table's child DocType that a user may set: value-bearing, not
+	read-only, not virtual. Derived from the DocType meta so the allowlist stays in sync
+	with the DocType definition (virtual/read-only fields are excluded automatically)."""
+
+	return {
+		field.fieldname
+		for field in frappe.get_meta(child_doctype_for_table(table)).fields
+		if not field.read_only and not field.is_virtual and field.fieldtype not in frappe.model.no_value_fields
+	}
 
 def lock_row(docname):
 	"""Take an exclusive row lock on this Order Receipt (SELECT ... FOR UPDATE) so that
@@ -40,10 +55,11 @@ def find_row(doc, table, row_name):
 
 	frappe.throw(f'Row "{row_name}" was not found in "{table}".')
 
-def clean_values(values):
-	"""Reduce a raw values dict to only the fields we permit on an order item."""
+def clean_values(table, values):
+	"""Reduce a raw values dict to only the fields writable on the table's child DocType."""
 
-	return {field: values[field] for field in EDITABLE_ITEM_FIELDS if field in values}
+	allowed = writable_fieldnames(table)
+	return {field: values[field] for field in values if field in allowed}
 
 def update_table(docname, table, job, values=None, row_name=None):
 	"""Apply a single add/edit/remove operation to a child table of an Order Receipt inside a
@@ -55,7 +71,7 @@ def update_table(docname, table, job, values=None, row_name=None):
 
 	if isinstance(values, str):
 		values = json.loads(values or '{}')
-	values = clean_values(values or {})
+	values = clean_values(table, values or {})
 
 	lock_row(docname)
 
