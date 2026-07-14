@@ -79,9 +79,11 @@ function dialog_fields(frm, config) {
 		});
 }
 
-// Open the Add/Edit dialog for a child table. For edit, `row` prefills the fields and its
-// name targets the queued update.
-function open_dialog(frm, config, job, row = null) {
+// Open the Add/Edit dialog for a child table.
+//   row       - for edit: prefills the fields and targets the queued update by its name.
+//   prefill   - {fieldname: value} to seed an add dialog (used by the scan flow).
+//   on_submit - custom submit handler(values); defaults to a queued add/edit of this table.
+function open_dialog(frm, config, {job, row = null, prefill = null, on_submit = null}) {
 	frappe.model.with_doctype(config.child_doctype, () => {
 		const dialog = new frappe.ui.Dialog({
 			title: job === 'add' ? __('Add {0}', [config.noun]) : __('Edit {0}', [config.noun]),
@@ -91,16 +93,21 @@ function open_dialog(frm, config, job, row = null) {
 				// get_values() returns null when a required field is missing; it has
 				// already flagged the field, so just stay open for the user to fix it.
 				if (!values) return;
-				queue_update(frm, config, job, values, row ? row.name : null);
+				if (on_submit) {
+					on_submit(values);
+				} else {
+					queue_update(frm, config, job, values, row ? row.name : null);
+				}
 				dialog.hide();
 			}
 		});
 
-		if (row) {
-			editable_fieldnames(config.child_doctype).forEach((field) => {
-				if (row[field] != null) dialog.set_value(field, row[field]);
-			});
-		}
+		const seed = row
+			? Object.fromEntries(editable_fieldnames(config.child_doctype).map((field) => [field, row[field]]))
+			: (prefill || {});
+		Object.keys(seed).forEach((field) => {
+			if (seed[field] != null) dialog.set_value(field, seed[field]);
+		});
 
 		dialog.show();
 	});
@@ -128,14 +135,14 @@ function setup_table_buttons(frm, config) {
 
 	const group = config.noun;
 
-	frm.add_custom_button(__('Add'), () => open_dialog(frm, config, 'add'), group);
+	frm.add_custom_button(__('Add'), () => open_dialog(frm, config, {job: 'add'}), group);
 	frm.add_custom_button(__('Edit'), () => {
 		const rows = frm.fields_dict[config.table].grid.get_selected_children();
 		if (rows.length !== 1) {
 			frappe.msgprint(__('Select exactly one {0} to edit.', [config.noun.toLowerCase()]));
 			return;
 		}
-		open_dialog(frm, config, 'edit', rows[0]);
+		open_dialog(frm, config, {job: 'edit', row: rows[0]});
 	}, group);
 	frm.add_custom_button(__('Remove'), () => {
 		const rows = frm.fields_dict[config.table].grid.get_selected_children();
@@ -149,108 +156,121 @@ function setup_table_buttons(frm, config) {
 	}, group);
 }
 
-frappe.ui.form.on("Order Receipt", {
- 	refresh(frm) {
+// ── Scan flow ──────────────────────────────────────────────────────────────────
+// All scan mutations route through the serialized queue (like the buttons), so the
+// grids stay read-only and concurrent scans from multiple users can't lose updates.
 
-		if (!frm.is_new()) {
-			TABLE_CONFIGS.forEach((config) => setup_table_buttons(frm, config));
-		}
+// Add or increment an order item. The server-side upsert (match on item_type + vpn)
+// keeps rapid/concurrent scans correct regardless of the form's on-screen state.
+function queue_add_or_increment_item(frm, item_type, vpn, cost) {
+	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.queue_add_or_increment_item', {
+		docname: frm.doc.name,
+		item_type: item_type,
+		vpn: vpn,
+		cost: cost
+	}).then(() => frappe.show_alert({
+		message: __('Added: {0}', [frappe.utils.escape_html(vpn)]),
+		indicator: 'green'
+	}));
+}
 
+// Stage a New Product (+ a linked order item) via the queue.
+function queue_stage_new_product(frm, values) {
+	const clean = {};
+	editable_fieldnames('New Product').forEach((field) => (clean[field] = values[field]));
 
-        $(frm.wrapper)
-			.off('keydown.scan')
-			.on('keydown.scan', '[data-fieldname="add_item"] input', function (event) {
-				if (event.key !== 'Enter') return;
-				event.preventDefault();
+	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.queue_stage_new_product', {
+		docname: frm.doc.name,
+		values: JSON.stringify(clean)
+	}).then(() => frappe.show_alert({message: __('New product staged'), indicator: 'orange'}));
+}
 
-				// Read straight from the input element. A Frappe Data field only
-				// syncs into frm.doc on its change event (blur/debounce), which has
-				// not fired yet when Enter is pressed mid-typing — so frm.doc.add_item
-				// would be stale and the scan would appear to be missed.
-				const input = event.target;
-				const scanned_value = (input.value || '').trim();
-				if (!scanned_value) return;
-
-				// Clear the input immediately so the user can scan the next item
-				// without waiting on the server round-trip, and keep the model in sync.
-				$(input).val('');
-				frm.doc.add_item = '';
-
-				frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.scan_item', {
-					id: scanned_value,
-					vendor: frm.doc.vendor
-				}).then((response) => {
-					const [status, record] = response.message || [];
-
-					if (status === 'vpn found') {
-						// record.vpn is the Vendor Product's docname, e.g. "12345 (Specialized)".
-						const existing_row = (frm.doc.order_items || []).find(
-							row => row.item_type === 'Vendor Product' && row.vpn === record.vpn
-						);
-
-						if (existing_row) {
-							frappe.model.set_value(existing_row.doctype, existing_row.name, 'quantity', existing_row.quantity + 1);
-						} else {
-							frm.add_child('order_items', {
-								item_type: 'Vendor Product',
-								vpn: record.vpn,
-								description: record.description,
-								upc: record.upc,
-								quantity: 1,
-								cost: record.cost
-							});
-						}
-						frm.refresh_field('order_items');
-						frappe.show_alert({
-							message: `Added: ${frappe.utils.escape_html(record.vpn)}`,
-							indicator: 'green'
-						});
-					} else if (status === 'product found') {
-						// Ascend has this product, but this vendor has no Vendor Product
-						// on file for it yet — stage a New Product entry to record the
-						// new vendor association.
-						stage_new_product(frm, {
-							upc: record.upc,
-							description: record.description,
-							comments: 'Existing product receiving a new vendor product association.'
-						});
-					} else {
-						// No record of this item anywhere — confirm before creating one from scratch.
-						frappe.confirm(
-							`No product found for "${frappe.utils.escape_html(scanned_value)}". Create a new product record?`,
-							() => stage_new_product(frm, {
-								upc: scanned_value,
-								description: null,
-								comments: 'New product — no existing record found.'
-							})
-						);
-					}
-				});
-			});
- 	},
-});
-
-function stage_new_product(frm, {upc, description, comments}) {
-	// Every "New Product" entry needs a placeholder VPN since it has no
-	// Vendor Product on file yet; the real one is filled in during review.
-	const new_product_row = frm.add_child('new_products', {
-		vpn: frappe.utils.get_random(10),
-		upc: upc,
-		description: description
-	});
-	frm.refresh_field('new_products');
-
-	// Link the order item back to the New Product row we just staged.
-	frm.add_child('order_items', {
-		item_type: 'New Product',
-		vpn: new_product_row.name,
-		quantity: 1,
-		comments: comments
-	});
-	frm.refresh_field('order_items');
-
-	frappe.show_alert({
-		message: `New product staged for: ${frappe.utils.escape_html(upc)}`,
-		indicator: 'orange'
+// Prompt-on-scan: open the New Product dialog prefilled from the scan so the user can
+// complete the required fields, then stage the product and link an order item.
+function open_new_product_from_scan(frm, prefill) {
+	const config = TABLE_CONFIGS.find((c) => c.table === 'new_products');
+	open_dialog(frm, config, {
+		job: 'add',
+		prefill: prefill,
+		on_submit: (values) => queue_stage_new_product(frm, values)
 	});
 }
+
+// Dispatch a scanned identifier: resolve it via scan_item, then route the result through the
+// serialized queue (add/increment an order item, or prompt for a new product).
+function handle_scan(frm, scanned_value) {
+	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.scan_item', {
+		id: scanned_value,
+		vendor: frm.doc.vendor,
+		docname: frm.doc.name
+	}).then((response) => {
+		const [status, record] = response.message || [];
+
+		if (status === 'new product found') {
+			// Already staged as a New Product on this order — add/increment the
+			// order item that references it (record.name is the New Product row).
+			queue_add_or_increment_item(frm, 'New Product', record.name, record.cost);
+		} else if (status === 'vpn found') {
+			// record.vpn is the Vendor Product's docname, e.g. "12345 (Specialized)".
+			queue_add_or_increment_item(frm, 'Vendor Product', record.vpn, record.cost);
+		} else if (status === 'product found') {
+			// Ascend has this product, but this vendor has no Vendor Product on file yet —
+			// collect the New Product details, then stage it + link an order item.
+			open_new_product_from_scan(frm, {
+				upc: record.upc,
+				description: record.description,
+				cost: record.cost
+			});
+		} else {
+			// No record of this item anywhere — confirm before creating one from scratch.
+			frappe.confirm(
+				`No product found for "${frappe.utils.escape_html(scanned_value)}". Create a new product record?`,
+				() => open_new_product_from_scan(frm, {upc: scanned_value})
+			);
+		}
+	});
+}
+
+// Mount the scan box as a standalone control (no frm/doc) inside the scan_item HTML field, so
+// typing/scanning never writes to frm.doc and never marks the form dirty — a dirty form would
+// suppress the realtime auto-refresh. Frappe re-renders the HTML field on every form refresh,
+// so we re-mount the control here each time.
+function setup_scan_box(frm) {
+	const field = frm.get_field('scan_item');
+	if (!field) return;
+
+	field.$wrapper.empty();
+	const control = frappe.ui.form.make_control({
+		df: {
+			fieldtype: 'Data',
+			fieldname: 'scan_item',
+			label: __('Scan Item'),
+			options: 'Barcode',
+			placeholder: __('Scan here')
+		},
+		parent: field.$wrapper,
+		render_input: true
+	});
+	control.refresh();
+
+	// Read/clear the raw input directly; the value stays out of frm.doc entirely.
+	control.$input.on('keydown', (event) => {
+		if (event.key !== 'Enter') return;
+		event.preventDefault();
+
+		const scanned_value = (control.$input.val() || '').trim();
+		if (!scanned_value) return;
+
+		control.$input.val('');
+		handle_scan(frm, scanned_value);
+	});
+}
+
+frappe.ui.form.on("Order Receipt", {
+ 	refresh(frm) {
+		if (!frm.is_new()) {
+			TABLE_CONFIGS.forEach((config) => setup_table_buttons(frm, config));
+			setup_scan_box(frm);
+		}
+ 	},
+});

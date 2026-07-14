@@ -100,10 +100,8 @@
   },
   {
    "fieldname": "scan_item",
-   "fieldtype": "Data",
-   "label": "Scan Item",
-   "options": "Barcode",
-   "placeholder": "Scan here"
+   "fieldtype": "HTML",
+   "label": ""
   }
  ],
  "grid_page_length": 50,

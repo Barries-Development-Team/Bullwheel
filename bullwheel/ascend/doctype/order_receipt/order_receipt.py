@@ -109,11 +109,113 @@ def queue_update_table(docname, table, job, values=None, row_name=None):
 		at_front = False,
 		**kwargs
 	)
-	
+
+def add_or_increment_item(docname, item_type, vpn, cost=None):
+	"""Add an order item for the given vendor/new product, or bump its quantity if a row for
+	the same item (matching item_type + vpn) already exists. Used by the scan flow; runs under
+	the row lock so concurrent scans serialize instead of racing."""
+
+	lock_row(docname)
+
+	doc = frappe.get_doc("Order Receipt", docname)
+
+	existing = next((row for row in doc.order_items if row.item_type == item_type and row.vpn == vpn), None)
+	if existing:
+		existing.quantity += 1
+	else:
+		doc.append("order_items", {
+			"item_type": item_type,
+			"vpn": vpn,
+			"quantity": 1,
+			"cost": cost,
+		})
+
+	doc.save()
+	frappe.db.commit()
+
 @frappe.whitelist()
-def scan_item(id: str, vendor: str):
-	"""Determine existance of a Vendor Product for the scanned item, and return the Vendor Product's VPN if it exists.
-	If the VPN does not exist, determine if a Product exists for the scanned item and return the Product's Store SKU."""
+def queue_add_or_increment_item(docname, item_type, vpn, cost=None):
+	"""Enqueue a serialized add-or-increment of an order item (scan flow)."""
+
+	frappe.enqueue(
+		method='bullwheel.ascend.doctype.order_receipt.order_receipt.add_or_increment_item',
+		queue='short',
+		enqueue_after_commit=True,
+		now=False,
+		is_async=True,
+		at_front=False,
+		docname=docname,
+		item_type=item_type,
+		vpn=vpn,
+		cost=cost,
+	)
+
+def stage_new_product(docname, values):
+	"""Create a New Product row from `values` and link an order item to it, in one locked
+	transaction. The New Product is saved first so its generated name can be used as the
+	order item's Dynamic Link target, then the linked order item is appended and saved."""
+
+	if isinstance(values, str):
+		values = json.loads(values or '{}')
+	values = clean_values('new_products', values or {})
+
+	lock_row(docname)
+
+	doc = frappe.get_doc("Order Receipt", docname)
+
+	new_product_row = doc.append("new_products", values)
+	doc.save()  # assigns the New Product row its name
+
+	doc.append("order_items", {
+		"item_type": "New Product",
+		"vpn": new_product_row.name,
+		"quantity": 1,
+		"cost": new_product_row.cost,
+	})
+	doc.save()
+	frappe.db.commit()
+
+@frappe.whitelist()
+def queue_stage_new_product(docname, values):
+	"""Enqueue serialized New-Product staging (New Product row + linked order item)."""
+
+	frappe.enqueue(
+		method='bullwheel.ascend.doctype.order_receipt.order_receipt.stage_new_product',
+		queue='short',
+		enqueue_after_commit=True,
+		now=False,
+		is_async=True,
+		at_front=False,
+		docname=docname,
+		values=values,
+	)
+
+def find_staged_new_product(docname, id):
+	"""Return a New Product already staged on this order whose UPC / MPN / case UPC matches the
+	scanned id, or None. Lets a re-scanned item reference the existing New Product instead of
+	re-querying Ascend or staging a duplicate."""
+
+	matches = frappe.get_all(
+		"New Product",
+		filters={"parenttype": "Order Receipt", "parent": docname, "parentfield": "new_products"},
+		or_filters={"upc": id, "mpn": id, "case_upc": id},
+		fields=["name", "description", "cost", "upc"],
+		limit=1,
+	)
+	return matches[0] if matches else None
+
+@frappe.whitelist()
+def scan_item(id: str, vendor: str, docname: str):
+	"""Resolve a scanned identifier to an item this order can receive. Checks, in order: a New
+	Product already staged on this order, then a Vendor Product in Ascend, then any Product in
+	Ascend. Returns a (status, record) tuple; status is one of 'new product found', 'vpn found',
+	'product found', or 'not found'."""
+
+	# Check whether this item is already staged as a New Product for this order; if so,
+	# reference it instead of querying Ascend or staging a duplicate.
+	staged_new_product = find_staged_new_product(docname, id)
+	if staged_new_product:
+		return ('new product found', staged_new_product)
 
 	# Determine if Vendor Product exists for the scanned item.
 
