@@ -1,6 +1,8 @@
 # Copyright (c) 2026, Barrie's Ski and Sports and contributors
 # For license information, please see license.txt
 
+import json
+
 import frappe
 from frappe.model.document import Document
 
@@ -9,49 +11,81 @@ from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings impo
 from bullwheel.ascend.doctype.vendor.vendor import Vendor
 
 
+# Fields on Order Receipt Item that may be set from the client dialog. Anything
+# outside this allowlist is ignored so the whitelisted path cannot write arbitrary
+# fields. Virtual/read-only fields (description, upc) are intentionally excluded.
+EDITABLE_ITEM_FIELDS = ('received', 'item_type', 'vpn', 'quantity', 'cost', 'comments')
+
+
 class OrderReceipt(Document):
 	pass
 
 def lock_row(docname):
-	"""Locks a Doctype row to prevent dataloss when multiple workers run CRUD operations simultaneously.
-	This should ALWAYS be called first, before any read or writes to the row."""
+	"""Take an exclusive row lock on this Order Receipt (SELECT ... FOR UPDATE) so that
+	concurrent jobs editing the same receipt's child tables serialize instead of racing
+	and losing each other's updates. ALWAYS call this before reading the doc you will modify."""
 
 	frappe.db.sql(
-        "SELECT `name` FROM `tabJob Edit Prototype` WHERE `name`=%s FOR UPDATE",
+        "SELECT `name` FROM `tabOrder Receipt` WHERE `name`=%s FOR UPDATE",
         docname,
     )
 
-def update_table(docname, table, job):
+def find_row(doc, table, row_name):
+	"""Return the child row named row_name from the given child table, or throw if it is
+	missing (e.g. another job already removed it)."""
+
+	for row in doc.get(table):
+		if row.name == row_name:
+			return row
+
+	frappe.throw(f'Row "{row_name}" was not found in "{table}".')
+
+def clean_values(values):
+	"""Reduce a raw values dict to only the fields we permit on an order item."""
+
+	return {field: values[field] for field in EDITABLE_ITEM_FIELDS if field in values}
+
+def update_table(docname, table, job, values=None, row_name=None):
+	"""Apply a single add/edit/remove operation to a child table of an Order Receipt inside a
+	row lock, so simultaneous receiving edits are serialized. Runs as an enqueued job; the job
+	runner handles rollback on error, so we only commit on success."""
 
 	if job not in ['add', 'edit', 'remove']:
 		raise ValueError('Incorrect job argument. Valid arguments are "add", "edit", and "remove".')
 
+	if isinstance(values, str):
+		values = json.loads(values or '{}')
+	values = clean_values(values or {})
+
 	lock_row(docname)
 
-	try:
-		doc = frappe.get_doc("Job Edit Prototype", docname)
-		
-		match job:
-			case 'add':
-				doc.append(table, {
-					"text": "test"
-				})
-			case 'edit':
-				pass
-			case 'remove':
-				pass
+	doc = frappe.get_doc("Order Receipt", docname)
 
-		doc.save()
-	finally:
-		frappe.db.commit()
+	match job:
+		case 'add':
+			doc.append(table, values)
+		case 'edit':
+			find_row(doc, table, row_name).update(values)
+		case 'remove':
+			doc.remove(find_row(doc, table, row_name))
+
+	doc.save()
+	frappe.db.commit()
 
 @frappe.whitelist()
-def queue_update_table(docname, table, job):
+def queue_update_table(docname, table, job, values=None, row_name=None):
+	"""Enqueue a serialized add/edit/remove against an Order Receipt child table."""
 
-	kwargs = {'docname': docname, 'table': table, 'job': job}
+	kwargs = {
+		'docname': docname,
+		'table': table,
+		'job': job,
+		'values': values,
+		'row_name': row_name,
+	}
 
 	frappe.enqueue(
-		method = 'bullwheel.bullwheel_core.doctype.job_edit_prototype.job_edit_prototype.update_table',
+		method = 'bullwheel.ascend.doctype.order_receipt.order_receipt.update_table',
 		queue = 'short',
 		enqueue_after_commit = True,
 		now = False,

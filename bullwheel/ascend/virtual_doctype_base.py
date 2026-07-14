@@ -398,7 +398,14 @@ class AbstractVirtualDocType(Document):
 	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, or_filters: list = [], as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
 
+		# Frappe's link search (search_widget) appends a computed `_relevance` column to the
+		# fields list and then strips the trailing column positionally from each returned row.
+		# We drop that non-string field below (we can't map it), so track how many were removed
+		# to re-pad the as_list rows and keep the caller's column alignment — otherwise the
+		# strip would eat a real column (e.g. the description subtitle shown under each option).
+		original_field_count = len(fields)
 		cls._validate_and_clean_fields(fields)
+		removed_field_count = original_field_count - len(fields)
 
 		search_values = cls._search_values_for_name_condition(filters, or_filters) if cls.ALT_NAME_RESOLUTION_FIELDS else None
 		select_fields = fields
@@ -440,7 +447,13 @@ class AbstractVirtualDocType(Document):
 				records = [{field: record.get(field) for field in fields} for record in records]
 
 		if as_list:
-			return [[record.get(field) for field in fields] for record in records]
+			rows = [[record.get(field) for field in fields] for record in records]
+			# Re-pad the columns dropped above (e.g. search's `_relevance`) so callers that
+			# strip trailing columns positionally still line up with the real fields.
+			if removed_field_count:
+				for row in rows:
+					row.extend([None] * removed_field_count)
+			return rows
 
 		return [to_document_dict(record) for record in records]
 	

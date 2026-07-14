@@ -43,8 +43,7 @@
   {
    "fieldname": "order_items",
    "fieldtype": "Table",
-   "options": "Order Receipt Item",
-   "read_only": 1
+   "options": "Order Receipt Item"
   },
   {
    "fieldname": "total_order_items",
