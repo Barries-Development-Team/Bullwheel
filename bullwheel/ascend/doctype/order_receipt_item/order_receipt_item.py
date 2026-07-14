@@ -1,30 +1,11 @@
 # Copyright (c) 2026, Barrie's Ski and Sports and contributors
 # For license information, please see license.txt
 
-# import frappe
 from frappe.model.document import Document
-from bullwheel.ascend.doctype.vendor_product.vendor_product import VendorProduct
+
 
 class OrderReceiptItem(Document):
-	def _ascend_fields(self):
-		"""Fetch and memoize the linked Ascend Product's mirrored fields so both virtual
-		fields share a single SQL query per document instance. Returns None when no product
-		is linked or the linked product no longer exists in Ascend."""
-		if not hasattr(self, "_ascend_field_cache"):
-			self._ascend_field_cache = (
-				VendorProduct.get_values(self.vpn, ["description", "upc"])
-				if self.vpn else None
-			)
-		return self._ascend_field_cache
-
-	@property
-	def description(self):
-		fields = self._ascend_fields()
-		return fields.get("description") if fields else None
-	
-	@property
-	def upc(self):
-		fields = self._ascend_fields()
-		return fields.get("upc") if fields else None
-
-	
+	# description and upc are snapshot fields, populated once when the item is added
+	# (see populate_item_snapshot in order_receipt.py) rather than re-derived from Ascend
+	# on every load — that per-row SQL Server lookup was the main receiving-job bottleneck.
+	pass

@@ -162,12 +162,15 @@ function setup_table_buttons(frm, config) {
 
 // Add or increment an order item. The server-side upsert (match on item_type + vpn)
 // keeps rapid/concurrent scans correct regardless of the form's on-screen state.
-function queue_add_or_increment_item(frm, item_type, vpn, cost) {
+// description/upc come from scan_item so the server snapshots them without a re-query.
+function queue_add_or_increment_item(frm, item_type, vpn, cost, description, upc) {
 	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.queue_add_or_increment_item', {
 		docname: frm.doc.name,
 		item_type: item_type,
 		vpn: vpn,
-		cost: cost
+		cost: cost,
+		description: description,
+		upc: upc
 	}).then(() => frappe.show_alert({
 		message: __('Added: {0}', [frappe.utils.escape_html(vpn)]),
 		indicator: 'green'
@@ -209,10 +212,10 @@ function handle_scan(frm, scanned_value) {
 		if (status === 'new product found') {
 			// Already staged as a New Product on this order — add/increment the
 			// order item that references it (record.name is the New Product row).
-			queue_add_or_increment_item(frm, 'New Product', record.name, record.cost);
+			queue_add_or_increment_item(frm, 'New Product', record.name, record.cost, record.description, record.upc);
 		} else if (status === 'vpn found') {
 			// record.vpn is the Vendor Product's docname, e.g. "12345 (Specialized)".
-			queue_add_or_increment_item(frm, 'Vendor Product', record.vpn, record.cost);
+			queue_add_or_increment_item(frm, 'Vendor Product', record.vpn, record.cost, record.description, record.upc);
 		} else if (status === 'product found') {
 			// Ascend has this product, but this vendor has no Vendor Product on file yet —
 			// collect the New Product details, then stage it + link an order item.

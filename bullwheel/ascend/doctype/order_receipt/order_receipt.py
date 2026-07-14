@@ -9,10 +9,29 @@ from frappe.model.document import Document
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
 from bullwheel.ascend.doctype.vendor.vendor import Vendor
+from bullwheel.ascend.doctype.vendor_product.vendor_product import VendorProduct
 
 
 class OrderReceipt(Document):
 	pass
+
+def populate_item_snapshot(row):
+	"""Snapshot the linked product's description/upc onto an order item at add/edit time, so
+	they are stored (not re-derived from Ascend on every load). Vendor Product rows read from
+	Ascend once here; New Product rows read from the local New Product record. Skips the lookup
+	when description/upc are already set (e.g. supplied by the scan flow)."""
+
+	if not row.vpn or (row.description and row.upc):
+		return
+
+	if row.item_type == "Vendor Product":
+		values = VendorProduct.get_values(row.vpn, ["description", "upc"])
+	else:
+		values = frappe.db.get_value("New Product", row.vpn, ["description", "upc"], as_dict=True)
+
+	if values:
+		row.description = values.get("description")
+		row.upc = values.get("upc")
 
 def child_doctype_for_table(table):
 	"""Return the child DocType of the given Order Receipt table field, throwing if `table`
@@ -79,12 +98,22 @@ def update_table(docname, table, job, values=None, row_name=None):
 
 	match job:
 		case 'add':
-			doc.append(table, values)
+			row = doc.append(table, values)
 		case 'edit':
-			find_row(doc, table, row_name).update(values)
+			row = find_row(doc, table, row_name)
+			row.update(values)
 		case 'remove':
 			doc.remove(find_row(doc, table, row_name))
+			row = None
 
+	# Snapshot the product's description/upc once, here, so loads never re-query Ascend.
+	if row is not None and table == 'order_items':
+		row.description = row.upc = None  # force a fresh snapshot in case vpn changed
+		populate_item_snapshot(row)
+
+	# Links are validated upstream (dialog Dynamic Link / scan_item); skip the per-row
+	# Ascend round-trips that _validate_links would otherwise make on every save.
+	doc.flags.ignore_links = True
 	doc.save()
 	frappe.db.commit()
 
@@ -110,10 +139,11 @@ def queue_update_table(docname, table, job, values=None, row_name=None):
 		**kwargs
 	)
 
-def add_or_increment_item(docname, item_type, vpn, cost=None):
+def add_or_increment_item(docname, item_type, vpn, cost=None, description=None, upc=None):
 	"""Add an order item for the given vendor/new product, or bump its quantity if a row for
 	the same item (matching item_type + vpn) already exists. Used by the scan flow; runs under
-	the row lock so concurrent scans serialize instead of racing."""
+	the row lock so concurrent scans serialize instead of racing. description/upc are supplied
+	by the scan (scan_item already fetched them), so the snapshot needs no extra Ascend query."""
 
 	lock_row(docname)
 
@@ -123,18 +153,22 @@ def add_or_increment_item(docname, item_type, vpn, cost=None):
 	if existing:
 		existing.quantity += 1
 	else:
-		doc.append("order_items", {
+		row = doc.append("order_items", {
 			"item_type": item_type,
 			"vpn": vpn,
 			"quantity": 1,
 			"cost": cost,
+			"description": description,
+			"upc": upc,
 		})
+		populate_item_snapshot(row)  # no-op when the scan already supplied description/upc
 
+	doc.flags.ignore_links = True
 	doc.save()
 	frappe.db.commit()
 
 @frappe.whitelist()
-def queue_add_or_increment_item(docname, item_type, vpn, cost=None):
+def queue_add_or_increment_item(docname, item_type, vpn, cost=None, description=None, upc=None):
 	"""Enqueue a serialized add-or-increment of an order item (scan flow)."""
 
 	frappe.enqueue(
@@ -148,6 +182,8 @@ def queue_add_or_increment_item(docname, item_type, vpn, cost=None):
 		item_type=item_type,
 		vpn=vpn,
 		cost=cost,
+		description=description,
+		upc=upc,
 	)
 
 def stage_new_product(docname, values):
@@ -164,14 +200,19 @@ def stage_new_product(docname, values):
 	doc = frappe.get_doc("Order Receipt", docname)
 
 	new_product_row = doc.append("new_products", values)
+	doc.flags.ignore_links = True
 	doc.save()  # assigns the New Product row its name
 
+	# Snapshot description/upc straight from the New Product we just created — no extra query.
 	doc.append("order_items", {
 		"item_type": "New Product",
 		"vpn": new_product_row.name,
 		"quantity": 1,
 		"cost": new_product_row.cost,
+		"description": new_product_row.description,
+		"upc": new_product_row.upc,
 	})
+	doc.flags.ignore_links = True
 	doc.save()
 	frappe.db.commit()
 
