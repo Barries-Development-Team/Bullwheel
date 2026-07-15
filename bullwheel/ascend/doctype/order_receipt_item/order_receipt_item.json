@@ -80,7 +80,7 @@
    "allow_in_quick_entry": 1,
    "fieldname": "upc",
    "fieldtype": "Data",
-   "hidden": 1,
+   "in_list_view": 1,
    "label": "UPC",
    "read_only": 1
   },
@@ -93,7 +93,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-15 10:37:43.348535",
+ "modified": "2026-07-15 12:08:35.273845",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt Item",
