@@ -9,11 +9,15 @@
   "details",
   "po",
   "vendor",
-  "order_status",
-  "total_order_items",
   "column_break_yjnq",
+  "order_status",
+  "column_break_rlmm",
+  "total_order_items",
+  "column_break_vcoc",
   "subtotal",
+  "column_break_iaxv",
   "shipping_charges",
+  "column_break_sctf",
   "order_total",
   "order_items_section",
   "scan_item",
@@ -66,7 +70,7 @@
    "depends_on": "eval:!doc.__islocal",
    "fieldname": "shipping_charges",
    "fieldtype": "Currency",
-   "label": "Shipping (and other charges)"
+   "label": "Shipping (& charges)"
   },
   {
    "depends_on": "eval:!doc.__islocal",
@@ -112,12 +116,28 @@
    "fieldname": "details",
    "fieldtype": "Tab Break",
    "label": "Details"
+  },
+  {
+   "fieldname": "column_break_rlmm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_vcoc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_iaxv",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_sctf",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-15 11:36:27.095024",
+ "modified": "2026-07-15 12:01:05.183366",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
