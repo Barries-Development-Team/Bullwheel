@@ -2,17 +2,17 @@
  "actions": [],
  "allow_rename": 1,
  "autoname": "field:po",
- "creation": "2026-06-24 14:19:49.394323",
+ "creation": "2026-07-14 16:42:18.648207",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "po",
   "vendor",
   "order_status",
-  "column_break_yjnq",
   "total_order_items",
-  "shipping_charges",
+  "column_break_yjnq",
   "subtotal",
+  "shipping_charges",
   "order_total",
   "order_items_section",
   "scan_item",
@@ -100,14 +100,13 @@
   },
   {
    "fieldname": "scan_item",
-   "fieldtype": "HTML",
-   "label": ""
+   "fieldtype": "HTML"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-14 12:23:43.632020",
+ "modified": "2026-07-15 10:41:36.391611",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
