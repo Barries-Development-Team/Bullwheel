@@ -162,12 +162,12 @@ function hide_table_buttons(frm, config) {
 }
 
 function update_table_buttons(frm) {
-	if (frm.get_active_tab().id === "order-receipt-details") {
+	if (frm.get_active_tab().id === "order-receipt-new_products_tab") {
+		show_table_buttons(frm, TABLE_CONFIGS.new_products);
+		hide_table_buttons(frm, TABLE_CONFIGS.order_items);
+	} else {
 		show_table_buttons(frm, TABLE_CONFIGS.order_items);
 		hide_table_buttons(frm, TABLE_CONFIGS.new_products);
-	} else {
-		show_table_buttons(frm, TABLE_CONFIGS.new_products);
-		hide_table_buttons(frm, TABLE_CONFIGS.order_items)
 	}
 }
 
