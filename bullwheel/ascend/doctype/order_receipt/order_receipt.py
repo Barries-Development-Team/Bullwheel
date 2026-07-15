@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import json
+import openpyxl
 
 import frappe
 from frappe.model.document import Document
@@ -316,3 +317,44 @@ def scan_item(id: str, vendor: str, docname: str):
 			return ('product found', result[0])
 		
 		return ('not found', None)
+	
+@frappe.whitelist()
+def generate_product_sheet(name):
+	"""Build an Ascend Vendor Products import sheet from the saved child table rows and serve it as a download."""
+	document = frappe.get_doc("Order Receipt", name)
+
+	template_path = frappe.get_app_path(
+		"bullwheel", "ascend", "import_templates", "Ascend Template_Vendor Products.xlsx"
+	)
+
+	workbook = openpyxl.load_workbook(template_path)
+	worksheet = workbook.active
+
+	# Index each header to its 1-based column number.
+	header_to_column = {
+		cell.value: cell.column
+		for cell in worksheet[1]
+		if cell.value is not None
+	}
+
+	# Erase any sample rows the template ships with.
+	for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row):
+		for cell in row:
+			cell.value = None
+
+	for row_number, product in enumerate(document.table_frll, start=2):
+		for template_column, field_name in TEMPLATE_COLUMN_TO_FIELD.items():
+			column_index = header_to_column.get(template_column)
+			if column_index is None:
+				continue
+			if template_column in CASE_COLUMNS and not product.case:
+				continue
+			worksheet.cell(row=row_number, column=column_index, value=getattr(product, field_name, None))
+
+	file_buffer = io.BytesIO()
+	workbook.save(file_buffer)
+	file_buffer.seek(0)
+
+	frappe.local.response.filename = f"{name} - Ascend Vendor Product Import.xlsx"
+	frappe.local.response.filecontent = file_buffer.read()
+	frappe.local.response.type = "download"
