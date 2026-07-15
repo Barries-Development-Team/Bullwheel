@@ -288,14 +288,55 @@ function setup_scan_box(frm) {
 frappe.ui.form.on("Order Receipt", {
  	refresh(frm) {
 		if (!frm.is_new()) {
+			// Regenerates the buttons so that the receiving actions are always before the table actions.
+			frm.clear_custom_buttons(); 
+			frm.add_custom_button(__('Export Received Batch'), () => {
+				frappe.confirm('This task should only be performed by a member of the Receiving Team. All unreceived items will be marked as received. Do you wish to continue? For more information, select "Import Instructions".',
+					() => { // Yes
+						const url = '/api/method/bullwheel.ascend.doctype.bulk_product_import.bulk_product_import.generate_import_sheet'
+							+ '?name=' + encodeURIComponent(frm.doc.name);
+						window.open(url);
+					}, () => { // No
+						return
+				})
+        	},__("Receiving"));
+
+			frm.add_custom_button(__('Import Instructions'), () => {
+				frappe.msgprint({
+					title: __('Ascend Order Import Instructions'),
+					indicator: 'green',
+					message: __(`Note: This task should be performed by a member of the Receiving Team.
+								<div style='margin-top: 20px;'></div>
+								After exporting the received batch, two spreadsheets will be downloaded to your computer; a "PO" and a "Products" sheet. The "PO" sheet contains VPN, Cost, and Quantity data for the Order, while the "Product" sheet contains the new Vendor Product data. <b>The Vendor Product data must be imported before the Order is created!</b>
+								<div style='margin-top: 20px;'></div>
+								<b>Vendor Product Import Steps</b><br>
+								1. While on the Ascend Desktop, select File > Import > Vendor Products...<br>
+								2. In the File Explorer, navigate to and select the downloaded spreadsheet with the "Products" prefix.<br>
+								3. Select the vendor associated with the order.<br>
+								4. Check the (Select All) box, and hit OK.
+								<div style='margin-top: 20px;'></div>
+								<b>Order Import Steps</b><br>
+								1. Open Orders from either the Ascend Desktop or the Database Explorer.<br>
+								2. Add a new order.<br>
+								3. Select the vendor associated with the order.<br>
+								4. In the PO Number field, enter the vendor name, PO number, and the batch number. (e.g. Jackson Base Camp June 2026 Demo Batch 1)<br>
+								5. Select File > Import from Excel...<br>
+								6. In the File Explorer, navigate to and select the downloaded spreadsheet with the "PO" prefix.<br>
+								7. Check the (Select All) box, and hit OK.<br>
+								8. Select Check > All.<br>
+								9. Save the order and, if provided, enter the invoice number when prompted.
+						`)
+				});
+			},__("Receiving"));
+
 			update_table_buttons(frm);
 			setup_scan_box(frm);
 			
 			// Hides tag element in the sidebar
 			$('.form-tags').hide();
 			$('.tags-label').hide();
-		}
- 	},
+    	}
+	},
 	// Reveal only the button group for the table on the newly-active tab.
 	on_tab_change(frm) {
 		if (!frm.is_new()) {
