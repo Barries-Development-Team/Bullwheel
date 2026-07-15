@@ -46,6 +46,7 @@
    "options": "Order Receipt Item"
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "total_order_items",
    "fieldtype": "Int",
    "is_virtual": 1,
@@ -53,6 +54,7 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "subtotal",
    "fieldtype": "Currency",
    "is_virtual": 1,
@@ -60,11 +62,13 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "shipping_charges",
    "fieldtype": "Currency",
    "label": "Shipping (and other charges)"
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "order_total",
    "fieldtype": "Currency",
    "is_virtual": 1,
@@ -83,6 +87,7 @@
    "reqd": 1
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "new_products_tab",
    "fieldtype": "Tab Break",
    "label": "New Products"
@@ -106,7 +111,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-15 10:41:36.391611",
+ "modified": "2026-07-15 10:44:14.274479",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
