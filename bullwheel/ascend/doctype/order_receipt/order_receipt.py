@@ -13,7 +13,23 @@ from bullwheel.ascend.doctype.vendor_product.vendor_product import VendorProduct
 
 
 class OrderReceipt(Document):
-	pass
+	@property
+	def total_order_items(self):
+		total = 0
+		for item in self.order_items:
+			total += item.quantity
+		return total
+	
+	@property
+	def subtotal(self):
+		total = 0
+		for item in self.order_items:
+			total += item.quantity * item.cost
+		return total
+	
+	@property
+	def order_total(self):
+		return self.subtotal + self.shipping_charges
 
 def populate_item_snapshot(row):
 	"""Snapshot the linked product's description/upc onto an order item at add/edit time, so

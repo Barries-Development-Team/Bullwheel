@@ -72,7 +72,8 @@ function dialog_fields(frm, config) {
 				reqd: df.reqd,
 				default: df.default,
 				depends_on: df.depends_on,
-				mandatory_depends_on: df.mandatory_depends_on
+				mandatory_depends_on: df.mandatory_depends_on,
+				description: df.description
 			};
 			if (config.customize_field) config.customize_field(frm, field);
 			return field;
