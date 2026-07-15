@@ -290,6 +290,10 @@ frappe.ui.form.on("Order Receipt", {
 		if (!frm.is_new()) {
 			update_table_buttons(frm);
 			setup_scan_box(frm);
+			
+			// Hides tag element in the sidebar
+			$('.form-tags').hide();
+			$('.tags-label').hide();
 		}
  	},
 	// Reveal only the button group for the table on the newly-active tab.
