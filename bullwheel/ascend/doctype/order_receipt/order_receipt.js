@@ -3,8 +3,8 @@
 
 // Per-table config for the Add/Edit/Remove buttons on Order Receipt child tables. Each
 // entry drives a DocType-defined dialog plus a queued, serialized update of that table.
-const TABLE_CONFIGS = [
-	{
+const TABLE_CONFIGS = {
+	order_items: {
 		table: 'order_items',
 		child_doctype: 'Order Receipt Item',
 		noun: 'Order Item',
@@ -23,12 +23,12 @@ const TABLE_CONFIGS = [
 			}
 		}
 	},
-	{
+	new_products: {
 		table: 'new_products',
 		child_doctype: 'New Product',
 		noun: 'New Product'
 	}
-];
+};
 
 // A child field is editable through the dialog/queue when it is writable, non-virtual, and
 // value-bearing. Mirrors writable_fieldnames() in order_receipt.py.
@@ -131,21 +131,19 @@ function make_grid_selectable_only(frm, config) {
 // Wire the Add/Edit/Remove buttons and grid locking for one child table. Buttons are
 // grouped into a "<noun>" dropdown (frm.add_custom_button's 3rd arg) so each table gets
 // one toolbar entry instead of three flat buttons.
-function setup_table_buttons(frm, config) {
+function show_table_buttons(frm, config) {
 	make_grid_selectable_only(frm, config);
 
-	const group = config.noun;
-
-	frm.add_custom_button(__('Add'), () => open_dialog(frm, config, {job: 'add'}), group);
-	frm.add_custom_button(__('Edit'), () => {
+	frm.add_custom_button(__(`Add ${config.noun}`), () => open_dialog(frm, config, {job: 'add'}));
+	frm.add_custom_button(__(`Edit ${config.noun}`), () => {
 		const rows = frm.fields_dict[config.table].grid.get_selected_children();
 		if (rows.length !== 1) {
 			frappe.msgprint(__('Select exactly one {0} to edit.', [config.noun.toLowerCase()]));
 			return;
 		}
 		open_dialog(frm, config, {job: 'edit', row: rows[0]});
-	}, group);
-	frm.add_custom_button(__('Remove'), () => {
+	});
+	frm.add_custom_button(__(`Remove ${config.noun}`), () => {
 		const rows = frm.fields_dict[config.table].grid.get_selected_children();
 		if (!rows.length) {
 			frappe.msgprint(__('Select at least one {0} to remove.', [config.noun.toLowerCase()]));
@@ -154,8 +152,25 @@ function setup_table_buttons(frm, config) {
 		frappe.confirm(__('Remove {0} selected {1}(s)?', [rows.length, config.noun.toLowerCase()]), () => {
 			rows.forEach((row) => queue_update(frm, config, 'remove', {}, row.name));
 		});
-	}, group);
+	});
 }
+
+function hide_table_buttons(frm, config) {
+	frm.remove_custom_button(__(`Add ${config.noun}`));
+	frm.remove_custom_button(__(`Edit ${config.noun}`));
+	frm.remove_custom_button(__(`Remove ${config.noun}`));
+}
+
+function update_table_buttons(frm) {
+	if (frm.get_active_tab().id === "order-receipt-details") {
+		show_table_buttons(frm, TABLE_CONFIGS.order_items);
+		hide_table_buttons(frm, TABLE_CONFIGS.new_products);
+	} else {
+		show_table_buttons(frm, TABLE_CONFIGS.new_products);
+		hide_table_buttons(frm, TABLE_CONFIGS.order_items)
+	}
+}
+
 
 // ── Scan flow ──────────────────────────────────────────────────────────────────
 // All scan mutations route through the serialized queue (like the buttons), so the
@@ -273,8 +288,14 @@ function setup_scan_box(frm) {
 frappe.ui.form.on("Order Receipt", {
  	refresh(frm) {
 		if (!frm.is_new()) {
-			TABLE_CONFIGS.forEach((config) => setup_table_buttons(frm, config));
+			update_table_buttons(frm);
 			setup_scan_box(frm);
 		}
  	},
+	// Reveal only the button group for the table on the newly-active tab.
+	on_tab_change(frm) {
+		if (!frm.is_new()) {
+			update_table_buttons(frm);
+		}
+	},
 });

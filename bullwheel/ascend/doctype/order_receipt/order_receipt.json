@@ -6,6 +6,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "details",
   "po",
   "vendor",
   "order_status",
@@ -106,12 +107,17 @@
   {
    "fieldname": "scan_item",
    "fieldtype": "HTML"
+  },
+  {
+   "fieldname": "details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-15 10:44:14.274479",
+ "modified": "2026-07-15 11:36:27.095024",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
