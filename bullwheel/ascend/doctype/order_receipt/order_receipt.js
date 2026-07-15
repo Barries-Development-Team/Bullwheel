@@ -291,7 +291,9 @@ frappe.ui.form.on("Order Receipt", {
 			// Regenerates the buttons so that the receiving actions are always before the table actions.
 			frm.clear_custom_buttons(); 
 			frm.add_custom_button(__('Export Received Batch'), () => {
-				frappe.confirm('This task should only be performed by a member of the Receiving Team. All unreceived items will be marked as received. Do you wish to continue? For more information, select "Import Instructions".',
+				frappe.confirm(`This task should only be performed by a member of the Receiving Team.<br>
+								All unreceived items will be marked as received. Do you wish to continue?<br>
+								For more information, select "Import Instructions".`,
 					() => { // Yes
 						const url = '/api/method/bullwheel.ascend.doctype.bulk_product_import.bulk_product_import.generate_import_sheet'
 							+ '?name=' + encodeURIComponent(frm.doc.name);
