@@ -90,6 +90,7 @@
    "fieldtype": "Select",
    "label": "Order Status",
    "options": "Submitted\nArrived (Not Received)\nReceived",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -137,7 +138,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-15 12:03:55.604046",
+ "modified": "2026-07-15 12:15:38.924397",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
