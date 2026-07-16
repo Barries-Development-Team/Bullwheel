@@ -134,6 +134,8 @@ function make_grid_selectable_only(frm, config) {
 function show_table_buttons(frm, config) {
 	make_grid_selectable_only(frm, config);
 
+	if (frm.fields_dict.order_status.value == "Received") { return }
+
 	frm.add_custom_button(__(`Add ${config.noun}`), () => open_dialog(frm, config, {job: 'add'}));
 	frm.add_custom_button(__(`Edit ${config.noun}`), () => {
 		const rows = frm.fields_dict[config.table].grid.get_selected_children();

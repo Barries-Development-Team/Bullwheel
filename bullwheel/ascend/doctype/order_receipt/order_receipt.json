@@ -110,6 +110,7 @@
    "fieldtype": "Section Break"
   },
   {
+   "depends_on": "eval:!doc.order_status == \"Received\"",
    "fieldname": "scan_item",
    "fieldtype": "HTML"
   },
@@ -138,7 +139,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-15 15:30:08.357439",
+ "modified": "2026-07-15 18:23:26.775403",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
