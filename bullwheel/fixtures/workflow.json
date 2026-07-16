@@ -1,0 +1,84 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Workflow",
+  "document_type": "Order Receipt",
+  "enable_action_confirmation": 1,
+  "is_active": 1,
+  "modified": "2026-07-15 13:10:41.194498",
+  "name": "Order Receipt Receiving",
+  "override_status": 0,
+  "send_email_alert": 0,
+  "states": [
+   {
+    "allow_edit": "Warehouse Staff",
+    "avoid_status_override": 0,
+    "doc_status": "0",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 0,
+    "state": "Submitted",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": "1"
+   },
+   {
+    "allow_edit": "Warehouse Staff",
+    "avoid_status_override": 0,
+    "doc_status": "0",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 0,
+    "state": "Arrived (Not Received)",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": "2"
+   },
+   {
+    "allow_edit": "System Manager",
+    "avoid_status_override": 0,
+    "doc_status": "0",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 0,
+    "state": "Received",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": "3"
+   }
+  ],
+  "transitions": [
+   {
+    "action": "Mark Arrived",
+    "allow_self_approval": 1,
+    "allowed": "Warehouse Staff",
+    "condition": null,
+    "next_state": "Arrived (Not Received)",
+    "send_email_to_creator": 0,
+    "state": "Submitted",
+    "transition_tasks": null,
+    "workflow_builder_id": "action-1"
+   },
+   {
+    "action": "Complete Receiving",
+    "allow_self_approval": 1,
+    "allowed": "Warehouse Manager",
+    "condition": null,
+    "next_state": "Received",
+    "send_email_to_creator": 0,
+    "state": "Arrived (Not Received)",
+    "transition_tasks": null,
+    "workflow_builder_id": "action-2"
+   }
+  ],
+  "workflow_data": "[{\"type\":\"state\",\"dimensions\":{\"width\":120,\"height\":53},\"handleBounds\":{\"source\":[{\"id\":\"top\",\"position\":\"top\",\"x\":56.4832763671875,\"y\":-11.20001220703125,\"width\":7,\"height\":7},{\"id\":\"right\",\"position\":\"right\",\"x\":124.18328857421875,\"y\":22.79998779296875,\"width\":7,\"height\":7},{\"id\":\"bottom\",\"position\":\"bottom\",\"x\":56.4832763671875,\"y\":56.79998779296875,\"width\":7,\"height\":7},{\"id\":\"left\",\"position\":\"left\",\"x\":-11.20001220703125,\"y\":22.79998779296875,\"width\":7,\"height\":7}]},\"computedPosition\":{\"x\":357.4000000000002,\"y\":119,\"z\":0},\"id\":\"1\",\"position\":{\"x\":357.4000000000002,\"y\":119}},{\"type\":\"state\",\"dimensions\":{\"width\":162,\"height\":74},\"handleBounds\":{\"source\":[{\"id\":\"top\",\"position\":\"top\",\"x\":77.2999267578125,\"y\":-11.20001220703125,\"width\":7,\"height\":7},{\"id\":\"right\",\"position\":\"right\",\"x\":165.7999267578125,\"y\":33.29998779296875,\"width\":7,\"height\":7},{\"id\":\"bottom\",\"position\":\"bottom\",\"x\":77.2999267578125,\"y\":77.79998779296875,\"width\":7,\"height\":7},{\"id\":\"left\",\"position\":\"left\",\"x\":-11.2000732421875,\"y\":33.29998779296875,\"width\":7,\"height\":7}]},\"computedPosition\":{\"x\":922,\"y\":272,\"z\":0},\"id\":\"2\",\"position\":{\"x\":922,\"y\":272}},{\"type\":\"state\",\"dimensions\":{\"width\":113,\"height\":53},\"handleBounds\":{\"source\":[{\"id\":\"top\",\"position\":\"top\",\"x\":53,\"y\":-11.20001220703125,\"width\":7,\"height\":7},{\"id\":\"right\",\"position\":\"right\",\"x\":117.199951171875,\"y\":22.79998779296875,\"width\":7,\"height\":7},{\"id\":\"bottom\",\"position\":\"bottom\",\"x\":53,\"y\":56.79998779296875,\"width\":7,\"height\":7},{\"id\":\"left\",\"position\":\"left\",\"x\":-11.2000732421875,\"y\":22.79998779296875,\"width\":7,\"height\":7}]},\"computedPosition\":{\"x\":1359,\"y\":279,\"z\":0},\"id\":\"3\",\"position\":{\"x\":1359,\"y\":279}},{\"type\":\"action\",\"dimensions\":{\"width\":108,\"height\":33},\"handleBounds\":{\"source\":[{\"id\":\"top\",\"position\":\"top\",\"x\":51.0166015625,\"y\":-2.20001220703125,\"width\":6,\"height\":6},{\"id\":\"right\",\"position\":\"right\",\"x\":104.2332763671875,\"y\":13.29998779296875,\"width\":6,\"height\":6},{\"id\":\"bottom\",\"position\":\"bottom\",\"x\":51.0166015625,\"y\":28.79998779296875,\"width\":6,\"height\":6},{\"id\":\"left\",\"position\":\"left\",\"x\":-2.2000732421875,\"y\":13.29998779296875,\"width\":6,\"height\":6}]},\"computedPosition\":{\"x\":800,\"y\":120,\"z\":0},\"id\":\"action-1\",\"position\":{\"x\":800,\"y\":120},\"data\":{\"from_id\":\"1\",\"to_id\":\"2\"}},{\"type\":\"action\",\"dimensions\":{\"width\":155,\"height\":33},\"handleBounds\":{\"source\":[{\"id\":\"top\",\"position\":\"top\",\"x\":74.7332763671875,\"y\":-2.20001220703125,\"width\":6,\"height\":6},{\"id\":\"right\",\"position\":\"right\",\"x\":151.6666259765625,\"y\":13.29998779296875,\"width\":6,\"height\":6},{\"id\":\"bottom\",\"position\":\"bottom\",\"x\":74.7332763671875,\"y\":28.79998779296875,\"width\":6,\"height\":6},{\"id\":\"left\",\"position\":\"left\",\"x\":-2.2000732421875,\"y\":13.29998779296875,\"width\":6,\"height\":6}]},\"computedPosition\":{\"x\":1200,\"y\":120,\"z\":0},\"id\":\"action-2\",\"position\":{\"x\":1200,\"y\":120},\"data\":{\"from_id\":\"2\",\"to_id\":\"3\"}},{\"sourceHandle\":\"right\",\"targetHandle\":\"left\",\"type\":\"transition\",\"source\":\"1\",\"target\":\"action-1\",\"updatable\":true,\"id\":\"edge-1-action-1\",\"animated\":true,\"sourceX\":488.58328857421895,\"sourceY\":145.29998779296875,\"targetX\":797.7999267578125,\"targetY\":136.29998779296875},{\"sourceHandle\":\"right\",\"targetHandle\":\"left\",\"type\":\"transition\",\"source\":\"action-1\",\"target\":\"2\",\"updatable\":true,\"id\":\"edge-action-1-2\",\"animated\":true,\"sourceX\":910.2332763671875,\"sourceY\":136.29998779296875,\"targetX\":910.7999267578125,\"targetY\":308.79998779296875,\"markerEnd\":{\"type\":\"arrow\",\"width\":15,\"height\":15,\"strokeWidth\":1.5,\"color\":\"#687178\"}},{\"sourceHandle\":\"right\",\"targetHandle\":\"left\",\"type\":\"transition\",\"source\":\"2\",\"target\":\"action-2\",\"updatable\":true,\"id\":\"edge-2-action-2\",\"animated\":true,\"sourceX\":1094.7999267578125,\"sourceY\":308.79998779296875,\"targetX\":1197.7999267578125,\"targetY\":136.29998779296875},{\"sourceHandle\":\"right\",\"targetHandle\":\"left\",\"type\":\"transition\",\"source\":\"action-2\",\"target\":\"3\",\"updatable\":true,\"id\":\"edge-action-2-3\",\"animated\":true,\"sourceX\":1357.6666259765625,\"sourceY\":136.29998779296875,\"targetX\":1347.7999267578125,\"targetY\":305.29998779296875,\"markerEnd\":{\"type\":\"arrow\",\"width\":15,\"height\":15,\"strokeWidth\":1.5,\"color\":\"#687178\"}}]",
+  "workflow_name": "Order Receipt Receiving",
+  "workflow_state_field": "order_status"
+ }
+]
