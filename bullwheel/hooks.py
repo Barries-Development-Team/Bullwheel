@@ -41,7 +41,7 @@ fixtures = [
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/bullwheel/css/bullwheel.css"
-# app_include_js = "/assets/bullwheel/js/bullwheel.js"
+app_include_js = ["utilities.bundle.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/bullwheel/css/bullwheel.css"

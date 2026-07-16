@@ -157,22 +157,57 @@ function show_table_buttons(frm, config) {
 	});
 }
 
-function hide_table_buttons(frm, config) {
-	frm.remove_custom_button(__(`Add ${config.noun}`));
-	frm.remove_custom_button(__(`Edit ${config.noun}`));
-	frm.remove_custom_button(__(`Remove ${config.noun}`));
-}
-
 function update_table_buttons(frm) {
 	if (frm.get_active_tab().id === "order-receipt-new_products_tab") {
+		frm.clear_custom_buttons(); 
 		show_table_buttons(frm, TABLE_CONFIGS.new_products);
-		hide_table_buttons(frm, TABLE_CONFIGS.order_items);
 	} else {
+		frm.clear_custom_buttons(); 
+		add_product_print_buttons(frm);
 		show_table_buttons(frm, TABLE_CONFIGS.order_items);
-		hide_table_buttons(frm, TABLE_CONFIGS.new_products);
 	}
 }
 
+// ── Label printing ─────────────────────────────────────────────────────────────
+
+// Resolve the Ascend Product behind the selected order item, for the print buttons.
+// An Order Receipt Item does not carry the product directly — its `vpn` Dynamic Link
+// points at a Vendor Product, which in turn links the Ascend Product. New Product rows
+// are staged, not yet in Ascend, so they have no product to print a tag against.
+// Returns null when there is nothing to print; the caller reports that to the user.
+async function selected_order_item_product(frm) {
+	const rows = frm.fields_dict.order_items.grid.get_selected_children();
+	if (rows.length !== 1) {
+		return null;
+	}
+
+	const row = rows[0];
+	if (row.item_type !== 'Vendor Product' || !row.vpn) {
+		return null;
+	}
+
+	const response = await frappe.db.get_value('Vendor Product', row.vpn, 'product');
+	return (response.message && response.message.product) || null;
+}
+
+function add_product_print_buttons(frm) {
+	const tags = [
+		{ label: 'Print Swap Tag', slot: 'swap_tag' },
+		{ label: 'Print Ascend Tag', slot: 'ascend_tag' },
+		{ label: 'Print Online Tag', slot: 'online_tag' },
+	];
+
+	tags.forEach(({ label, slot }) => {
+		bullwheel.printing.add_print_button({
+			frm: frm,
+			label: label,
+			slot: slot,
+			doctype: 'Ascend Product',
+			docname: selected_order_item_product,
+			empty_message: __('Select a single order item linked to a Vendor Product to print its tag.'),
+		});
+	});
+}
 
 // ── Scan flow ──────────────────────────────────────────────────────────────────
 // All scan mutations route through the serialized queue (like the buttons), so the
