@@ -2,6 +2,28 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.0.0] - Not Released
+
+### Features
+
+- New Order Receipt builder for easy, single-pass, receiving of large retail and demo gear orders!
+- Added support for export of Purchase Orders.
+- Added batch printing for labels.
+- Improved Ascend Virtual DocType filter support.
+- Added database traffic encryption for improved security.
+- Added new job-based editing system for simultaneous document editing.
+
+### Performance
+
+- Improved caching of Vendor Product details to significantly reduce redundant Ascend SQL Server queries.
+
+### Bug Fixes
+
+- Fixed issue where scanned barcodes could be saved to a Warehouse Location document scan field.
+- Data Import tool now correctly resolves UPCs when importing from a `xlsx` file.
+- Fixed Virtual DocType search fields not being displayed in Link field search.
+- Fixed UPC display for Order Receipt Items.
+
 ## [0.0.8] - July 10, 2026
 
 ### Features
