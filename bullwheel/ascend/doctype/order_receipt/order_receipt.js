@@ -295,8 +295,8 @@ frappe.ui.form.on("Order Receipt", {
 								All unreceived items will be marked as received. Do you wish to continue?<br>
 								For more information, select "Import Instructions".`,
 					() => { // Yes
-						const url = '/api/method/bullwheel.ascend.doctype.bulk_product_import.bulk_product_import.generate_import_sheet'
-							+ '?name=' + encodeURIComponent(frm.doc.name);
+						const url = '/api/method/bullwheel.ascend.doctype.order_receipt.order_receipt.export_received_batch'
+							+ '?docname=' + encodeURIComponent(frm.doc.name);
 						window.open(url);
 					}, () => { // No
 						return
@@ -309,11 +309,11 @@ frappe.ui.form.on("Order Receipt", {
 					indicator: 'green',
 					message: __(`Note: This task should be performed by a member of the Receiving Team.
 								<div style='margin-top: 20px;'></div>
-								After exporting the received batch, two spreadsheets will be downloaded to your computer; a "PO" and a "Products" sheet. The "PO" sheet contains VPN, Cost, and Quantity data for the Order, while the "Product" sheet contains the new Vendor Product data. <b>The Vendor Product data must be imported before the Order is created!</b>
+								After exporting the received batch, a single .zip file will be downloaded to your computer containing two spreadsheets; a "PO" and a "Products" sheet. Extract both spreadsheets from the .zip before continuing. The "PO" sheet contains VPN, Cost, and Quantity data for the Order, while the "Product" sheet contains the new Vendor Product data. <b>The Vendor Product data must be imported before the Order is created!</b>
 								<div style='margin-top: 20px;'></div>
 								<b>Vendor Product Import Steps</b><br>
 								1. While on the Ascend Desktop, select File > Import > Vendor Products...<br>
-								2. In the File Explorer, navigate to and select the downloaded spreadsheet with the "Products" prefix.<br>
+								2. In the File Explorer, navigate to and select the extracted spreadsheet with the "Products" prefix.<br>
 								3. Select the vendor associated with the order.<br>
 								4. Check the (Select All) box, and hit OK.
 								<div style='margin-top: 20px;'></div>
@@ -323,7 +323,7 @@ frappe.ui.form.on("Order Receipt", {
 								3. Select the vendor associated with the order.<br>
 								4. In the PO Number field, enter the vendor name, PO number, and the batch number. (e.g. Jackson Base Camp June 2026 Demo Batch 1)<br>
 								5. Select File > Import from Excel...<br>
-								6. In the File Explorer, navigate to and select the downloaded spreadsheet with the "PO" prefix.<br>
+								6. In the File Explorer, navigate to and select the extracted spreadsheet with the "PO" prefix.<br>
 								7. Check the (Select All) box, and hit OK.<br>
 								8. Select Check > All.<br>
 								9. Save the order and, if provided, enter the invoice number when prompted.

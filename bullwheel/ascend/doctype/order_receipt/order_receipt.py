@@ -1,8 +1,10 @@
 # Copyright (c) 2026, Barrie's Ski and Sports and contributors
 # For license information, please see license.txt
 
+import io
 import json
-import openpyxl
+import re
+import zipfile
 
 import frappe
 from frappe.model.document import Document
@@ -11,6 +13,8 @@ from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
 from bullwheel.ascend.doctype.vendor.vendor import Vendor
 from bullwheel.ascend.doctype.vendor_product.vendor_product import VendorProduct
+from bullwheel.ascend.doctype.new_product.new_product import to_import_row
+from bullwheel.ascend.import_sheets import build_import_sheet, serve_file_download
 
 
 class OrderReceipt(Document):
@@ -315,46 +319,81 @@ def scan_item(id: str, vendor: str, docname: str):
 
 		if len(result) > 0:
 			return ('product found', result[0])
-		
+
 		return ('not found', None)
-	
-@frappe.whitelist()
-def generate_product_sheet(name):
-	"""Build an Ascend Vendor Products import sheet from the saved child table rows and serve it as a download."""
-	document = frappe.get_doc("Order Receipt", name)
 
-	template_path = frappe.get_app_path(
-		"bullwheel", "ascend", "import_templates", "Ascend Template_Vendor Products.xlsx"
-	)
 
-	workbook = openpyxl.load_workbook(template_path)
-	worksheet = workbook.active
+def _import_template_path(filename):
+	"""Absolute path to an Ascend import template shipped with the app."""
+	return frappe.get_app_path("bullwheel", "ascend", "import_templates", filename)
 
-	# Index each header to its 1-based column number.
-	header_to_column = {
-		cell.value: cell.column
-		for cell in worksheet[1]
-		if cell.value is not None
+
+# A vendor display name is the final parenthesized group, preceded by whitespace:
+# "<part number> (<vendor>)". Anchored to end-of-string so any parentheses inside the
+# part number itself are left untouched.
+_VENDOR_SUFFIX_PATTERN = re.compile(r"\s+\([^()]*\)$")
+
+
+def _resolve_ascend_vpn(item):
+	"""The bare Ascend VPN for a PO line. New-product rows carry the New Product's UUID in
+	`vpn`, so resolve to its real vpn field; vendor-product rows carry "<part> (<vendor>)",
+	so strip the trailing vendor suffix down to the part number Ascend expects."""
+
+	if item.item_type == "New Product":
+		return frappe.db.get_value("New Product", item.vpn, "vpn")
+	return _VENDOR_SUFFIX_PATTERN.sub("", item.vpn)
+
+
+def _order_item_to_po_row(item):
+	"""Project one order item onto the Ascend Vendor Order (PO) template column headers."""
+
+	return {
+		"Identifier": _resolve_ascend_vpn(item),
+		"Description": item.description,
+		"Qty": item.quantity,
+		"Cost": item.cost,
+		"Comments": item.comments,
 	}
 
-	# Erase any sample rows the template ships with.
-	for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row):
-		for cell in row:
-			cell.value = None
 
-	for row_number, product in enumerate(document.table_frll, start=2):
-		for template_column, field_name in TEMPLATE_COLUMN_TO_FIELD.items():
-			column_index = header_to_column.get(template_column)
-			if column_index is None:
-				continue
-			if template_column in CASE_COLUMNS and not product.case:
-				continue
-			worksheet.cell(row=row_number, column=column_index, value=getattr(product, field_name, None))
+def _mark_items_received(docname):
+	"""Flag every order item on the receipt as received, inside a row lock so it serializes
+	with concurrent receiving edits. Called once the export sheets have built successfully."""
 
-	file_buffer = io.BytesIO()
-	workbook.save(file_buffer)
-	file_buffer.seek(0)
+	lock_row(docname)
 
-	frappe.local.response.filename = f"{name} - Ascend Vendor Product Import.xlsx"
-	frappe.local.response.filecontent = file_buffer.read()
-	frappe.local.response.type = "download"
+	doc = frappe.get_doc("Order Receipt", docname)
+	for item in doc.order_items:
+		item.received = 1
+
+	doc.flags.ignore_links = True
+	doc.save()
+	frappe.db.commit()
+
+
+@frappe.whitelist()
+def export_received_batch(docname):
+	"""Build the two Ascend import sheets for a received order — a PO sheet from `order_items`
+	and a Vendor Products sheet from `new_products` — bundle them into a single zip download,
+	then mark the order's items as received."""
+
+	doc = frappe.get_doc("Order Receipt", docname)
+
+	po_sheet = build_import_sheet(
+		_import_template_path("ascend_template_purchase_order.xlsx"),
+		[_order_item_to_po_row(item) for item in doc.order_items],
+	)
+	products_sheet = build_import_sheet(
+		_import_template_path("ascend_template_vendor_products.xlsx"),
+		[to_import_row(product) for product in doc.new_products],
+	)
+
+	archive_buffer = io.BytesIO()
+	with zipfile.ZipFile(archive_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+		archive.writestr(f"PO - {docname}.xlsx", po_sheet)
+		archive.writestr(f"Products - {docname}.xlsx", products_sheet)
+
+	# Only mark received once both sheets built, so a failure never silently receives the batch.
+	_mark_items_received(docname)
+
+	serve_file_download(f"{docname} - Ascend Import.zip", archive_buffer.getvalue(), "application/zip")
