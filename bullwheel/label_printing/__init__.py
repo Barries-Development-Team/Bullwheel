@@ -74,12 +74,13 @@ def print_labels(printer_name: str, slot: str, doctype: str, items):
 	except PrintLabelNotConfigured:
 		frappe.throw(f"No label is configured for '{slot}' in Bullwheel Settings ▸ Printing ▸ Labels.")
 		
+	zpl = ''
 	for item in items:
 		docname = item.get('name')
 		quantity = item.get('quantity')
 
 		source_document = frappe.get_doc(doctype, docname)
-		zpl = label.render(source_document, printer_document, quantity)
+		zpl += label.render(source_document, printer_document, quantity)
 
 	try:
 		with ZebraPrinter(printer_document) as printer:
