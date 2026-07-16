@@ -9,8 +9,7 @@ import frappe
 from frappe.model.document import Document
 
 from bullwheel.database.SQLServer import MSSQLDatabase
-from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
-from bullwheel.bullwheel_core import print_console_warning
+from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning
 
 # ─── Static Helper Functions ───────────────────────────────────────
 

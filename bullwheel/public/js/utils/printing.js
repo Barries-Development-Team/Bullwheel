@@ -79,12 +79,17 @@ bullwheel.printing.add_print_button = function ({
 				(values) => {
 					frappe.show_alert({ message: __('Sending {0}...', [__(label)]), indicator: 'blue' });
 					frappe.call({
-						method: 'bullwheel.label_printing.print_label',
+						method: 'bullwheel.label_printing.print_labels',
 						args: {
 							printer_name: values.printer,
 							slot: slot,
 							doctype: target_doctype,
-							docname: target_docname,
+							items: [
+								{
+									name: target_docname,
+									quantity: 1
+								}
+							],
 						},
 						callback() {
 							frappe.show_alert({ message: __('{0} sent', [__(label)]), indicator: 'green' });

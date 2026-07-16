@@ -16,9 +16,7 @@ See bullwheel/ascend/VIRTUAL_DOCTYPE_DEVELOPMENT.md for the full workflow.
 import json
 import frappe
 
-from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType, to_document_dict
-from bullwheel.database.SQLServer import MSSQLDatabase
-from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
+from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
 class AscendProduct(AbstractVirtualDocType):

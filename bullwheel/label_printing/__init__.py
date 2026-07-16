@@ -54,7 +54,7 @@ def test_connection(**kwargs):
 			indicator="green",
 		)
 
-
+# Single-Label Print
 @frappe.whitelist()
 def print_label(printer_name, slot, doctype, docname):
 	"""Render the Zebra Printer Label configured for the given Bullwheel Settings slot
@@ -72,6 +72,42 @@ def print_label(printer_name, slot, doctype, docname):
 		frappe.throw(f"No label is configured for '{slot}' in Bullwheel Settings ▸ Printing ▸ Labels.")
 		
 	zpl = label.render(source_document, printer_document)
+
+	try:
+		with ZebraPrinter(printer_document) as printer:
+			printer.send(zpl)
+	except PrinterConnectionError:
+		return {"status": "connection error", "printer": printer_name}
+	except Exception as error:
+		raise error
+		
+	return {"status": "success", "printer": printer_name}
+
+# Multi-Label Print
+@frappe.whitelist()
+def print_labels(printer_name: str, slot: str, doctype: str, items):
+	"""Render the Zebra Printer Label configured for the given Bullwheel Settings slot
+	against the source document, then send it to the printer. This is the label-driven
+	counterpart of print_zpl, which sends caller-supplied raw ZPL."""
+
+	if isinstance(items, str):
+		items = frappe.parse_json(items)
+	
+	printer_document = frappe.get_doc("Label Printer", printer_name)
+	if printer_document.disabled:
+		frappe.throw(f"Label Printer '{printer_name}' is disabled and cannot be used for printing.")
+
+	try:
+		label = get_label(slot)
+	except PrintLabelNotConfigured:
+		frappe.throw(f"No label is configured for '{slot}' in Bullwheel Settings ▸ Printing ▸ Labels.")
+		
+	for item in items:
+		docname = item.get('name')
+		quantity = item.get('quantity')
+
+		source_document = frappe.get_doc(doctype, docname)
+		zpl = label.render(source_document, printer_document, quantity)
 
 	try:
 		with ZebraPrinter(printer_document) as printer:
