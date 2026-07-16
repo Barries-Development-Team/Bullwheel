@@ -5,12 +5,11 @@ import json
 
 import frappe
 
-from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import (
-	PrintLabelNotConfigured,
-	get_label,
-)
+from bullwheel.bullwheel_core import get_label
+from bullwheel.bullwheel_core.exceptions import	PrintLabelNotConfigured
+
 from bullwheel.label_printing.ZebraPrinter import ZebraPrinter
-from bullwheel.label_printing.exceptions import PrinterException
+from bullwheel.label_printing.exceptions import *
 
 def describe_status_problems(status: dict) -> list:
 	"""Translate the ~HS status flags into human-readable problem descriptions,
@@ -74,7 +73,12 @@ def print_label(printer_name, slot, doctype, docname):
 		
 	zpl = label.render(source_document, printer_document)
 
-	with ZebraPrinter(printer_document) as printer:
-		printer.send(zpl)
-
+	try:
+		with ZebraPrinter(printer_document) as printer:
+			printer.send(zpl)
+	except PrinterConnectionError:
+		return {"status": "connection error", "printer": printer_name}
+	except Exception as error:
+		raise error
+		
 	return {"status": "success", "printer": printer_name}
