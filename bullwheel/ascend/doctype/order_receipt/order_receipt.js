@@ -203,7 +203,7 @@ function add_product_print_buttons(frm) {
 			label: label,
 			slot: slot,
 			doctype: 'Ascend Product',
-			docname: selected_order_item_product,
+			items: selected_order_item_product,
 			empty_message: __('Select a single order item linked to a Vendor Product to print its tag.'),
 		});
 	});

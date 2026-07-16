@@ -42,7 +42,7 @@ bullwheel.printing.add_print_button = function ({
 	label,
 	slot,
 	doctype,
-	docname,
+	items,
 	group = DEFAULT_BUTTON_GROUP,
 	empty_message,
 }) {
@@ -51,7 +51,7 @@ bullwheel.printing.add_print_button = function ({
 		async () => {
 			const [target_doctype, target_docname] = await Promise.all([
 				resolve_target(doctype, frm, frm.doc.doctype),
-				resolve_target(docname, frm, frm.doc.name),
+				resolve_target(items, frm, frm.doc.name),
 			]);
 
 			if (!target_doctype || !target_docname) {
