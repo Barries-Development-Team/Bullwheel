@@ -34,6 +34,8 @@ class OrderReceipt(Document):
 	
 	@property
 	def order_total(self):
+		if self.shipping_charges is None:
+			return self.subtotal
 		return self.subtotal + self.shipping_charges
 
 def populate_item_snapshot(row):
