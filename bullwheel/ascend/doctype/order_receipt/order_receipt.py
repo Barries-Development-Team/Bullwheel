@@ -10,8 +10,7 @@ import frappe
 from frappe.model.document import Document
 
 from bullwheel.database.SQLServer import MSSQLDatabase
-from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
-from bullwheel.ascend.doctype.vendor.vendor import Vendor
+from bullwheel.bullwheel_core import get_default_ascend_database
 from bullwheel.ascend.doctype.vendor_product.vendor_product import VendorProduct
 from bullwheel.ascend.doctype.new_product.new_product import to_import_row
 from bullwheel.ascend.import_sheets import build_import_sheet, serve_file_download
