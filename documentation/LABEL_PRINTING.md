@@ -43,4 +43,4 @@ Arguments
     - Options include `ascend_tag`, `online_tag`, `swap_tag`, and `warehouse_location`.
 - `doctype`: Name of the source DocType.
     - e.g. "Ascend Product", "Warehouse Location"
-- `docname`: `name` field value of the chosen DocType.
+- `items`: Array/list of dictionaries (or JSON string) of DocType `name`s and print quantities. 
