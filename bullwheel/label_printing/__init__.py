@@ -57,31 +57,24 @@ def test_connection(**kwargs):
 
 
 @frappe.whitelist()
-def print_zpl(printer_name, zpl):
-	"""Send raw ZPL to the named Label Printer. This is the app-wide entry point
-	other modules and the UI call to print a label."""
+def print_label(printer_name, slot, doctype, docname):
+	"""Render the Zebra Printer Label configured for the given Bullwheel Settings slot
+	against the source document, then send it to the printer. This is the label-driven
+	counterpart of print_zpl, which sends caller-supplied raw ZPL."""
+	
+	source_document = frappe.get_doc(doctype, docname)
 	printer_document = frappe.get_doc("Label Printer", printer_name)
 	if printer_document.disabled:
 		frappe.throw(f"Label Printer '{printer_name}' is disabled and cannot be used for printing.")
+
+	try:
+		label = get_label(slot)
+	except PrintLabelNotConfigured:
+		frappe.throw(f"No label is configured for '{slot}' in Bullwheel Settings ▸ Printing ▸ Labels.")
+		
+	zpl = label.render(source_document, printer_document)
 
 	with ZebraPrinter(printer_document) as printer:
 		printer.send(zpl)
 
 	return {"status": "success", "printer": printer_name}
-
-
-@frappe.whitelist()
-def print_label(printer_name, slot, doctype, docname):
-	"""Render the Zebra Printer Label configured for the given Bullwheel Settings slot
-	against the source document, then send it to the printer. This is the label-driven
-	counterpart of print_zpl, which sends caller-supplied raw ZPL."""
-	try:
-		label = get_label(slot)
-	except PrintLabelNotConfigured:
-		frappe.throw(f"No label is configured for '{slot}' in Bullwheel Settings ▸ Printing ▸ Labels.")
-
-	source_document = frappe.get_doc(doctype, docname)
-	printer_document = frappe.get_doc("Label Printer", printer_name)
-	zpl = label.render(source_document, printer_document)
-
-	return print_zpl(printer_name, zpl)
