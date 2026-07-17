@@ -21,8 +21,7 @@ from frappe.model.base_document import get_controller
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 from bullwheel.ascend.schema_introspection import introspect_table_schema, introspect_join_schemas
-from bullwheel.bullwheel_core import print_console_warning
-from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
+from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning
 
 
 def bare_column(sql_column: str) -> str:

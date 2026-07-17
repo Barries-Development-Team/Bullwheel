@@ -10,6 +10,7 @@ from bullwheel.bullwheel_core.exceptions import	PrintLabelNotConfigured
 
 from bullwheel.label_printing.ZebraPrinter import ZebraPrinter
 from bullwheel.label_printing.exceptions import *
+from bullwheel.label_printing.resolution import resolve_print_items
 
 def describe_status_problems(status: dict) -> list:
 	"""Translate the ~HS status flags into human-readable problem descriptions,
@@ -57,14 +58,22 @@ def test_connection(**kwargs):
 
 # Multi-Label Print
 @frappe.whitelist()
-def print_labels(printer_name: str, slot: str, doctype: str, items):
-	"""Render the Zebra Printer Label configured for the given Bullwheel Settings slot
-	against the source document, then send it to the printer. This is the label-driven
-	counterpart of print_zpl, which sends caller-supplied raw ZPL."""
+def print_labels(printer_name: str, slot: str, items, doctype: str = None):
+	"""Resolve each requested item to a natively printable document, render the Zebra
+	Printer Label configured for the given Bullwheel Settings slot once per item with
+	its own quantity, and send the concatenated ZPL to the printer in one transmission.
+
+	`items` is a list (or JSON string) of {doctype?, name, quantity?} dicts; `doctype`
+	is the default for items that do not carry their own. Items on a Resolved doctype
+	are followed to their Native document server-side (see label_printing/resolution.py),
+	so callers pass whatever identifiers they have in scope. If any item cannot be
+	resolved, nothing prints."""
 
 	if isinstance(items, str):
 		items = frappe.parse_json(items)
-	
+	if not items:
+		frappe.throw("No items were provided to print.")
+
 	printer_document = frappe.get_doc("Label Printer", printer_name)
 	if printer_document.disabled:
 		frappe.throw(f"Label Printer '{printer_name}' is disabled and cannot be used for printing.")
@@ -73,14 +82,33 @@ def print_labels(printer_name: str, slot: str, doctype: str, items):
 		label = get_label(slot)
 	except PrintLabelNotConfigured:
 		frappe.throw(f"No label is configured for '{slot}' in Bullwheel Settings ▸ Printing ▸ Labels.")
-		
-	zpl = ''
-	for item in items:
-		docname = item.get('name')
-		quantity = item.get('quantity')
 
-		source_document = frappe.get_doc(doctype, docname)
-		zpl += label.render(source_document, printer_document, quantity)
+	target_doctypes = [row.target_doctype for row in (label.get("target_doctypes") or [])]
+	resolved_items, failure_messages = resolve_print_items(
+		items, default_doctype=doctype, target_doctypes=target_doctypes
+	)
+
+	if failure_messages:
+		frappe.throw(
+			"Nothing was printed. The following items cannot be printed:<br>"
+			+ "<br>".join(failure_messages),
+			title="Cannot Print Labels",
+		)
+	if not resolved_items:
+		frappe.throw("No items to print.")
+
+	# Duplicate selections (e.g. two order items resolving to the same product) render
+	# from one fetched document instead of hitting SQL Server once per row.
+	document_cache = {}
+	zpl = ''
+	for native_doctype, native_name, quantity in resolved_items:
+		cache_key = (native_doctype, native_name)
+		if cache_key not in document_cache:
+			try:
+				document_cache[cache_key] = frappe.get_doc(native_doctype, native_name)
+			except frappe.DoesNotExistError:
+				frappe.throw(f"Nothing was printed. {native_doctype} '{native_name}' was not found.")
+		zpl += label.render(document_cache[cache_key], printer_document, quantity)
 
 	try:
 		with ZebraPrinter(printer_document) as printer:
@@ -89,5 +117,5 @@ def print_labels(printer_name: str, slot: str, doctype: str, items):
 		return {"status": "connection error", "printer": printer_name}
 	except Exception as error:
 		raise error
-		
+
 	return {"status": "success", "printer": printer_name}

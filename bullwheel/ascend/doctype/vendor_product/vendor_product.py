@@ -5,6 +5,7 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
 class VendorProduct(AbstractVirtualDocType):
+	LABEL_RESOLUTION_FIELD = 'product'  # Link → Ascend Product; label prints resolve through it (see label_printing/resolution.py)
 	TABLE_NAME = "VendorProducts"     # Ascend SQL table name
 	JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b          
 	SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console if frappe tries to lookup an unmapped field.

@@ -170,24 +170,21 @@ function update_table_buttons(frm) {
 
 // ── Label printing ─────────────────────────────────────────────────────────────
 
-// Resolve the Ascend Product behind the selected order item, for the print buttons.
-// An Order Receipt Item does not carry the product directly — its `vpn` Dynamic Link
-// points at a Vendor Product, which in turn links the Ascend Product. New Product rows
-// are staged, not yet in Ascend, so they have no product to print a tag against.
-// Returns null when there is nothing to print; the caller reports that to the user.
-async function selected_order_item_product(frm) {
-	const rows = frm.fields_dict.order_items.grid.get_selected_children();
-	if (rows.length !== 1) {
-		return null;
-	}
-
-	const row = rows[0];
-	if (row.item_type !== 'Vendor Product' || !row.vpn) {
-		return null;
-	}
-
-	const response = await frappe.db.get_value('Vendor Product', row.vpn, 'product');
-	return (response.message && response.message.product) || null;
+// Map the selected order-item rows to print items. Each row's `vpn` Dynamic Link data
+// (item_type + vpn) is already in scope, so the client passes it straight through and
+// the server resolves the rest (Vendor Product → product → Ascend Product) — no
+// per-row round trips. New Product rows are passed too: the server rejects the whole
+// request with each offending row named, so a mixed selection never partially prints.
+function selected_order_items(frm) {
+	return frm.fields_dict.order_items.grid
+		.get_selected_children()
+		.filter((row) => row.vpn)
+		.map((row) => ({
+			doctype: row.item_type,
+			name: row.vpn,
+			quantity: 1,
+			label: row.description || row.vpn,
+		}));
 }
 
 function add_product_print_buttons(frm) {
@@ -202,9 +199,8 @@ function add_product_print_buttons(frm) {
 			frm: frm,
 			label: label,
 			slot: slot,
-			doctype: 'Ascend Product',
-			items: selected_order_item_product,
-			empty_message: __('Select a single order item linked to a Vendor Product to print its tag.'),
+			items: selected_order_items,
+			empty_message: __('Select one or more order items to print tags for.'),
 		});
 	});
 }
