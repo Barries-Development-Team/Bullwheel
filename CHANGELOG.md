@@ -6,6 +6,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ### Features
 
+- Bullwheel can now edit Ascend data.
 - New Order Receipt builder for easy, single-pass, receiving of large retail and demo gear orders!
 - Added support for export of Purchase Orders.
 - Added batch printing for labels. Additionally, labels can also now be printed for vendor products.
@@ -15,7 +16,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ### Performance
 
-- Improved caching of Vendor Product details to significantly reduce redundant Ascend SQL Server queries.
+- Improved caching of Order Item details to significantly reduce redundant Ascend SQL Server queries.
 
 ### Bug Fixes
 
