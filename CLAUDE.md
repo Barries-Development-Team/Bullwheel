@@ -6,7 +6,7 @@
 ---
 ## Explicit Agent Instructions
 
-- When collecting information or testing/validating code, ALWAYS use app or framework provided Database query methods. NEVER write your own temporary handlers.
+- When collecting context or testing/validating code, ALWAYS use app or framework provided Database query methods. NEVER write your own temporary handlers for executing SQL.
 
 ## Developer Profile
 
@@ -14,7 +14,6 @@
 - **Employer:** Barrie's Ski and Sports — a retail ski and sport shop focusing on skiing, biking, and water sports
 - **Role:** Primary technical person; handles software development, customization, IT infrastructure
 - **Languages:** Proficient in Python, C#, and C++; more experienced in Python for backend work
-- **Education:** Computer science student at Idaho State University
 - **Infrastructure:** Windows 11 workstation, personal TrueNAS home server, Docker Desktop, WSL2, Tailscale, Cloudflare Tunnels, Ascend RMS with local SQL Server.
 - **Custom Frappe App:** `bullwheel` — a custom app built on Frappe Framework v16. Built to run in tandem with Ascend RMS.
 
