@@ -13,6 +13,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 - Improved Ascend Virtual DocType filter support.
 - Added database traffic encryption for improved security.
 - Added new job-based editing system for simultaneous document editing.
+- Reorganized numerous UI layouts.
 
 ### Performance
 

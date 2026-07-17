@@ -6,34 +6,42 @@
  "engine": "InnoDB",
  "field_order": [
   "description",
-  "product_details_section",
   "keyword",
-  "category",
-  "quantity",
-  "column_break_czad",
+  "column_break_hzou",
   "brand",
+  "category",
+  "product_details_section",
+  "column_break_czad",
   "style_name",
   "size",
-  "color",
   "column_break_bhbt",
+  "color",
   "gender",
+  "column_break_lysg",
   "season",
   "year",
   "pricing_section",
+  "quantity",
+  "column_break_ckpt",
   "price",
-  "estimated_cost",
-  "average_cost",
   "column_break_hjtk",
-  "swap_price",
-  "edit_swap_price",
+  "estimated_cost",
+  "column_break_foem",
+  "average_cost",
+  "column_break_mqmu",
   "online_price",
   "edit_online_price",
+  "column_break_ajrz",
+  "swap_price",
+  "edit_swap_price",
   "ids_and_barcodes_section",
-  "store_sku",
   "upc",
-  "manufacturers_part_number",
-  "style_number",
+  "store_sku",
   "column_break_xrdr",
+  "manufacturers_part_number",
+  "column_break_bvyk",
+  "style_number",
+  "database_identifiers_section",
   "id"
  ],
  "fields": [
@@ -156,7 +164,7 @@
   {
    "fieldname": "pricing_section",
    "fieldtype": "Section Break",
-   "label": "Pricing"
+   "label": "Quantity and Pricing"
   },
   {
    "fieldname": "style_number",
@@ -206,6 +214,40 @@
    "fieldname": "edit_online_price",
    "fieldtype": "Button",
    "label": "Edit Online Price"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "database_identifiers_section",
+   "fieldtype": "Section Break",
+   "label": "Database Identifiers"
+  },
+  {
+   "fieldname": "column_break_foem",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_mqmu",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ajrz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_bvyk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_hzou",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_lysg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ckpt",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
@@ -213,7 +255,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-17 14:35:31.661684",
+ "modified": "2026-07-17 15:57:46.722482",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
