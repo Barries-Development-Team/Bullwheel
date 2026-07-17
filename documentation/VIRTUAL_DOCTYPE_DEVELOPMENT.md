@@ -143,6 +143,7 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 class AscendThing(AbstractVirtualDocType):
     TABLE_NAME = "Things"             # Ascend SQL table name
+    ALLOW_WRITE = False               # False by default. If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
     JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b
     SCHEMA_CONFIG = { ... }           # From Step 2 — must include a "name" entry
     SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console when a lookup on an unmapped field is skipped.

@@ -70,6 +70,7 @@ class AbstractVirtualDocType(Document):
 
 	# ─── Subclass Contract — override these ───────────────────────────────────
 	TABLE_NAME: str = None       		# Ascend SQL table name, e.g. "Products"
+	ALLOW_WRITE: bool = False			# If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
 	JOIN_CONFIG: list = None     		# List of JOIN descriptors — see _build_join_clause for the dict shape
 	SCHEMA_CONFIG: dict = None    		# Fieldname -> SQL Column. Must include a "name" entry whose sql_column is the primary key.
 	NAME_EXPRESSION: str = None    		# Optional raw SQL expression for the primary key. When set, overrides
@@ -485,10 +486,13 @@ class AbstractVirtualDocType(Document):
 	the read-only nature of the Ascend Virtual Doctypes.'''
 
 	def db_insert(self, *args, **kwargs):
-		raise NotImplementedError(f"{self.doctype} is read-only.")
+		if not self.ALLOW_WRITE:
+			raise NotImplementedError(f"{self.doctype} is read-only.")
+
 
 	def db_update(self, *args, **kwargs):
-		raise NotImplementedError(f"{self.doctype} is read-only.")
+		if not self.ALLOW_WRITE:
+			raise NotImplementedError(f"{self.doctype} is read-only.")
 
 	def delete(self, *args, **kwargs):
-		raise NotImplementedError(f"{self.doctype} is read-only.")
+		raise NotImplementedError(f"No! Bad user! Never delete {self.doctype} records!")
