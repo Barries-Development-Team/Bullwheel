@@ -103,9 +103,22 @@ def introspect_join_schemas(server_document, join_config):
 	return merged
 
 
+"""Ascend columns that must map to specific Frappe standard fieldnames rather
+than their generic snake_case conversion, so edits to the Virtual DocType
+resolve correctly."""
+COLUMN_TO_FIELDNAME_OVERRIDES = {
+	"datemodified": "modified",
+	"modifierid": "modified_by",
+}
+
+
 def _columnname_to_fieldname(column_name):
 	"""Convert a SQL column name (e.g. "Store UPC", "MfgrPartNo") to a snake_case fieldname."""
 	import re
+
+	override = COLUMN_TO_FIELDNAME_OVERRIDES.get(column_name.lower())
+	if override:
+		return override
 
 	# Insert underscores at camelCase boundaries, then normalize separators.
 	spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", column_name)
