@@ -480,10 +480,8 @@ class AbstractVirtualDocType(Document):
 
 		return records[0].get('count')
 		  	
-	# ─── Read-Only Guards ─────────────────────────────────────────────────────
+	# ─── Write Methods ─────────────────────────────────────────────────────
 	
-	'''The following methods are required for Virtual Doctypes, however they are not implemented in order to maintain
-	the read-only nature of the Ascend Virtual Doctypes.'''
 
 	def db_insert(self, *args, **kwargs):
 		if not self.ALLOW_WRITE:
