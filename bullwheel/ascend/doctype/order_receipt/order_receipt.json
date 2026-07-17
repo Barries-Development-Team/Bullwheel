@@ -21,9 +21,7 @@
   "order_total",
   "order_items_section",
   "scan_item",
-  "order_items",
-  "new_products_tab",
-  "new_products"
+  "order_items"
  ],
  "fields": [
   {
@@ -96,17 +94,6 @@
   },
   {
    "depends_on": "eval:!doc.__islocal",
-   "fieldname": "new_products_tab",
-   "fieldtype": "Tab Break",
-   "label": "New Products"
-  },
-  {
-   "fieldname": "new_products",
-   "fieldtype": "Table",
-   "options": "New Product"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
    "fieldname": "order_items_section",
    "fieldtype": "Section Break"
   },
@@ -140,7 +127,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-15 18:37:30.349218",
+ "modified": "2026-07-17 16:39:44.162914",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
