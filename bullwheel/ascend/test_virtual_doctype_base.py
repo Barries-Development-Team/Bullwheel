@@ -16,7 +16,7 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
-from bullwheel.ascend.validate_virtual_doctypes import validate_schema_config
+from bullwheel.ascend.validate_virtual_doctypes import validate_schema_config, autoname_mismatch_reason
 
 
 # ─── Test Fixtures ────────────────────────────────────────────────────────────
@@ -219,6 +219,49 @@ class UnitTestValidateSchemaConfig(UnitTestCase):
 		with self.assertRaises(ValueError) as context:
 			validate_schema_config(_UndeclaredColumnQualifier)
 		self.assertIn('cat', str(context.exception))
+
+
+# ─── autoname_mismatch_reason ──────────────────────────────────────────────────
+
+
+class UnitTestAutonameMismatchReason(UnitTestCase):
+
+	def test_non_field_autoname_is_always_safe(self):
+		"""Only a literal 'field:' autoname triggers Frappe's _sync_autoname_field — Prompt,
+		hash, naming_series, etc. never touch this path."""
+		self.assertIsNone(autoname_mismatch_reason(_SimpleVirtualDocType, 'Prompt'))
+		self.assertIsNone(autoname_mismatch_reason(_SimpleVirtualDocType, 'hash'))
+		self.assertIsNone(autoname_mismatch_reason(_SimpleVirtualDocType, None))
+		self.assertIsNone(autoname_mismatch_reason(_SimpleVirtualDocType, ''))
+
+	def test_field_autoname_matching_name_column_is_safe(self):
+		"""Mirrors AscendProduct's real shape: 'name' and 'store_sku' both map to the same
+		underlying column, so _sync_autoname_field's self-check is always a harmless no-op."""
+		class _MirroredNameField(AbstractVirtualDocType):
+			TABLE_NAME = "Products"
+			SCHEMA_CONFIG = {
+				'name':      'Products.[Store UPC]',
+				'store_sku': 'Products.[Store UPC]',
+			}
+		self.assertIsNone(autoname_mismatch_reason(_MirroredNameField, 'field:store_sku'))
+
+	def test_field_autoname_mismatched_column_is_unsafe(self):
+		"""Regression: the exact real-world incident — autoname='field:description' on
+		AscendProduct-shaped SCHEMA_CONFIG silently overwrote Description with the SKU."""
+		reason = autoname_mismatch_reason(_SimpleVirtualDocType, 'field:description')
+		self.assertIsNotNone(reason)
+		self.assertIn('description', reason)
+
+	def test_field_autoname_pointing_at_unmapped_field_is_unsafe(self):
+		reason = autoname_mismatch_reason(_SimpleVirtualDocType, 'field:nonexistent_field')
+		self.assertIsNotNone(reason)
+
+	def test_field_autoname_with_name_expression_is_always_unsafe(self):
+		"""A computed NAME_EXPRESSION has no literal 'name' column at all, so any 'field:'
+		autoname is unsafe regardless of what it points at."""
+		reason = autoname_mismatch_reason(_NameExpressionVirtualDocType, 'field:description')
+		self.assertIsNotNone(reason)
+		self.assertIn('NAME_EXPRESSION', reason)
 
 
 # ─── validate_schema_config — NAME_EXPRESSION ─────────────────────────────────

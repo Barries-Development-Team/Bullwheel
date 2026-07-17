@@ -153,6 +153,49 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 	return True
 
 
+def autoname_mismatch_reason(controller, autoname: str) -> str | None:
+	"""Returns a human-readable reason when `autoname` would make Frappe's own
+	BaseDocument._sync_autoname_field() silently corrupt data on every save, or None when
+	`autoname` is safe.
+
+	_sync_autoname_field() runs on every save (insert and update) for any DocType whose
+	autoname contains 'field:<fieldname>': whenever self.name != self.get(fieldname), it
+	force-overwrites <fieldname> with self.name, on the assumption that <fieldname> is what
+	the name was *derived from* and has simply drifted out of sync. For a virtual DocType,
+	`name` is populated independently via SCHEMA_CONFIG['name']/NAME_EXPRESSION (see
+	load_from_db) rather than derived from any one Document field, so that assumption is
+	usually false — the mismatch is the normal case, not a sign of drift, and
+	_sync_autoname_field ends up clobbering <fieldname> with the primary key value on every
+	single save. (Confirmed root cause of a real incident: Ascend Product's leftover
+	`autoname = "field:description"` overwrote every saved product's Description with its
+	Store UPC.) Any other autoname style (Prompt, hash, naming_series, ...) never triggers
+	this path — only a literal 'field:' autoname is affected."""
+	if 'field:' not in (autoname or ''):
+		return None
+
+	fieldname = autoname.partition('field:')[2]
+	schema_config = controller.SCHEMA_CONFIG or {}
+
+	if controller.NAME_EXPRESSION:
+		return (
+			f"autoname is 'field:{fieldname}', but NAME_EXPRESSION supplies the primary key — "
+			f"there is no literal 'name' column for _sync_autoname_field to keep in sync, so "
+			f"it will overwrite '{fieldname}' with the computed primary key value on every save."
+		)
+
+	name_column = schema_config.get('name')
+	field_column = schema_config.get(fieldname)
+	if not field_column or not name_column or bare_column(field_column) != bare_column(name_column):
+		return (
+			f"autoname is 'field:{fieldname}', but SCHEMA_CONFIG['{fieldname}'] ({field_column!r}) "
+			f"does not map to the same column as SCHEMA_CONFIG['name'] ({name_column!r}) — "
+			f"_sync_autoname_field will overwrite '{fieldname}' with the primary key value on "
+			f"every save."
+		)
+
+	return None
+
+
 def _virtual_doctype_controllers() -> list:
 	"""Collect (doctype name, controller class) pairs for every virtual DocType in the site
 	whose controller inherits AbstractVirtualDocType."""
@@ -183,6 +226,32 @@ def _warn_unmapped_json_fields(doctype_name: str, controller) -> None:
 			)
 
 
+def _check_autoname_safety(doctype_name: str, controller) -> None:
+	"""Checks the DocType's live `autoname` against autoname_mismatch_reason(). A write-enabled
+	DocType (ALLOW_WRITE=True) with an unsafe autoname blocks the migration outright, since the
+	next save would silently corrupt Ascend data (see autoname_mismatch_reason's docstring for
+	the exact mechanism). A read-only DocType only gets a console warning — no data is at risk
+	yet, but the same misconfiguration will corrupt data the moment ALLOW_WRITE is flipped on,
+	so it's worth surfacing early rather than waiting to rediscover it the same way."""
+	autoname = frappe.get_meta(doctype_name).autoname
+	mismatch_reason = autoname_mismatch_reason(controller, autoname)
+	if not mismatch_reason:
+		return
+
+	if controller.ALLOW_WRITE:
+		raise ValueError(
+			f"{doctype_name}: {mismatch_reason} Set autoname = 'Prompt' on the DocType, or "
+			f"point 'field:' at a field whose SCHEMA_CONFIG mapping mirrors the primary key "
+			f"column, before enabling ALLOW_WRITE."
+		)
+
+	print_console_warning(
+		f"Virtual DocType Validation: {doctype_name} — {mismatch_reason} This DocType is "
+		f"currently read-only (ALLOW_WRITE=False), so no data is at risk yet, but this will "
+		f"corrupt data the moment ALLOW_WRITE is enabled."
+	)
+
+
 def _introspected_columns_for(controller, server_document) -> tuple:
 	"""Introspect the controller's primary table and joined tables from the live Ascend
 	database. Returns (primary column names, joined column names)."""
@@ -200,6 +269,7 @@ def validate_all_virtual_doctype_schemas() -> None:
 	for doctype_name, controller in controllers:
 		validate_schema_config(controller)
 		_warn_unmapped_json_fields(doctype_name, controller)
+		_check_autoname_safety(doctype_name, controller)
 
 	for doctype_name, controller in controllers:
 		try:

@@ -1,6 +1,6 @@
 {
  "actions": [],
- "autoname": "field:description",
+ "autoname": "field:store_sku",
  "creation": "2026-06-02 11:53:29.648589",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -48,15 +48,13 @@
    "in_global_search": 1,
    "in_list_view": 1,
    "label": "Description",
-   "read_only": 1,
    "unique": 1
   },
   {
    "fieldname": "keyword",
    "fieldtype": "Data",
    "in_standard_filter": 1,
-   "label": "Keyword",
-   "read_only": 1
+   "label": "Keyword"
   },
   {
    "fieldname": "brand",
@@ -70,14 +68,12 @@
   {
    "fieldname": "price",
    "fieldtype": "Currency",
-   "label": "MSRP",
-   "read_only": 1
+   "label": "MSRP"
   },
   {
    "fieldname": "estimated_cost",
    "fieldtype": "Currency",
-   "label": "Estimated Cost",
-   "read_only": 1
+   "label": "Estimated Cost"
   },
   {
    "fieldname": "ids_and_barcodes_section",
@@ -89,7 +85,8 @@
    "fieldtype": "Data",
    "in_global_search": 1,
    "label": "Store SKU",
-   "read_only": 1
+   "read_only": 1,
+   "unique": 1
   },
   {
    "fieldname": "upc",
@@ -103,8 +100,7 @@
    "fieldname": "manufacturers_part_number",
    "fieldtype": "Data",
    "in_global_search": 1,
-   "label": "Manufacturer's Part Number",
-   "read_only": 1
+   "label": "Manufacturer's Part Number"
   },
   {
    "fieldname": "category",
@@ -132,20 +128,17 @@
   {
    "fieldname": "gender",
    "fieldtype": "Data",
-   "label": "Gender",
-   "read_only": 1
+   "label": "Gender"
   },
   {
    "fieldname": "season",
    "fieldtype": "Data",
-   "label": "Season",
-   "read_only": 1
+   "label": "Season"
   },
   {
    "fieldname": "year",
    "fieldtype": "Data",
-   "label": "Year",
-   "read_only": 1
+   "label": "Year"
   },
   {
    "fieldname": "average_cost",
@@ -169,8 +162,7 @@
    "fieldname": "style_number",
    "fieldtype": "Data",
    "in_global_search": 1,
-   "label": "Style Number",
-   "read_only": 1
+   "label": "Style Number"
   },
   {
    "fieldname": "id",
@@ -221,7 +213,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-17 11:28:13.172493",
+ "modified": "2026-07-17 14:35:31.661684",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
