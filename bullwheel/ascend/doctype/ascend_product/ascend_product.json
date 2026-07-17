@@ -61,8 +61,7 @@
   {
    "fieldname": "brand",
    "fieldtype": "Data",
-   "label": "Brand",
-   "read_only": 1
+   "label": "Brand"
   },
   {
    "fieldname": "column_break_czad",
@@ -118,20 +117,17 @@
   {
    "fieldname": "color",
    "fieldtype": "Data",
-   "label": "Color",
-   "read_only": 1
+   "label": "Color"
   },
   {
    "fieldname": "size",
    "fieldtype": "Data",
-   "label": "Size",
-   "read_only": 1
+   "label": "Size"
   },
   {
    "fieldname": "style_name",
    "fieldtype": "Data",
-   "label": "Style (Model) Name",
-   "read_only": 1
+   "label": "Style (Model) Name"
   },
   {
    "fieldname": "gender",
@@ -225,7 +221,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-10 16:34:48.798444",
+ "modified": "2026-07-17 11:28:13.172493",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
