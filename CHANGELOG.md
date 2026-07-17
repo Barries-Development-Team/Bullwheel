@@ -15,6 +15,10 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 - Added new job-based editing system for simultaneous document editing.
 - Reorganized numerous UI layouts.
 
+### Framework Updated
+
+- Updated to Frappe Framework 16.27.1 from 16.26.3 ([Release Notes](https://github.com/frappe/frappe/releases#release-v16.27.1))
+
 ### Performance
 
 - Improved caching of Order Item details to significantly reduce redundant Ascend SQL Server queries.
