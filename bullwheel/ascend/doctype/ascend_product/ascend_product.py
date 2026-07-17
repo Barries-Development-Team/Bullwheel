@@ -20,9 +20,10 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
 class AscendProduct(AbstractVirtualDocType):
-	"""Read-only virtual DocType mapping the Ascend RMS `Products` table."""
+	"""Virtual DocType mapping the Ascend RMS `Products` table."""
 
 	TABLE_NAME = "Products"
+	ALLOW_WRITE = True
 	ALT_NAME_RESOLUTION_FIELDS = ['upc']
 
 	SCHEMA_CONFIG = {

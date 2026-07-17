@@ -4,6 +4,9 @@
 # Updated: July 7, 2026
 
 ---
+## Explicit Agent Instructions
+
+- When collecting information or testing/validating code, ALWAYS use app or framework provided Database query methods. NEVER write your own temporary handlers.
 
 ## Developer Profile
 
