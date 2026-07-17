@@ -54,9 +54,9 @@ class AscendProduct(AbstractVirtualDocType):
 		'non_inventory': 'Products.NonInventory',
 		'appt_length': 'Products.ApptLength',
 		'creator_id': 'Products.CreatorID',
-		'modifier_id': 'Products.ModifierID',
+		'modified_by': 'modifier.Initials',
 		'date_created': 'Products.DateCreated',
-		'date_modified': 'Products.DateModified',
+		'modified': 'Products.DateModified',
 		'hide': 'Products.Hide',
 		'loc_from_id': 'Products.LocFromID',
 		'dol_com': 'Products.DolCom',
@@ -83,6 +83,12 @@ class AscendProduct(AbstractVirtualDocType):
 			"table": "Categories",                         # Table to join
 			"alias": "cat",                                # Optional alias
 			"on":    "Products.TopicID = cat.ID",          # Full ON condition
+		},
+		{
+			"join":  "LEFT JOIN",
+			"table": "Users",
+			"alias": "modifier", # Can't use "user" since it's a reserved keyword.
+			"on":    "Products.ModifierID = modifier.ID",
 		}
 	]
 
