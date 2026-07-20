@@ -42,6 +42,13 @@ ASCEND_PRODUCT_FIELDS = [
 	"brand", "color", "size", "style_name", "style_number", "season", "year", "gender",
 ]
 
+# New Product fieldnames copied onto a Ski with Bindings field of the same name. The Store SKU
+# (the Ascend Product's name) fills `ski`, and `max_din` maps onto `din_range` separately.
+SKI_WITH_BINDINGS_FIELDS = [
+	"binding_brand_and_model", "radius", "tip_waist_tail",
+	"condition", "top_condition", "base_condition",
+]
+
 STORE_SKU_RANDOM_DIGITS = 8
 MAX_STORE_SKU_ATTEMPTS = 20
 
@@ -68,24 +75,38 @@ class NewProduct(Document):
 		"""Generate the Store SKU up front. It doubles as this document's own name (the
 		"field:store_sku" autoname rule picks up whatever this sets) and as the Ascend
 		Product's primary key created in after_insert, so it must exist before either naming
-		step runs."""
+		step runs. The Description is rendered first because the Store SKU is derived from it."""
+		self._render_description()
 		if not self.store_sku:
 			self.store_sku = _generate_store_sku(self.description)
 
 	def validate(self):
-		"""Re-render the Description from the chosen Description Template (if any) so the
-		saved value always reflects the template's current definition and this document's
-		current field values, rather than trusting whatever the client last previewed."""
+		"""Re-render the Description (in case fields changed since autoname) and enforce the
+		binding requirement for ski hardgoods server-side, so the rule holds on the Quick Entry
+		receiving path (which does not run the form's field scripts)."""
+		self._render_description()
+
+		if self._is_ski_hardgood() and not self.binding_brand_and_model:
+			frappe.throw("Binding Brand and Model is required for ski hardgoods.")
+
+	def _render_description(self):
+		"""Re-render the Description from the chosen Description Template (if any) so the saved
+		value always reflects the template's current definition and this document's current
+		field values, rather than trusting whatever the client last previewed. Runs server-side
+		— and before autoname, which builds the Store SKU from the Description — so it also
+		works in the Quick Entry receiving modal, where the form's live-preview script (see
+		new_product.js) never executes."""
 		if self.description_template:
 			template = frappe.get_cached_doc("Description Template", self.description_template)
 			self.description = template.render(self)
 
 	def after_insert(self):
-		"""Create the Ascend Product this New Product represents, then — when a vendor was
-		seeded onto this document (see Order Receipt's open_new_product_quick_entry) — the
-		Vendor Product linking it to that vendor. Runs after the local New Product record is
-		committed, so a Store SKU collision or Ascend connectivity failure surfaces as an
-		ordinary insert error rather than leaving Ascend and Bullwheel out of sync."""
+		"""Create the Ascend Product this New Product represents, then a Ski with Bindings
+		record when the category marks it as a ski, and — when a vendor was seeded onto this
+		document (see Order Receipt's open_new_product_quick_entry) — the Vendor Product
+		linking it to that vendor. Runs after the local New Product record is committed, so a
+		Store SKU collision or Ascend connectivity failure surfaces as an ordinary insert error
+		rather than leaving Ascend and Bullwheel out of sync."""
 		ascend_product = frappe.get_doc({
 			"doctype": "Ascend Product",
 			"store_sku": self.store_sku,
@@ -93,24 +114,44 @@ class NewProduct(Document):
 		})
 		ascend_product.insert()
 
-		if not self.vendor:
-			return
+		if self._is_ski_hardgood():
+			self._create_ski_with_bindings()
 
-		vendor_record = Vendor.get_values(self.vendor, ["id"])
-		if not vendor_record:
-			frappe.throw(f'Vendor "{self.vendor}" was not found in Ascend.')
+		if self.vendor:
+			vendor_record = Vendor.get_values(self.vendor, ["id"])
+			if not vendor_record:
+				frappe.throw(f'Vendor "{self.vendor}" was not found in Ascend.')
 
-		product_record = AscendProduct.get_values(self.store_sku, ["id"])
-		create_vendor_product(
-			vendor_id=vendor_record["id"],
-			product_id=product_record["id"],
-			part_number=self.vpn,
-			cost=self.estimated_cost,
-			description=self.description,
-			case_quantity=self.case_quantity if self.case else None,
-			case_upc=self.case_upc if self.case else None,
-			case_msrp=self.case_msrp if self.case else None,
-		)
+			product_record = AscendProduct.get_values(self.store_sku, ["id"])
+			create_vendor_product(
+				vendor_id=vendor_record["id"],
+				product_id=product_record["id"],
+				part_number=self.vpn,
+				cost=self.estimated_cost,
+				description=self.description,
+				case_quantity=self.case_quantity if self.case else None,
+				case_upc=self.case_upc if self.case else None,
+				case_msrp=self.case_msrp if self.case else None,
+			)
+
+	def _is_ski_hardgood(self):
+		"""True when this product's category marks it as a ski that needs a Ski with Bindings
+		record. The matching prefix is configured on Bullwheel Settings so the receiving rule
+		can change without a code deploy."""
+		prefix = frappe.db.get_single_value("Bullwheel Settings", "ski_category_prefix")
+		return bool(prefix) and prefix in (self.category or "")
+
+	def _create_ski_with_bindings(self):
+		"""Create the Ski with Bindings record for a received ski, linking it to the Ascend
+		Product just created (named by store_sku) and copying the ski-detail fields entered on
+		the receiving form. New Product's `max_din` maps onto the doctype's `din_range` field."""
+		ski = frappe.get_doc({
+			"doctype": "Ski with Bindings",
+			"ski": self.store_sku,
+			"din_range": self.max_din,
+			**{field: self.get(field) for field in SKI_WITH_BINDINGS_FIELDS},
+		})
+		ski.insert()
 
 
 @frappe.whitelist()

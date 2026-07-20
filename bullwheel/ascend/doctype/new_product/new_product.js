@@ -9,6 +9,7 @@ const DESCRIPTION_SOURCE_FIELDS = [
 	"color", "size", "gender", "season", "year", "upc",
 	"price", "estimated_cost",
 	"case", "case_quantity", "case_upc", "case_msrp",
+	"binding_brand_and_model"
 ];
 
 function regenerate_description(frm) {
@@ -30,6 +31,10 @@ function regenerate_description(frm) {
 	});
 }
 
+// The Ski Details fields show (and Binding Brand and Model becomes required) via
+// depends_on/mandatory_depends_on expressions on the DocType that read the configured prefix
+// from frappe.boot.ski_category_prefix (see bullwheel_core/__init__.py). Those run on the full form and
+// in the Quick Entry receiving modal alike, so no form-script visibility logic is needed here.
 const handlers = {
 	description_template(frm) {
 		regenerate_description(frm);

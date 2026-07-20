@@ -140,6 +140,12 @@ before_migrate = ["bullwheel.ascend.validate_virtual_doctypes.validate_all_virtu
 
 # after_build = "bullwheel.build.after_build"
 
+# Boot
+# ------------------
+# Expose settings the desk client needs before any form loads
+
+extend_bootinfo = "bullwheel.bullwheel_core.ski_category_prefix"
+
 # Desk Notifications
 # ------------------
 # See frappe.core.notifications.get_notification_config
