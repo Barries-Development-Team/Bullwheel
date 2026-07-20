@@ -6,6 +6,14 @@ frappe.ui.form.on('Ascend Product', {
 		bullwheel.printing.add_print_button({ frm, label: 'Print Swap Tag', slot: 'swap_tag' });
 		bullwheel.printing.add_print_button({ frm, label: 'Print Ascend Tag', slot: 'ascend_tag' });
 		bullwheel.printing.add_print_button({ frm, label: 'Print Online Tag', slot: 'online_tag' });
+
+		frm.add_custom_button(__('Check In'), () => {
+			bullwheel.warehouse.check_in_item({ product: frm.doc.name });
+		}, __('Warehouse'));
+
+		frm.add_custom_button(__('Check Out'), () => {
+			bullwheel.warehouse.check_out_item({ product: frm.doc.name });
+		}, __('Warehouse'));
 	},
 
 	edit_swap_price(frm) {

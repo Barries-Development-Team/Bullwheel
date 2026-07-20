@@ -13,7 +13,9 @@ frappe.provide('bullwheel.warehouse');
 //   on_success - optional callback invoked with (product, location, quantity) once
 //                the server confirms the check-in, so callers (e.g. a page refresh)
 //                can react without polling.
-bullwheel.warehouse.check_in_item = function ({ on_success } = {}) {
+//   product    - optional Ascend Product name to pre-fill, for callers (e.g. the
+//                Ascend Product form) that already know the product being checked in.
+bullwheel.warehouse.check_in_item = function ({ on_success, product } = {}) {
 	const dialog = new frappe.ui.Dialog({
 		title: __('Check In Item'),
 		fields: [
@@ -23,6 +25,7 @@ bullwheel.warehouse.check_in_item = function ({ on_success } = {}) {
 				fieldtype: 'Link',
 				options: 'Ascend Product',
 				reqd: 1,
+				default: product,
 			},
 			{
 				label: __('Warehouse Location'),
@@ -76,7 +79,9 @@ bullwheel.warehouse.check_in_item = function ({ on_success } = {}) {
 //
 //   on_success - optional callback invoked with (product, location, quantity) once
 //                the server confirms the check-out.
-bullwheel.warehouse.check_out_item = function ({ on_success } = {}) {
+//   product    - optional Ascend Product name to pre-fill, for callers (e.g. the
+//                Ascend Product form) that already know the product being checked out.
+bullwheel.warehouse.check_out_item = function ({ on_success, product } = {}) {
 	let location_quantities = {};
 
 	const dialog = new frappe.ui.Dialog({
@@ -88,6 +93,7 @@ bullwheel.warehouse.check_out_item = function ({ on_success } = {}) {
 				fieldtype: 'Link',
 				options: 'Ascend Product',
 				reqd: 1,
+				default: product,
 				onchange: refresh_locations,
 			},
 			{
@@ -179,6 +185,10 @@ bullwheel.warehouse.check_out_item = function ({ on_success } = {}) {
 			},
 		});
 	}
+
+	// Populate the location Select right away when a product default was supplied,
+	// since the field's own onchange only fires on user interaction.
+	if (product) refresh_locations();
 
 	dialog.show();
 };
