@@ -33,7 +33,8 @@ fixtures = [
     "Custom HTML Block",
     "Workflow",
     "Workflow State",
-    "Workflow Action"
+    "Workflow Action",
+    "Description Template"
 ]
 
 # Includes in <head>

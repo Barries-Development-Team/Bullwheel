@@ -22,6 +22,16 @@
   "column_break_xrag",
   "season",
   "year",
+  "ski_details_section",
+  "radius",
+  "tip_waist_tail",
+  "column_break_uhun",
+  "condition",
+  "top_condition",
+  "base_condition",
+  "column_break_fpyh",
+  "binding_brand_and_model",
+  "max_din",
   "pricing_section",
   "price",
   "column_break_njci",
@@ -205,7 +215,7 @@
    "unique": 1
   },
   {
-   "description": "Set by Order Receipt's scan flow before Quick Entry opens, so the created Vendor Product can be linked to this vendor. Never rendered — left unset outside that flow.",
+   "description": "Set by Order Receipt's scan flow before Quick Entry opens, so the created Vendor Product can be linked to this vendor. Never rendered \u2014 left unset outside that flow.",
    "fieldname": "vendor",
    "fieldtype": "Link",
    "hidden": 1,
@@ -242,12 +252,69 @@
   {
    "fieldname": "column_break_ipev",
    "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.category && doc.category.includes(\"Ski Hardgoods - Skis\")",
+   "fieldname": "ski_details_section",
+   "fieldtype": "Section Break",
+   "label": "Ski Details"
+  },
+  {
+   "fieldname": "radius",
+   "fieldtype": "Data",
+   "label": "Radius"
+  },
+  {
+   "fieldname": "tip_waist_tail",
+   "fieldtype": "Data",
+   "label": "Tip-Waist-Tail (mm)"
+  },
+  {
+   "fieldname": "column_break_uhun",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "New",
+   "fieldname": "condition",
+   "fieldtype": "Select",
+   "label": "Condition",
+   "options": "New\nUsed"
+  },
+  {
+   "depends_on": "eval:doc.condition == \"Used\"",
+   "fieldname": "top_condition",
+   "fieldtype": "Float",
+   "label": "Top Condition",
+   "non_negative": 1,
+   "precision": "1"
+  },
+  {
+   "depends_on": "eval:doc.condition == \"Used\"",
+   "fieldname": "base_condition",
+   "fieldtype": "Float",
+   "label": "Base Condition",
+   "non_negative": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "column_break_fpyh",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "binding_brand_and_model",
+   "fieldtype": "Data",
+   "label": "Binding Brand and Model"
+  },
+  {
+   "fieldname": "max_din",
+   "fieldtype": "Data",
+   "label": "Max DIN"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-17 16:46:16.323648",
+ "modified": "2026-07-20 16:29:59.442671",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",
