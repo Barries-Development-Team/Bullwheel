@@ -240,19 +240,23 @@ function open_vendor_link_dialog(frm, record) {
 // 'not found': nothing in Ascend matches the scanned identifier. Opens the New Product
 // doctype's native Quick Entry modal (it declares quick_entry: 1) rather than a custom
 // dialog — Quick Entry renders only the doctype's required fields, which is a tighter,
-// scan-friendly form than the full New Product record. The scanned value is seeded onto the
-// underlying document before the modal opens, so it saves even though `upc` isn't rendered
-// (unless new_product.json's upc field is later given allow_in_quick_entry).
+// scan-friendly form than the full New Product record. The scanned value and this receipt's
+// vendor are seeded onto the underlying document before the modal opens (upc isn't rendered
+// unless new_product.json's upc field is given allow_in_quick_entry; vendor is a hidden field
+// never rendered at all) — New Product's own insert hooks (see new_product.py) create the
+// Ascend Product and, since vendor is set, the linked Vendor Product.
 //
 // Caveat: if the user clicks "Edit Full Form", or the insert fails and Quick Entry redirects
 // there, this after-insert callback does not fire (Frappe's full-form save path consumes a
-// different route hook than Quick Entry sets). The user finishes the New Product in the full
-// form and re-scans; until the New Product doctype's own server-side logic (creating the
-// Ascend Product + Vendor Product on insert) lands, the re-scan will still report 'not found'.
+// different route hook than Quick Entry sets), so the order item isn't auto-added here. The
+// Ascend records are still created once the document is eventually saved though — New
+// Product's insert hooks run the same regardless of which form saved it — so a re-scan
+// afterward now finds it.
 function open_new_product_quick_entry(frm, scanned_value) {
 	frappe.model.with_doctype('New Product', () => {
 		const doc = frappe.model.get_new_doc('New Product');
 		doc.upc = scanned_value;
+		doc.vendor = frm.doc.vendor;
 
 		frappe.ui.form.make_quick_entry('New Product', (new_product) => {
 			queue_add_or_increment_item(

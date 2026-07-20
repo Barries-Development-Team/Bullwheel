@@ -41,7 +41,8 @@
   "style_number",
   "manufacturers_part_number",
   "column_break_ipev",
-  "store_sku"
+  "store_sku",
+  "vendor"
  ],
  "fields": [
   {
@@ -201,6 +202,14 @@
    "label": "Store SKU",
    "read_only": 1,
    "unique": 1
+  },
+  {
+   "description": "Set by Order Receipt's scan flow before Quick Entry opens, so the created Vendor Product can be linked to this vendor. Never rendered — left unset outside that flow.",
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Vendor",
+   "options": "Vendor"
   },
   {
    "depends_on": "eval:doc.case",

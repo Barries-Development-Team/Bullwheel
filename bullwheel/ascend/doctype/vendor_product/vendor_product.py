@@ -54,15 +54,18 @@ class VendorProduct(AbstractVirtualDocType):
 	]
 
 
-def create_vendor_product(vendor_id, product_id, part_number, cost, description=None):
-	"""Insert one VendorProducts row into Ascend, linking an existing Product to a vendor
-	that does not yet carry it (used by Order Receipt's vendor-link flow during receiving).
-	Kept as a raw parameterized INSERT, outside the read-only virtual doctype framework,
-	because VendorProduct's NAME_EXPRESSION (a computed CONCAT of PartNumber and Vendor.Name)
-	is not a real column and therefore cannot be produced by the framework's generic
-	db_insert. Re-checks for an existing row for this vendor + part number inside the same
-	connection, so the check and the insert commit or roll back together (see
-	MSSQLDatabase.__exit__). Returns True when a row was inserted, False when an existing
+def create_vendor_product(
+	vendor_id, product_id, part_number, cost, description=None,
+	case_quantity=None, case_upc=None, case_msrp=None,
+):
+	"""Insert one VendorProducts row into Ascend, linking a Product to a vendor that does not
+	yet carry it (used by Order Receipt's vendor-link flow during receiving, and by New
+	Product's insert for brand-new products). Kept as a raw parameterized INSERT, outside the
+	read-only virtual doctype framework, because VendorProduct's NAME_EXPRESSION (a computed
+	CONCAT of PartNumber and Vendor.Name) is not a real column and therefore cannot be produced
+	by the framework's generic db_insert. Re-checks for an existing row for this vendor + part
+	number inside the same connection, so the check and the insert commit or roll back together
+	(see MSSQLDatabase.__exit__). Returns True when a row was inserted, False when an existing
 	row was found and reused."""
 
 	with MSSQLDatabase(get_default_ascend_database()) as ascend:
@@ -76,9 +79,10 @@ def create_vendor_product(vendor_id, product_id, part_number, cost, description=
 
 		ascend.sql(
 			"INSERT INTO VendorProducts "
-			"(ID, VendorID, ProductID, PartNumber, Cost, Description, DateCreated, Hide, HasPendingDelta) "
-			"VALUES (NEWID(), %s, %s, %s, %s, %s, GETDATE(), 0, 0)",
-			[vendor_id, product_id, part_number, cost, description],
+			"(ID, VendorID, ProductID, PartNumber, Cost, Description, CaseQty, CaseUPC, CaseMSRP, "
+			"DateCreated, Hide, HasPendingDelta) "
+			"VALUES (NEWID(), %s, %s, %s, %s, %s, %s, %s, %s, GETDATE(), 0, 0)",
+			[vendor_id, product_id, part_number, cost, description, case_quantity, case_upc, case_msrp],
 			as_dict=False,
 		)
 
