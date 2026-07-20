@@ -10,6 +10,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 - New Order Receipt builder for easy, single-pass, receiving of large retail and demo gear orders!
 - Items can now be checked in and out of Warehouse Location bays.
 - Added batch printing for labels. Additionally, labels can also now be printed for vendor products.
+- Added Product Description Templates.
 - The last selected label printer will now be remembered, per user.``
 - Improved Ascend Virtual DocType filter support.
 - Added database traffic encryption for improved security.
