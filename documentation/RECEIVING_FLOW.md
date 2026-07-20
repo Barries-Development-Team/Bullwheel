@@ -6,13 +6,13 @@
 
 **High Level Goal:** Permit multiple users to simultaneously collect information for, tag, and check-in items for large receiving orders.
 
-**Order Receipt Components**: An order receipt has two fundumental parts: the *order items* and *new vendor products*. Order items are the product quantities we are receiving into inventory, identified by a Vendor Part Number (VPN). New Vendor Products are a table of items that do not currently have Vendor Product (or regular Product) records in Ascend.
+**Order Receipt Components**: An order receipt's central part is its *order items* — the product quantities we are receiving into inventory, identified by a Vendor Part Number (VPN). Items that do not yet have a Vendor Product (or a Product at all) in Ascend are no longer staged locally; scanning such an item creates the missing Ascend record(s) directly (see the flow below), and the resulting Vendor Product is linked onto the order item immediately.
 
 ### Implementation
 
 **Frappe Workflows:** Before any custom coded controllers are handlers are made, the viability of Frappe Framework's built-in Workflows feature should be evaluated first. 
 
-**Current Prototype Setup:** The Doctype Order Receipt, under the Ascend module, has fields for the Vendor, Purchase Order Number, an Order Items table, and a New Product table. The child Doctypes for the tables are Order Receipt Item and New Product, respectively. No workflow is in place; saving edits changes the database records immediately. 
+**Current Setup:** The Doctype Order Receipt, under the Ascend module, has fields for the Vendor, Purchase Order Number, and an Order Items table (child Doctype Order Receipt Item, which links to Vendor Product). Creating a wholly new product uses the standalone New Product Doctype as the entry UI for the Ascend Product + Vendor Product pair it will create. No workflow is in place; saving edits changes the database records immediately. 
 
 ## Vendor Product Scanning and Validation
 

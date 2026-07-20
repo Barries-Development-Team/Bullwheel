@@ -9,4 +9,4 @@ class OrderReceiptItem(Document):
 	# (see populate_item_snapshot in order_receipt.py) rather than re-derived from Ascend
 	# on every load — that per-row SQL Server lookup was the main receiving-job bottleneck.
 
-	LABEL_RESOLUTION_FIELD = 'vpn'  # Dynamic Link via item_type; label prints resolve through it (see label_printing/resolution.py)
+	LABEL_RESOLUTION_FIELD = 'vpn'  # Link -> Vendor Product; label prints resolve through it (see label_printing/resolution.py)

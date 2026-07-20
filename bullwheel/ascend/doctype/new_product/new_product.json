@@ -75,6 +75,7 @@
    "label": "Identifiers"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "upc",
    "fieldtype": "Data",
    "in_list_view": 1,

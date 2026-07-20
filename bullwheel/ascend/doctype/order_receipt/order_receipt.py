@@ -1,18 +1,16 @@
 # Copyright (c) 2026, Barrie's Ski and Sports and contributors
 # For license information, please see license.txt
 
-import io
 import json
 import re
-import zipfile
 
 import frappe
 from frappe.model.document import Document
 
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core import get_default_ascend_database
-from bullwheel.ascend.doctype.vendor_product.vendor_product import VendorProduct
-from bullwheel.ascend.doctype.new_product.new_product import to_import_row
+from bullwheel.ascend.doctype.vendor_product.vendor_product import VendorProduct, create_vendor_product
+from bullwheel.ascend.doctype.vendor.vendor import Vendor
 from bullwheel.ascend.import_sheets import build_import_sheet, serve_file_download
 
 
@@ -38,18 +36,17 @@ class OrderReceipt(Document):
 		return self.subtotal + self.shipping_charges
 
 def populate_item_snapshot(row):
-	"""Snapshot the linked product's description/upc onto an order item at add/edit time, so
-	they are stored (not re-derived from Ascend on every load). Vendor Product rows read from
-	Ascend once here; New Product rows read from the local New Product record. Skips the lookup
-	when description/upc are already set (e.g. supplied by the scan flow)."""
+	"""Snapshot the linked Vendor Product's description/upc onto an order item at add/edit
+	time, so they are stored (not re-derived from Ascend on every load). Skips the lookup
+	when description/upc are already set (e.g. supplied by the scan flow). During the
+	receiving flow's vendor-link/new-product window, an item may briefly reference a Vendor
+	Product that does not exist in Ascend yet; get_values returns None then and this is a
+	no-op, leaving the caller-supplied snapshot values in place."""
 
 	if not row.vpn or (row.description and row.upc):
 		return
 
-	if row.item_type == "Vendor Product":
-		values = VendorProduct.get_values(row.vpn, ["description", "upc"])
-	else:
-		values = frappe.db.get_value("New Product", row.vpn, ["description", "upc"], as_dict=True)
+	values = VendorProduct.get_values(row.vpn, ["description", "upc"])
 
 	if values:
 		row.description = values.get("description")
@@ -58,7 +55,7 @@ def populate_item_snapshot(row):
 def child_doctype_for_table(table):
 	"""Return the child DocType of the given Order Receipt table field, throwing if `table`
 	is not actually a child table on Order Receipt. This bounds the whitelisted `table`
-	argument to real child tables (order_items, new_products)."""
+	argument to real child tables (order_items)."""
 
 	field = frappe.get_meta("Order Receipt").get_field(table)
 	if not field or field.fieldtype != "Table":
@@ -161,36 +158,36 @@ def queue_update_table(docname, table, job, values=None, row_name=None):
 		**kwargs
 	)
 
-def add_or_increment_item(docname, item_type, vpn, cost=None, description=None, upc=None):
-	"""Add an order item for the given vendor/new product, or bump its quantity if a row for
-	the same item (matching item_type + vpn) already exists. Used by the scan flow; runs under
-	the row lock so concurrent scans serialize instead of racing. description/upc are supplied
-	by the scan (scan_item already fetched them), so the snapshot needs no extra Ascend query."""
+def add_or_increment_item(docname, vpn, cost=None, description=None, upc=None):
+	"""Add an order item for the given Vendor Product, or bump its quantity if a row for the
+	same vpn already exists. Used by the scan flow; runs under the row lock so concurrent
+	scans serialize instead of racing. description/upc are supplied by the caller (scan_item
+	or the vendor-link/new-product flows already have them), so the snapshot needs no extra
+	Ascend query."""
 
 	lock_row(docname)
 
 	doc = frappe.get_doc("Order Receipt", docname)
 
-	existing = next((row for row in doc.order_items if row.item_type == item_type and row.vpn == vpn), None)
+	existing = next((row for row in doc.order_items if row.vpn == vpn), None)
 	if existing:
 		existing.quantity += 1
 	else:
 		row = doc.append("order_items", {
-			"item_type": item_type,
 			"vpn": vpn,
 			"quantity": 1,
 			"cost": cost,
 			"description": description,
 			"upc": upc,
 		})
-		populate_item_snapshot(row)  # no-op when the scan already supplied description/upc
+		populate_item_snapshot(row)  # no-op when the caller already supplied description/upc
 
 	doc.flags.ignore_links = True
 	doc.save()
 	frappe.db.commit()
 
 @frappe.whitelist()
-def queue_add_or_increment_item(docname, item_type, vpn, cost=None, description=None, upc=None):
+def queue_add_or_increment_item(docname, vpn, cost=None, description=None, upc=None):
 	"""Enqueue a serialized add-or-increment of an order item (scan flow)."""
 
 	frappe.enqueue(
@@ -201,84 +198,17 @@ def queue_add_or_increment_item(docname, item_type, vpn, cost=None, description=
 		is_async=True,
 		at_front=False,
 		docname=docname,
-		item_type=item_type,
 		vpn=vpn,
 		cost=cost,
 		description=description,
 		upc=upc,
 	)
 
-def stage_new_product(docname, values):
-	"""Create a New Product row from `values` and link an order item to it, in one locked
-	transaction. The New Product is saved first so its generated name can be used as the
-	order item's Dynamic Link target, then the linked order item is appended and saved."""
-
-	if isinstance(values, str):
-		values = json.loads(values or '{}')
-	values = clean_values('new_products', values or {})
-
-	lock_row(docname)
-
-	doc = frappe.get_doc("Order Receipt", docname)
-
-	new_product_row = doc.append("new_products", values)
-	doc.flags.ignore_links = True
-	doc.save()  # assigns the New Product row its name
-
-	# Snapshot description/upc straight from the New Product we just created — no extra query.
-	doc.append("order_items", {
-		"item_type": "New Product",
-		"vpn": new_product_row.name,
-		"quantity": 1,
-		"cost": new_product_row.cost,
-		"description": new_product_row.description,
-		"upc": new_product_row.upc,
-	})
-	doc.flags.ignore_links = True
-	doc.save()
-	frappe.db.commit()
-
-@frappe.whitelist()
-def queue_stage_new_product(docname, values):
-	"""Enqueue serialized New-Product staging (New Product row + linked order item)."""
-
-	frappe.enqueue(
-		method='bullwheel.ascend.doctype.order_receipt.order_receipt.stage_new_product',
-		queue='short',
-		enqueue_after_commit=True,
-		now=False,
-		is_async=True,
-		at_front=False,
-		docname=docname,
-		values=values,
-	)
-
-def find_staged_new_product(docname, id):
-	"""Return a New Product already staged on this order whose UPC / MPN / case UPC matches the
-	scanned id, or None. Lets a re-scanned item reference the existing New Product instead of
-	re-querying Ascend or staging a duplicate."""
-
-	matches = frappe.get_all(
-		"New Product",
-		filters={"parenttype": "Order Receipt", "parent": docname, "parentfield": "new_products"},
-		or_filters={"upc": id, "mpn": id, "case_upc": id},
-		fields=["name", "description", "cost", "upc"],
-		limit=1,
-	)
-	return matches[0] if matches else None
-
 @frappe.whitelist()
 def scan_item(id: str, vendor: str, docname: str):
-	"""Resolve a scanned identifier to an item this order can receive. Checks, in order: a New
-	Product already staged on this order, then a Vendor Product in Ascend, then any Product in
-	Ascend. Returns a (status, record) tuple; status is one of 'new product found', 'vpn found',
-	'product found', or 'not found'."""
-
-	# Check whether this item is already staged as a New Product for this order; if so,
-	# reference it instead of querying Ascend or staging a duplicate.
-	staged_new_product = find_staged_new_product(docname, id)
-	if staged_new_product:
-		return ('new product found', staged_new_product)
+	"""Resolve a scanned identifier to an item this order can receive. Checks, in order: a
+	Vendor Product in Ascend for this vendor, then any Product in Ascend. Returns a
+	(status, record) tuple; status is one of 'vpn found', 'product found', or 'not found'."""
 
 	# Determine if Vendor Product exists for the scanned item.
 
@@ -303,9 +233,11 @@ def scan_item(id: str, vendor: str, docname: str):
 			record['vpn'] = vendor_product_name
 			return ('vpn found', record)
 		
-		# Determine if Product exists for the scanned item.
+		# Determine if Product exists for the scanned item. ID and MfgrPartNo are included so
+		# the vendor-link dialog can create the missing Vendor Product without re-querying Ascend.
 
-		product_query = ('SELECT [Store UPC] as store_sku, UPC as upc, Description as description, EstCost as cost '
+		product_query = ('SELECT ID as product_id, [Store UPC] as store_sku, UPC as upc, '
+			'Description as description, EstCost as cost, MfgrPartNo as mpn '
 			'FROM Products '
 			'WHERE UPC = %s OR [Store UPC] = %s OR MfgrPartNo = %s'
 		)
@@ -324,6 +256,35 @@ def scan_item(id: str, vendor: str, docname: str):
 		return ('not found', None)
 
 
+@frappe.whitelist()
+def link_vendor_product(docname, product_id, part_number, cost, description=None, upc=None):
+	"""Create the missing Ascend Vendor Product linking this receipt's vendor to an existing
+	Ascend Product, then add or increment the matching order item. Runs synchronously (not
+	enqueued), unlike the other mutation entry points, so a failed Ascend insert surfaces
+	directly in the caller's vendor-link dialog instead of failing silently in a background
+	job; the receipt mutation itself still goes through add_or_increment_item's row lock."""
+
+	vendor = frappe.db.get_value("Order Receipt", docname, "vendor")
+	if not vendor:
+		frappe.throw(f'Order Receipt "{docname}" has no vendor set.')
+
+	vendor_record = Vendor.get_values(vendor, ["id"])
+	if not vendor_record:
+		frappe.throw(f'Vendor "{vendor}" was not found in Ascend.')
+
+	create_vendor_product(
+		vendor_id=vendor_record["id"],
+		product_id=product_id,
+		part_number=part_number,
+		cost=cost,
+		description=description,
+	)
+
+	vendor_product_name = f"{part_number} ({vendor})"  # matches VendorProduct.NAME_EXPRESSION
+	add_or_increment_item(docname, vendor_product_name, cost=cost, description=description, upc=upc)
+	return vendor_product_name
+
+
 def _import_template_path(filename):
 	"""Absolute path to an Ascend import template shipped with the app."""
 	return frappe.get_app_path("bullwheel", "ascend", "import_templates", filename)
@@ -336,12 +297,10 @@ _VENDOR_SUFFIX_PATTERN = re.compile(r"\s+\([^()]*\)$")
 
 
 def _resolve_ascend_vpn(item):
-	"""The bare Ascend VPN for a PO line. New-product rows carry the New Product's UUID in
-	`vpn`, so resolve to its real vpn field; vendor-product rows carry "<part> (<vendor>)",
-	so strip the trailing vendor suffix down to the part number Ascend expects."""
+	"""The bare Ascend VPN for a PO line. An order item's `vpn` carries the Vendor Product's
+	docname, "<part> (<vendor>)", so strip the trailing vendor suffix down to the part
+	number Ascend expects."""
 
-	if item.item_type == "New Product":
-		return frappe.db.get_value("New Product", item.vpn, "vpn")
 	return _VENDOR_SUFFIX_PATTERN.sub("", item.vpn)
 
 
@@ -359,7 +318,7 @@ def _order_item_to_po_row(item):
 
 def _mark_items_received(docname):
 	"""Flag every order item on the receipt as received, inside a row lock so it serializes
-	with concurrent receiving edits. Called once the export sheets have built successfully."""
+	with concurrent receiving edits. Called once the export sheet has built successfully."""
 
 	lock_row(docname)
 
@@ -374,9 +333,10 @@ def _mark_items_received(docname):
 
 @frappe.whitelist()
 def export_received_batch(docname):
-	"""Build the two Ascend import sheets for a received order — a PO sheet from `order_items`
-	and a Vendor Products sheet from `new_products` — bundle them into a single zip download,
-	then mark the order's items as received."""
+	"""Build the Ascend PO import sheet for a received order from `order_items`, then mark
+	the order's items as received. Vendor Products are now created directly in Ascend during
+	receiving (see link_vendor_product / the New Product creation flow), so there is no
+	longer a separate Vendor Products sheet to export."""
 
 	doc = frappe.get_doc("Order Receipt", docname)
 
@@ -384,17 +344,12 @@ def export_received_batch(docname):
 		_import_template_path("ascend_template_purchase_order.xlsx"),
 		[_order_item_to_po_row(item) for item in doc.order_items],
 	)
-	products_sheet = build_import_sheet(
-		_import_template_path("ascend_template_vendor_products.xlsx"),
-		[to_import_row(product) for product in doc.new_products],
-	)
 
-	archive_buffer = io.BytesIO()
-	with zipfile.ZipFile(archive_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-		archive.writestr(f"PO - {docname}.xlsx", po_sheet)
-		archive.writestr(f"Products - {docname}.xlsx", products_sheet)
-
-	# Only mark received once both sheets built, so a failure never silently receives the batch.
+	# Only mark received once the sheet has built, so a failure never silently receives the batch.
 	_mark_items_received(docname)
 
-	serve_file_download(f"{docname} - Ascend Import.zip", archive_buffer.getvalue(), "application/zip")
+	serve_file_download(
+		f"PO - {docname}.xlsx",
+		po_sheet,
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	)

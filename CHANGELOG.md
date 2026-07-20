@@ -8,6 +8,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 - Bullwheel can now edit Ascend data.
 - New Order Receipt builder for easy, single-pass, receiving of large retail and demo gear orders!
+- Order Receipt no longer stages new products in a local table for later import. Unrecognized scans now either link an existing Ascend Product to the receipt's vendor directly, or open the New Product record (Quick Entry) to create the product on the spot — both write straight to Ascend during receiving.
 - Added support for export of Purchase Orders.
 - Added batch printing for labels. Additionally, labels can also now be printed for vendor products.
 - Improved Ascend Virtual DocType filter support.

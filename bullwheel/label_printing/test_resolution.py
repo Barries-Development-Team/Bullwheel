@@ -33,9 +33,17 @@ class _LinkResolvedController:
 	LABEL_RESOLUTION_FIELD = 'product'
 
 
-class _DynamicLinkResolvedController:
-	"""Order Receipt Item-shaped: resolves through a Dynamic Link field."""
+class _OrderReceiptItemController:
+	"""Order Receipt Item-shaped: resolves through a plain Link field named 'vpn' (a static
+	Link -> Vendor Product, not a Dynamic Link)."""
 	LABEL_RESOLUTION_FIELD = 'vpn'
+
+
+class _DynamicLinkResolvedController:
+	"""Generic Dynamic Link resolution shape, independent of any real doctype, so the Dynamic
+	Link mechanism (resolving the target doctype from a second 'options' field) stays covered
+	now that no production doctype uses it."""
+	LABEL_RESOLUTION_FIELD = 'linked'
 
 
 class _NonLinkResolvedController:
@@ -60,7 +68,8 @@ CONTROLLERS = {
 	'Ascend Product': _NativeController,
 	'New Product': _NativeController,
 	'Vendor Product': _LinkResolvedController,
-	'Order Receipt Item': _DynamicLinkResolvedController,
+	'Order Receipt Item': _OrderReceiptItemController,
+	'Dynamic Doctype': _DynamicLinkResolvedController,
 	'Broken Doctype': _NonLinkResolvedController,
 	'Fieldless Doctype': _MissingFieldController,
 	'Cycle A': _CycleControllerA,
@@ -69,7 +78,8 @@ CONTROLLERS = {
 
 FIELDS = {
 	('Vendor Product', 'product'): frappe._dict(fieldtype='Link', options='Ascend Product', label='Product'),
-	('Order Receipt Item', 'vpn'): frappe._dict(fieldtype='Dynamic Link', options='item_type', label='VPN'),
+	('Order Receipt Item', 'vpn'): frappe._dict(fieldtype='Link', options='Vendor Product', label='VPN'),
+	('Dynamic Doctype', 'linked'): frappe._dict(fieldtype='Dynamic Link', options='linked_doctype', label='Linked'),
 	('Broken Doctype', 'description'): frappe._dict(fieldtype='Data', options=None, label='Description'),
 	('Cycle A', 'linked'): frappe._dict(fieldtype='Link', options='Cycle B', label='Linked'),
 	('Cycle B', 'linked'): frappe._dict(fieldtype='Link', options='Cycle A', label='Linked'),
@@ -78,8 +88,8 @@ FIELDS = {
 DOCUMENTS = {
 	('Vendor Product', 'VP-001'): {'product': '012345678905'},
 	('Vendor Product', 'VP-EMPTY'): {'product': None},
-	('Order Receipt Item', 'ORI-001'): {'vpn': 'VP-001', 'item_type': 'Vendor Product'},
-	('Order Receipt Item', 'ORI-NEW'): {'vpn': 'NP-001', 'item_type': 'New Product'},
+	('Order Receipt Item', 'ORI-001'): {'vpn': 'VP-001'},
+	('Dynamic Doctype', 'DD-001'): {'linked': 'NP-001', 'linked_doctype': 'New Product'},
 	('Cycle A', 'a1'): {'linked': 'b1'},
 	('Cycle B', 'b1'): {'linked': 'a1'},
 }
@@ -133,7 +143,7 @@ class UnitTestResolveToNative(UnitTestCase):
 
 	def test_dynamic_link_field_reads_doctype_from_options_field(self):
 		with _resolution_environment():
-			result = resolve_to_native('Order Receipt Item', 'ORI-NEW')
+			result = resolve_to_native('Dynamic Doctype', 'DD-001')
 		self.assertEqual(result, ('New Product', 'NP-001'))
 
 	def test_two_hop_chain_resolves_through_intermediate_doctype(self):
@@ -190,7 +200,7 @@ class UnitTestResolvePrintItems(UnitTestCase):
 		quantity-0 skip: exactly one triple and exactly one failure message."""
 		items = [
 			{'doctype': 'Order Receipt Item', 'name': 'ORI-001', 'quantity': 2},
-			{'doctype': 'Order Receipt Item', 'name': 'ORI-NEW', 'quantity': 1},
+			{'doctype': 'Dynamic Doctype', 'name': 'DD-001', 'quantity': 1},
 			{'doctype': 'Order Receipt Item', 'name': 'ORI-001', 'quantity': 0},
 		]
 		with _resolution_environment():
@@ -202,7 +212,7 @@ class UnitTestResolvePrintItems(UnitTestCase):
 		self.assertIn('New Product', failure_messages[0])
 
 	def test_empty_target_list_skips_target_validation(self):
-		items = [{'doctype': 'Order Receipt Item', 'name': 'ORI-NEW'}]
+		items = [{'doctype': 'Dynamic Doctype', 'name': 'DD-001'}]
 		with _resolution_environment():
 			resolved_items, failure_messages = resolve_print_items(items, target_doctypes=[])
 		self.assertEqual(resolved_items, [('New Product', 'NP-001', 1)])

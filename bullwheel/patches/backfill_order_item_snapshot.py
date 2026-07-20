@@ -18,6 +18,12 @@ def _chunks(items, size):
 
 
 def execute():
+	# Order Receipt Item no longer carries item_type (it now only links to Vendor Product), so
+	# a fresh site has no such column to backfill. Sites where this patch already ran keep the
+	# orphaned column (Frappe never drops removed columns) and have the patch recorded anyway.
+	if not frappe.db.has_column("Order Receipt Item", "item_type"):
+		return
+
 	rows = frappe.get_all(
 		"Order Receipt Item",
 		filters={"parentfield": "order_items"},

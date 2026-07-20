@@ -13,7 +13,7 @@ doctype's controller class declares which field to follow:
 		LABEL_RESOLUTION_FIELD = 'product'   # Link -> Ascend Product
 
 	class OrderReceiptItem(Document):
-		LABEL_RESOLUTION_FIELD = 'vpn'       # Dynamic Link via item_type
+		LABEL_RESOLUTION_FIELD = 'vpn'       # Link -> Vendor Product
 
 Native doctypes declare nothing. The resolver hops these fields until it
 reaches a doctype with no declaration — or one the label explicitly targets —
