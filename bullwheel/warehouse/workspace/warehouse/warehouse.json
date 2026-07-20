@@ -1,7 +1,7 @@
 {
  "app": "bullwheel",
  "charts": [],
- "content": "[{\"id\":\"TPSYDXDUlp\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Warehouse Home</span>\",\"col\":12}},{\"id\":\"6c_cEluwVp\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Warehouse Locations\",\"col\":5}},{\"id\":\"0_SPhiFkLC\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Inventory\",\"col\":6}}]",
+ "content": "[{\"id\":\"TPSYDXDUlp\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Warehouse Home</span>\",\"col\":12}},{\"id\":\"0_SPhiFkLC\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Inventory\",\"col\":6}},{\"id\":\"6c_cEluwVp\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Warehouse Locations\",\"col\":5}}]",
  "creation": "2026-07-07 11:25:44.131551",
  "custom_blocks": [
   {
@@ -23,7 +23,7 @@
  "label": "Warehouse",
  "link_type": "DocType",
  "links": [],
- "modified": "2026-07-20 13:19:36.608246",
+ "modified": "2026-07-20 15:41:37.918721",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Warehouse",

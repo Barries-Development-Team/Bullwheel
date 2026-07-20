@@ -106,6 +106,7 @@ bullwheel.warehouse.check_out_item = function ({ on_success } = {}) {
 				fieldname: 'on_hand',
 				fieldtype: 'Int',
 				read_only: 1,
+				depends_on: 'eval:doc.location',
 			},
 			{
 				label: __('Quantity'),
