@@ -15,6 +15,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 - Added database traffic encryption for improved security.
 - Added new job-based editing system for simultaneous document editing.
 - Reorganized numerous UI layouts.
+- Made default ZPL designs read-only to prevent accident edits.
 
 ### Framework Updated
 
