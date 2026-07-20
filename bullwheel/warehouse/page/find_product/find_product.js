@@ -14,10 +14,17 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 			label: 'Product',
 			options: 'Ascend Product',
 			placeholder: 'Search Ascend products...',
+			onchange: run_search,
 		},
 		render_input: true,
 	});
 	search_field.refresh();
+
+	search_field.$input.on('keydown', (event) => {
+		if (event.key !== 'Enter') return;
+		event.preventDefault();
+		run_search();
+	});
 
 	// Results container
 	var $results = $('<div class="find-product-results" style="margin-top: 20px;"></div>').appendTo(page.main);
@@ -27,6 +34,10 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 		$results.empty();
 
 		if (!product) return;
+
+		search_field.set_input('');
+		search_field.awesomplete.close();
+		search_field.$input.blur();
 
 		frappe.call({
 			method: 'bullwheel.warehouse.stock_handler.get_locations_for_product',
@@ -43,6 +54,7 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 					<table class="table table-bordered table-hover">
 						<thead>
 							<tr>
+								<th>Product ID</th>
 								<th>Warehouse Location</th>
 								<th style="text-align: right;">Quantity</th>
 							</tr>
@@ -53,6 +65,7 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 
 				locations.forEach(function(row) {
 					var $row = $('<tr>')
+						.append($('<td>').text(product))
 						.append($('<td>').text(row.parent))
 						.append($('<td style="text-align: right;">').text(row.quantity));
 					$table.find('tbody').append($row);
@@ -64,6 +77,4 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 	}
 
 	page.set_primary_action('Find', run_search, 'search');
-
-	// search_field.$input.on('change', run_search);
 };

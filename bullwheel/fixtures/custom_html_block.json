@@ -14,11 +14,11 @@
   "docstatus": 0,
   "doctype": "Custom HTML Block",
   "html": "<div class=\"inventory-card\">\n\t<div class=\"inventory-card-title\">Inventory</div>\n\t<div class=\"inventory-card-actions\">\n\t\t<button type=\"button\" class=\"btn btn-link btn-find-product\">\n\t\t\tFind Product\n\t\t</button>\n\t\t<button type=\"button\" class=\"btn btn-link btn-check-in-item\">\n\t\t\tCheck-In Item\n\t\t</button>\n\t\t<button type=\"button\" class=\"btn btn-link btn-check-out-item\">\n\t\t\tCheck-Out Item\n\t\t</button>\n\t</div>\n</div>\n",
-  "modified": "2026-07-20 15:00:00.000000",
+  "modified": "2026-07-20 15:38:03.147884",
   "name": "Inventory",
   "private": 0,
   "roles": [],
-  "script": "let find_product_button = root_element.querySelector(\".btn-find-product\");\n\nfind_product_button.addEventListener(\"click\", () => {\n\tfrappe.set_route(\"find-product\");\n});\n",
+  "script": "let find_product_button = root_element.querySelector(\".btn-find-product\");\nlet check_in_button = root_element.querySelector(\".btn-check-in-item\");\nlet check_out_button = root_element.querySelector(\".btn-check-out-item\");\n\nfind_product_button.addEventListener(\"click\", () => {\n\tfrappe.set_route(\"find-product\");\n});\n\ncheck_in_button.addEventListener(\"click\", () => {\n    bullwheel.warehouse.check_in_item();\n});\n\ncheck_out_button.addEventListener(\"click\", () => {\n    bullwheel.warehouse.check_out_item();\n});",
   "style": ".inventory-card {\n\tborder: 1px solid var(--border-color);\n\tborder-radius: var(--border-radius-md);\n\tpadding: 12px;\n}\n\n.inventory-card-title {\n\tfont-weight: 600;\n\tmargin-bottom: 8px;\n}\n\n.inventory-card-actions {\n\tdisplay: flex;\n\tflex-direction: column;\n\talign-items: flex-start;\n\tgap: 8px;\n}\n"
  }
 ]
