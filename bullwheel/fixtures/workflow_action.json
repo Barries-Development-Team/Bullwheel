@@ -1,5 +1,23 @@
 [
  {
+  "completed_by": null,
+  "completed_by_role": null,
+  "docstatus": 0,
+  "doctype": "Workflow Action",
+  "modified": "2026-07-20 10:44:33.353715",
+  "name": "93dkpmtuos",
+  "permitted_roles": [
+   {
+    "role": "Warehouse Manager"
+   }
+  ],
+  "reference_doctype": "Order Receipt",
+  "reference_name": "Jackson Base Camp Test",
+  "status": "Open",
+  "user": null,
+  "workflow_state": "Arrived (Not Received)"
+ },
+ {
   "completed_by": "Administrator",
   "completed_by_role": "Warehouse Staff",
   "docstatus": 0,

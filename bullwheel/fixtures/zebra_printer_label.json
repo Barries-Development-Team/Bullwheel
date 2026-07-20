@@ -3,13 +3,13 @@
   "docstatus": 0,
   "doctype": "Zebra Printer Label",
   "height": 1.0,
+  "is_default": 1,
   "label_name": "Ascend Tag - Default",
-  "modified": "2026-07-17 09:00:00.000000",
+  "modified": "2026-07-20 11:28:52.221342",
   "name": "Ascend Tag - Default",
   "recommended_print_media": "Direct Thermal",
   "target_doctypes": [
    {
-    "doctype": "Zebra Printer Label Target",
     "target_doctype": "Ascend Product"
    }
   ],
@@ -20,13 +20,13 @@
   "docstatus": 0,
   "doctype": "Zebra Printer Label",
   "height": 1.0,
+  "is_default": 1,
   "label_name": "Warehouse Location Label - Default",
-  "modified": "2026-07-17 09:00:00.000000",
+  "modified": "2026-07-20 11:28:46.368908",
   "name": "Warehouse Location Label - Default",
   "recommended_print_media": "Direct Thermal",
   "target_doctypes": [
    {
-    "doctype": "Zebra Printer Label Target",
     "target_doctype": "Warehouse Location"
    }
   ],
@@ -37,13 +37,13 @@
   "docstatus": 0,
   "doctype": "Zebra Printer Label",
   "height": 4.0,
+  "is_default": 1,
   "label_name": "Swap Tag - Default",
-  "modified": "2026-07-17 09:00:00.000000",
+  "modified": "2026-07-20 11:28:40.427468",
   "name": "Swap Tag - Default",
   "recommended_print_media": "Thermal Transfer",
   "target_doctypes": [
    {
-    "doctype": "Zebra Printer Label Target",
     "target_doctype": "Ascend Product"
    }
   ],
