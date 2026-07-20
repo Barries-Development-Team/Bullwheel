@@ -9,6 +9,10 @@ frappe.provide('bullwheel.printing');
 
 const DEFAULT_BUTTON_GROUP = 'Print Labels';
 const DEFAULT_PRINT_METHOD = 'bullwheel.label_printing.print_labels';
+// Bucket name for frappe.model.user_settings — not a real DocType, just a per-user
+// settings namespace, keyed by print media type so one remembered printer can serve
+// every slot that shares that media (see show_print_dialog).
+const PRINTER_SETTINGS_DOCTYPE = 'Label Printer';
 
 // ── Items contract ──────────────────────────────────────────────────────────────
 //
@@ -71,10 +75,10 @@ function normalize_items(items) {
 		.filter(Boolean);
 }
 
-function show_print_dialog({ title, items, on_submit }) {
-	// Ask which configured Label Printer to send to (there is no default-printer
-	// concept yet) and let the user set a per-item quantity. Deleting a row or
-	// setting its quantity to 0 both mean "skip this item".
+async function show_print_dialog({ title, items, slot, on_submit }) {
+	// Ask which configured Label Printer to send to and let the user set a
+	// per-item quantity. Deleting a row or setting its quantity to 0 both mean
+	// "skip this item".
 	const rows = items.map((item, index) => ({
 		idx: index + 1,
 		item_label: item.label,
@@ -85,6 +89,29 @@ function show_print_dialog({ title, items, on_submit }) {
 		docname: item.name,
 	}));
 
+	// The printer picker is filtered to the label's recommended media (when set)
+	// plus enabled printers only, and pre-filled with the last printer the user
+	// printed with for that media type — remembered per user, per media type,
+	// since one physical printer often serves several slots that share a media
+	// type (e.g. Ascend Tag and Warehouse Location are both Direct Thermal).
+	const [recommended_media, saved_printers] = await Promise.all([
+		frappe.call({ method: 'bullwheel.label_printing.get_recommended_print_media', args: { slot } })
+			.then((response) => response.message),
+		frappe.model.user_settings.get(PRINTER_SETTINGS_DOCTYPE),
+	]);
+
+	let selected_printer_info = null;
+	let default_printer;
+	const last_printer = recommended_media && saved_printers[recommended_media];
+	if (last_printer) {
+		const printer_info = await frappe.db.get_value('Label Printer', last_printer, ['disabled', 'type'])
+			.then((response) => response.message);
+		if (printer_info && !printer_info.disabled && printer_info.type === recommended_media) {
+			default_printer = last_printer;
+			selected_printer_info = printer_info;
+		}
+	}
+
 	const dialog = new frappe.ui.Dialog({
 		title: __(title),
 		fields: [
@@ -94,6 +121,39 @@ function show_print_dialog({ title, items, on_submit }) {
 				fieldtype: 'Link',
 				options: 'Label Printer',
 				reqd: 1,
+				default: default_printer,
+				get_query: () => ({
+					filters: {
+						disabled: 0,
+						...(recommended_media ? { type: recommended_media } : {}),
+					},
+				}),
+				async onchange() {
+					const printer_name = this.get_value();
+					if (!printer_name) {
+						selected_printer_info = null;
+						return;
+					}
+					selected_printer_info = await frappe.db
+						.get_value('Label Printer', printer_name, ['disabled', 'type'])
+						.then((response) => response.message);
+
+					if (selected_printer_info.disabled) {
+						frappe.show_alert({
+							message: __('{0} is disabled and cannot be used for printing.', [printer_name]),
+							indicator: 'orange',
+						});
+					} else if (recommended_media && selected_printer_info.type !== recommended_media) {
+						frappe.show_alert({
+							message: __('{0} is a {1} printer, but this label recommends {2}.', [
+								printer_name,
+								selected_printer_info.type,
+								recommended_media,
+							]),
+							indicator: 'orange',
+						});
+					}
+				},
 			},
 			{
 				label: __('Items'),
@@ -142,6 +202,15 @@ function show_print_dialog({ title, items, on_submit }) {
 			}
 
 			dialog.hide();
+			// Fire-and-forget: remembering the choice for next time shouldn't delay
+			// sending the print job.
+			if (selected_printer_info && selected_printer_info.type) {
+				frappe.model.user_settings.save(
+					PRINTER_SETTINGS_DOCTYPE,
+					selected_printer_info.type,
+					values.printer
+				);
+			}
 			on_submit(values.printer, printable_items);
 		},
 	});
@@ -215,6 +284,7 @@ bullwheel.printing.add_print_button = function ({
 			show_print_dialog({
 				title: label,
 				items: normalized_items,
+				slot: slot,
 				on_submit: (printer_name, printable_items) => {
 					send_print_request({
 						method: method,
@@ -275,6 +345,7 @@ bullwheel.printing.add_list_print_button = function ({
 			show_print_dialog({
 				title: label,
 				items: normalized_items,
+				slot: slot,
 				on_submit: (printer_name, printable_items) => {
 					send_print_request({
 						method: method,

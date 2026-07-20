@@ -56,6 +56,20 @@ def test_connection(**kwargs):
 		)
 
 
+@frappe.whitelist()
+def get_recommended_print_media(slot: str):
+	"""Return the Recommended Print Media configured on the Zebra Printer Label for
+	`slot`, or None when the label has none set or the slot itself has no label
+	configured yet. Lets the print dialog filter the printer picker to physically
+	compatible hardware without requiring the calling user to have read access to
+	Bullwheel Settings or Zebra Printer Label."""
+	try:
+		label = get_label(slot)
+	except PrintLabelNotConfigured:
+		return None
+	return label.recommended_print_media or None
+
+
 # Multi-Label Print
 @frappe.whitelist()
 def print_labels(printer_name: str, slot: str, items, doctype: str = None):
