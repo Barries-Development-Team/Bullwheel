@@ -53,10 +53,12 @@
    "reqd": 1
   },
   {
+   "description": "Auto-generated when a Description Template is chosen below; edit directly only when Description Template is left blank.",
    "fieldname": "description",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Description",
+   "read_only_depends_on": "eval:doc.description_template",
    "reqd": 1,
    "unique": 1
   },
@@ -152,11 +154,10 @@
    "fieldtype": "Section Break"
   },
   {
-   "default": "None",
    "fieldname": "description_template",
-   "fieldtype": "Select",
+   "fieldtype": "Link",
    "label": "Description Template",
-   "options": "None"
+   "options": "Description Template"
   },
   {
    "fieldname": "column_break_xvvt",

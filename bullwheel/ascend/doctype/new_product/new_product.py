@@ -73,7 +73,12 @@ class NewProduct(Document):
 			self.store_sku = _generate_store_sku(self.description)
 
 	def validate(self):
-		pass
+		"""Re-render the Description from the chosen Description Template (if any) so the
+		saved value always reflects the template's current definition and this document's
+		current field values, rather than trusting whatever the client last previewed."""
+		if self.description_template:
+			template = frappe.get_cached_doc("Description Template", self.description_template)
+			self.description = template.render(self)
 
 	def after_insert(self):
 		"""Create the Ascend Product this New Product represents, then — when a vendor was
@@ -106,6 +111,19 @@ class NewProduct(Document):
 			case_upc=self.case_upc if self.case else None,
 			case_msrp=self.case_msrp if self.case else None,
 		)
+
+
+@frappe.whitelist()
+def generate_description(template_name, product):
+	"""Whitelisted endpoint the New Product form calls on every relevant field change to
+	preview the rendered Description before save. `product` carries the in-progress form
+	values (not yet saved), so the template renders against exactly what the user currently
+	sees rather than the last-saved document."""
+	if isinstance(product, str):
+		product = frappe.parse_json(product)
+
+	template = frappe.get_cached_doc("Description Template", template_name)
+	return template.render(frappe._dict(product))
 
 
 def to_import_row(product):
