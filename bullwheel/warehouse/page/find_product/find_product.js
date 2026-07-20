@@ -29,7 +29,7 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 		if (!product) return;
 
 		frappe.call({
-			method: 'bullwheel.warehouse.page.find_product.find_product.get_locations_for_product',
+			method: 'bullwheel.warehouse.stock_handler.get_locations_for_product',
 			args: { product: product },
 			callback: function(response) {
 				var locations = response.message || [];
