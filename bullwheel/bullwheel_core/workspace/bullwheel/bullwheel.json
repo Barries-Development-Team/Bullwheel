@@ -1,7 +1,7 @@
 {
  "app": "bullwheel",
  "charts": [],
- "content": "[{\"id\":\"WSejTEWdtA\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Bullwheel Home</span>\",\"col\":12}},{\"id\":\"ixVcnouGER\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Bullwheel Settings\",\"col\":3}},{\"id\":\"PERX2BPZto\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"SQL Server Configurations\",\"col\":3}},{\"id\":\"DaF793D83I\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"UCdj_lem8U\",\"type\":\"paragraph\",\"data\":{\"text\":\"Print Settings\",\"col\":12}},{\"id\":\"3jcryreTbG\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zebra Printer Label Designs\",\"col\":3}},{\"id\":\"GAN-Z6QNrd\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Label Printers\",\"col\":3}}]",
+ "content": "[{\"id\":\"WSejTEWdtA\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Bullwheel Home</span>\",\"col\":12}},{\"id\":\"ixVcnouGER\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Bullwheel Settings\",\"col\":3}},{\"id\":\"PERX2BPZto\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"SQL Server Configurations\",\"col\":3}},{\"id\":\"ZZI9TaiPqV\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Description Templates\",\"col\":3}},{\"id\":\"DaF793D83I\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"UCdj_lem8U\",\"type\":\"paragraph\",\"data\":{\"text\":\"Print Settings\",\"col\":12}},{\"id\":\"3jcryreTbG\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zebra Printer Label Designs\",\"col\":3}},{\"id\":\"GAN-Z6QNrd\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Label Printers\",\"col\":3}}]",
  "creation": "2026-07-07 12:10:44.742661",
  "custom_blocks": [],
  "docstatus": 0,
@@ -14,7 +14,7 @@
  "label": "Bullwheel",
  "link_type": "DocType",
  "links": [],
- "modified": "2026-07-07 12:32:48.220243",
+ "modified": "2026-07-20 17:50:11.416371",
  "modified_by": "Administrator",
  "module": "Bullwheel Core",
  "name": "Bullwheel",
@@ -25,6 +25,14 @@
  "roles": [],
  "sequence_id": 0.0,
  "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Description Templates",
+   "link_to": "Description Template",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
   {
    "color": "Grey",
    "doc_view": "List",

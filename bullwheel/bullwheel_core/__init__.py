@@ -24,3 +24,12 @@ def get_label(slot):
 	if not label_name:
 		raise PrintLabelNotConfigured
 	return frappe.get_doc("Zebra Printer Label", label_name)
+
+def ski_category_prefix(bootinfo):
+	"""Expose the configured Ski Category Prefix to the desk client (wired via the
+	extend_bootinfo hook). New Product's ski-detail fields gate their visibility, and Binding
+	Brand and Model its required-ness, off frappe.boot.ski_category_prefix via
+	depends_on/mandatory_depends_on expressions — which also run in the Quick Entry receiving
+	modal, where form scripts do not, so this is how the same Bullwheel Settings prefix the
+	server uses reaches that modal without being hardcoded."""
+	bootinfo.ski_category_prefix = frappe.db.get_single_value('Bullwheel Settings', 'ski_category_prefix')

@@ -33,7 +33,8 @@ fixtures = [
     "Custom HTML Block",
     "Workflow",
     "Workflow State",
-    "Workflow Action"
+    "Workflow Action",
+    "Description Template"
 ]
 
 # Includes in <head>
@@ -138,6 +139,12 @@ before_migrate = ["bullwheel.ascend.validate_virtual_doctypes.validate_all_virtu
 # To hook into the build process
 
 # after_build = "bullwheel.build.after_build"
+
+# Boot
+# ------------------
+# Expose settings the desk client needs before any form loads
+
+extend_bootinfo = "bullwheel.bullwheel_core.ski_category_prefix"
 
 # Desk Notifications
 # ------------------

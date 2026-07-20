@@ -22,6 +22,16 @@
   "column_break_xrag",
   "season",
   "year",
+  "ski_details_section",
+  "radius",
+  "tip_waist_tail",
+  "column_break_uhun",
+  "condition",
+  "top_condition",
+  "base_condition",
+  "column_break_fpyh",
+  "binding_brand_and_model",
+  "max_din",
   "pricing_section",
   "price",
   "column_break_njci",
@@ -46,6 +56,7 @@
  ],
  "fields": [
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "vpn",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -53,14 +64,17 @@
    "reqd": 1
   },
   {
+   "description": "Auto-generated when a Description Template is chosen below; edit directly only when Description Template is left blank.",
    "fieldname": "description",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Description",
-   "reqd": 1,
+   "mandatory_depends_on": "eval:!doc.description_template",
+   "read_only_depends_on": "eval:doc.description_template",
    "unique": 1
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "category",
    "fieldtype": "Link",
    "label": "Category",
@@ -83,6 +97,7 @@
    "label": "UPC (or custom barcode #)"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "style_name",
    "fieldtype": "Data",
    "label": "Style (Model) Name"
@@ -93,16 +108,19 @@
    "label": "Style Number"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "color",
    "fieldtype": "Data",
    "label": "Color"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "size",
    "fieldtype": "Data",
    "label": "Size"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "year",
    "fieldtype": "Data",
    "label": "Year"
@@ -143,6 +161,7 @@
    "label": "Product Details"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "brand",
    "fieldtype": "Data",
    "label": "Brand"
@@ -152,11 +171,11 @@
    "fieldtype": "Section Break"
   },
   {
-   "default": "None",
+   "allow_in_quick_entry": 1,
    "fieldname": "description_template",
-   "fieldtype": "Select",
+   "fieldtype": "Link",
    "label": "Description Template",
-   "options": "None"
+   "options": "Description Template"
   },
   {
    "fieldname": "column_break_xvvt",
@@ -171,6 +190,7 @@
    "fieldtype": "Column Break"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "price",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -178,6 +198,7 @@
    "reqd": 1
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "estimated_cost",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -204,7 +225,7 @@
    "unique": 1
   },
   {
-   "description": "Set by Order Receipt's scan flow before Quick Entry opens, so the created Vendor Product can be linked to this vendor. Never rendered — left unset outside that flow.",
+   "description": "Set by Order Receipt's scan flow before Quick Entry opens, so the created Vendor Product can be linked to this vendor. Never rendered \u2014 left unset outside that flow.",
    "fieldname": "vendor",
    "fieldtype": "Link",
    "hidden": 1,
@@ -241,12 +262,82 @@
   {
    "fieldname": "column_break_ipev",
    "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)",
+   "fieldname": "ski_details_section",
+   "fieldtype": "Section Break",
+   "label": "Ski Details"
+  },
+  {
+   "allow_in_quick_entry": 1,
+   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)",
+   "fieldname": "radius",
+   "fieldtype": "Data",
+   "label": "Radius"
+  },
+  {
+   "allow_in_quick_entry": 1,
+   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)",
+   "fieldname": "tip_waist_tail",
+   "fieldtype": "Data",
+   "label": "Tip-Waist-Tail (mm)"
+  },
+  {
+   "fieldname": "column_break_uhun",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_in_quick_entry": 1,
+   "default": "New",
+   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)",
+   "fieldname": "condition",
+   "fieldtype": "Select",
+   "label": "Condition",
+   "options": "New\nUsed"
+  },
+  {
+   "allow_in_quick_entry": 1,
+   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix) && doc.condition == \"Used\"",
+   "fieldname": "top_condition",
+   "fieldtype": "Float",
+   "label": "Top Condition",
+   "non_negative": 1,
+   "precision": "1"
+  },
+  {
+   "allow_in_quick_entry": 1,
+   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix) && doc.condition == \"Used\"",
+   "fieldname": "base_condition",
+   "fieldtype": "Float",
+   "label": "Base Condition",
+   "non_negative": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "column_break_fpyh",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_in_quick_entry": 1,
+   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)",
+   "fieldname": "binding_brand_and_model",
+   "fieldtype": "Data",
+   "label": "Binding Brand and Model",
+   "mandatory_depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)"
+  },
+  {
+   "allow_in_quick_entry": 1,
+   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)",
+   "fieldname": "max_din",
+   "fieldtype": "Data",
+   "label": "Max DIN"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-17 16:46:16.323648",
+ "modified": "2026-07-20 17:24:38.208240",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",

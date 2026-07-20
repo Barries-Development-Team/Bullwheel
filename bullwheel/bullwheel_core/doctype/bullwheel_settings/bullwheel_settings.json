@@ -8,6 +8,8 @@
   "ascend_configuration_tab",
   "ascend_configuration_section",
   "default_database",
+  "receiving_section",
+  "ski_category_prefix",
   "tab_2_tab",
   "labels_section",
   "ascend_tag",
@@ -26,6 +28,18 @@
    "fieldtype": "Link",
    "label": "Default Ascend Database",
    "options": "SQL Server"
+  },
+  {
+   "fieldname": "receiving_section",
+   "fieldtype": "Section Break",
+   "label": "Receiving"
+  },
+  {
+   "default": "Ski Hardgoods - Skis",
+   "description": "Received products whose category contains this text get a Ski with Bindings record, and require Binding Brand and Model.",
+   "fieldname": "ski_category_prefix",
+   "fieldtype": "Data",
+   "label": "Ski Category Prefix"
   },
   {
    "fieldname": "ascend_configuration_tab",

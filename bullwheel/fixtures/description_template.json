@@ -1,0 +1,18 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Description Template",
+  "modified": "2026-07-20 16:13:10.590824",
+  "name": "Retail Ski",
+  "template": "{{ doc.brand }} \n{%- if doc.year %} {{ doc.year }}{% endif %}\n{{ doc.style_name }}\n{%- if doc.size %} {{ doc.size }}cm{% endif %}\n Skis",
+  "template_name": "Retail Ski"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Description Template",
+  "modified": "2026-07-20 17:19:22.264629",
+  "name": "Used Ski",
+  "template": "Used \n{{ doc.brand }} \n{%- if doc.year %} {{ doc.year }}{% endif %}\n{{ doc.style_name }}\n{%- if doc.size %} {{ doc.size }}cm{% endif %} Skis\n{%- if doc.binding_brand_and_model %} w/ {{ doc.binding_brand_and_model }} Bindings{% endif %}",
+  "template_name": "Used Ski"
+ }
+]

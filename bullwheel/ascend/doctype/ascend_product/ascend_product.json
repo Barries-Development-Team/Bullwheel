@@ -114,8 +114,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Category",
-   "options": "Product Category",
-   "read_only": 1
+   "options": "Product Category"
   },
   {
    "fieldname": "color",
@@ -254,7 +253,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-17 16:03:00.442855",
+ "modified": "2026-07-20 17:44:17.286820",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
