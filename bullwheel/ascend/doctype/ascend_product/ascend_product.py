@@ -16,15 +16,14 @@ See bullwheel/ascend/VIRTUAL_DOCTYPE_DEVELOPMENT.md for the full workflow.
 import json
 import frappe
 
-from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType, to_document_dict
-from bullwheel.database.SQLServer import MSSQLDatabase
-from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
+from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 
 class AscendProduct(AbstractVirtualDocType):
-	"""Read-only virtual DocType mapping the Ascend RMS `Products` table."""
+	"""Virtual DocType mapping the Ascend RMS `Products` table."""
 
 	TABLE_NAME = "Products"
+	ALLOW_WRITE = True
 	ALT_NAME_RESOLUTION_FIELDS = ['upc']
 
 	SCHEMA_CONFIG = {
@@ -56,9 +55,9 @@ class AscendProduct(AbstractVirtualDocType):
 		'non_inventory': 'Products.NonInventory',
 		'appt_length': 'Products.ApptLength',
 		'creator_id': 'Products.CreatorID',
-		'modifier_id': 'Products.ModifierID',
+		'modified_by': 'modifier.Initials',
 		'date_created': 'Products.DateCreated',
-		'date_modified': 'Products.DateModified',
+		'modified': 'Products.DateModified',
 		'hide': 'Products.Hide',
 		'loc_from_id': 'Products.LocFromID',
 		'dol_com': 'Products.DolCom',
@@ -85,6 +84,12 @@ class AscendProduct(AbstractVirtualDocType):
 			"table": "Categories",                         # Table to join
 			"alias": "cat",                                # Optional alias
 			"on":    "Products.TopicID = cat.ID",          # Full ON condition
+		},
+		{
+			"join":  "LEFT JOIN",
+			"table": "Users",
+			"alias": "modifier", # Can't use "user" since it's a reserved keyword.
+			"on":    "Products.ModifierID = modifier.ID",
 		}
 	]
 

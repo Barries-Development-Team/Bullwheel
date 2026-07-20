@@ -24,3 +24,11 @@ class PrinterStatusError(PrinterException):
 	"""Raised when the printer's host-status response cannot be read or parsed."""
 
 	pass
+
+
+class LabelResolutionError(Exception):
+	"""Raised when an item cannot be resolved to a natively printable document.
+	Deliberately not a PrinterException: it signals a data problem, not a
+	transport problem."""
+
+	pass

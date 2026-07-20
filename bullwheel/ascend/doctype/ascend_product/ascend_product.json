@@ -1,39 +1,47 @@
 {
  "actions": [],
- "autoname": "field:description",
+ "autoname": "field:store_sku",
  "creation": "2026-06-02 11:53:29.648589",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "description",
-  "product_details_section",
   "keyword",
-  "category",
-  "quantity",
-  "column_break_czad",
+  "column_break_hzou",
   "brand",
+  "category",
+  "product_details_section",
+  "column_break_czad",
   "style_name",
   "size",
-  "color",
   "column_break_bhbt",
+  "color",
   "gender",
+  "column_break_lysg",
   "season",
   "year",
   "pricing_section",
+  "quantity",
+  "column_break_ckpt",
   "price",
-  "estimated_cost",
-  "average_cost",
   "column_break_hjtk",
+  "estimated_cost",
+  "column_break_foem",
+  "average_cost",
+  "column_break_ajrz",
   "swap_price",
   "edit_swap_price",
+  "column_break_mqmu",
   "online_price",
   "edit_online_price",
   "ids_and_barcodes_section",
-  "store_sku",
   "upc",
-  "manufacturers_part_number",
-  "style_number",
+  "store_sku",
   "column_break_xrdr",
+  "manufacturers_part_number",
+  "column_break_bvyk",
+  "style_number",
+  "database_identifiers_section",
   "id"
  ],
  "fields": [
@@ -48,21 +56,18 @@
    "in_global_search": 1,
    "in_list_view": 1,
    "label": "Description",
-   "read_only": 1,
    "unique": 1
   },
   {
    "fieldname": "keyword",
    "fieldtype": "Data",
    "in_standard_filter": 1,
-   "label": "Keyword",
-   "read_only": 1
+   "label": "Keyword"
   },
   {
    "fieldname": "brand",
    "fieldtype": "Data",
-   "label": "Brand",
-   "read_only": 1
+   "label": "Brand"
   },
   {
    "fieldname": "column_break_czad",
@@ -71,14 +76,12 @@
   {
    "fieldname": "price",
    "fieldtype": "Currency",
-   "label": "MSRP",
-   "read_only": 1
+   "label": "MSRP"
   },
   {
    "fieldname": "estimated_cost",
    "fieldtype": "Currency",
-   "label": "Estimated Cost",
-   "read_only": 1
+   "label": "Estimated Cost"
   },
   {
    "fieldname": "ids_and_barcodes_section",
@@ -90,22 +93,21 @@
    "fieldtype": "Data",
    "in_global_search": 1,
    "label": "Store SKU",
-   "read_only": 1
+   "read_only": 1,
+   "unique": 1
   },
   {
    "fieldname": "upc",
    "fieldtype": "Data",
    "in_global_search": 1,
    "in_list_view": 1,
-   "label": "UPC",
-   "read_only": 1
+   "label": "UPC"
   },
   {
    "fieldname": "manufacturers_part_number",
    "fieldtype": "Data",
    "in_global_search": 1,
-   "label": "Manufacturer's Part Number",
-   "read_only": 1
+   "label": "Manufacturer's Part Number"
   },
   {
    "fieldname": "category",
@@ -118,38 +120,32 @@
   {
    "fieldname": "color",
    "fieldtype": "Data",
-   "label": "Color",
-   "read_only": 1
+   "label": "Color"
   },
   {
    "fieldname": "size",
    "fieldtype": "Data",
-   "label": "Size",
-   "read_only": 1
+   "label": "Size"
   },
   {
    "fieldname": "style_name",
    "fieldtype": "Data",
-   "label": "Style (Model) Name",
-   "read_only": 1
+   "label": "Style (Model) Name"
   },
   {
    "fieldname": "gender",
    "fieldtype": "Data",
-   "label": "Gender",
-   "read_only": 1
+   "label": "Gender"
   },
   {
    "fieldname": "season",
    "fieldtype": "Data",
-   "label": "Season",
-   "read_only": 1
+   "label": "Season"
   },
   {
    "fieldname": "year",
    "fieldtype": "Data",
-   "label": "Year",
-   "read_only": 1
+   "label": "Year"
   },
   {
    "fieldname": "average_cost",
@@ -167,14 +163,13 @@
   {
    "fieldname": "pricing_section",
    "fieldtype": "Section Break",
-   "label": "Pricing"
+   "label": "Quantity and Pricing"
   },
   {
    "fieldname": "style_number",
    "fieldtype": "Data",
    "in_global_search": 1,
-   "label": "Style Number",
-   "read_only": 1
+   "label": "Style Number"
   },
   {
    "fieldname": "id",
@@ -218,6 +213,40 @@
    "fieldname": "edit_online_price",
    "fieldtype": "Button",
    "label": "Edit Online Price"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "database_identifiers_section",
+   "fieldtype": "Section Break",
+   "label": "Database Identifiers"
+  },
+  {
+   "fieldname": "column_break_foem",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_mqmu",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ajrz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_bvyk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_hzou",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_lysg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ckpt",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
@@ -225,7 +254,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-10 16:34:48.798444",
+ "modified": "2026-07-17 16:03:00.442855",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
@@ -233,6 +262,7 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "create": 1,
    "delete": 1,
    "email": 1,
    "export": 1,

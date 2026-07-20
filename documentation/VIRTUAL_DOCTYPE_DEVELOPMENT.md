@@ -143,6 +143,7 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 class AscendThing(AbstractVirtualDocType):
     TABLE_NAME = "Things"             # Ascend SQL table name
+    ALLOW_WRITE = False               # False by default. If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
     JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b
     SCHEMA_CONFIG = { ... }           # From Step 2 — must include a "name" entry
     SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console when a lookup on an unmapped field is skipped.
@@ -257,6 +258,57 @@ class AscendProduct(AbstractVirtualDocType):
     ALT_NAME_RESOLUTION_FIELDS = ['upc']
     SCHEMA_CONFIG = { ... }  # must include an 'upc' entry
 ```
+
+## Step 3d — Enabling writes (`ALLOW_WRITE`, optional)
+
+Setting `ALLOW_WRITE = True` lets Frappe's normal save flow call `db_insert`
+and `db_update`, which push the document's fields to the Ascend row on create
+and update respectively. `delete` remains unimplemented.
+
+Both methods resolve which fields to write through the shared
+`_collect_writable_fields()` helper. It iterates the document's own fields
+(not `SCHEMA_CONFIG` directly, since not every mapped fieldname is guaranteed
+to exist on the Document) and writes whichever of them:
+
+- have a `SCHEMA_CONFIG` mapping,
+- resolve to a column **on `TABLE_NAME` itself** — a plain `INSERT`/`UPDATE`
+  can't target a `JOIN_CONFIG` table, so joined fields are silently skipped
+  (with a console warning, per `SHOW_FIELD_WARNINGS`), and
+- aren't marked `read_only`/`is_virtual` in the DocType's meta, and aren't a
+  no-value fieldtype (Section Break, Column Break, …) — the same convention
+  `order_receipt.py`'s `writable_fieldnames()` uses. Mark a field `read_only`
+  in its JSON definition whenever its SQL column is server-generated (a SQL
+  Server `IDENTITY` column, a `rowversion`/`timestamp` column, etc.) — writing
+  to one of these directly is rejected by SQL Server. `Ascend Product.id`
+  (backed by the `Products.ID` identity column) is the reference example.
+
+`db_update` excludes the primary key (`name`) from this set, since it's the
+`WHERE` target rather than a value being written. `db_insert` includes it,
+since a new record's identifier must be supplied as a normal column value —
+except when `NAME_EXPRESSION` is set, in which case `db_insert` raises: a
+computed SQL expression has no single column to insert a literal value into.
+
+**Single-record / no-duplicate safeguards.** `db_update` scopes its `UPDATE` by
+`name` the same way `load_from_db` does (including any `ALT_NAME_RESOLUTION_FIELDS`
+widening), then checks the SQL Server driver's affected-row-count after
+executing: zero rows raises `frappe.DoesNotExistError`, and more than one row
+raises and rolls back the write entirely rather than letting an ambiguous
+`WHERE` clause silently corrupt multiple Ascend records. `db_insert` has no
+`WHERE` clause to make ambiguous, but Frappe's own virtual-doctype insert flow
+performs **no name-uniqueness check** before calling `db_insert` (unlike a real
+doctype, where the database's own primary-key constraint catches a collision) —
+so `db_insert` runs its own pre-flight existence check and raises
+`frappe.DuplicateEntryError` rather than risk silently duplicating a record,
+and also checks the affected-row-count after executing.
+
+**Datetime/Date values.** Frappe stores `Datetime`/`Date` fields (including the
+standard `modified`/`creation` fields — e.g. mapping `'modified':
+'Products.DateModified'` to keep Ascend's own timestamp in sync) as plain
+strings. Both methods convert them to native `datetime.datetime`/`datetime.date`
+objects (via each field's meta fieldtype, falling back to a fixed Datetime type
+for `creation`/`modified`) before binding, since pymssql needs the native type
+to encode a SQL Server datetime parameter correctly — sending the raw string
+can raise a datetime conversion error.
 
 ## Step 4 — Create the DocType JSON
 

@@ -7,7 +7,7 @@ frappe.ui.form.on('Label Printer', {
             frappe.show_alert({ message: __('Testing connection...'), indicator: 'blue' });
 
             frappe.call({
-                method: 'bullwheel.label_printing.doctype.label_printer.label_printer.test_connection',
+                method: 'bullwheel.label_printing.test_connection',
                 args: { doc: frm.doc },
             });
         });

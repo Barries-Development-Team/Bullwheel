@@ -9,6 +9,7 @@
  "field_order": [
   "label_name",
   "recommended_print_media",
+  "target_doctypes",
   "column_break_tarv",
   "height",
   "width",
@@ -29,6 +30,13 @@
    "fieldtype": "Select",
    "label": "Recommended Print Media",
    "options": "Direct Thermal\nThermal Transfer"
+  },
+  {
+   "description": "The DocTypes this ZPL template is designed to render. When set, print requests whose items do not resolve to one of these DocTypes are rejected before anything prints; when empty, any document is accepted.",
+   "fieldname": "target_doctypes",
+   "fieldtype": "Table MultiSelect",
+   "label": "Target DocTypes",
+   "options": "Zebra Printer Label Target"
   },
   {
    "fieldname": "zpl",
@@ -57,7 +65,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-03 18:01:32.578181",
+ "modified": "2026-07-17 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Label Printing",
  "name": "Zebra Printer Label",

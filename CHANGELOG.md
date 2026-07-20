@@ -2,6 +2,35 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.0.0] - Not Released
+
+### Features
+
+- Bullwheel can now edit Ascend data.
+- New Order Receipt builder for easy, single-pass, receiving of large retail and demo gear orders!
+- Order Receipt no longer stages new products in a local table for later import. Unrecognized scans now either link an existing Ascend Product to the receipt's vendor directly, or open the New Product record (Quick Entry) to create the product on the spot — both write straight to Ascend during receiving.
+- Added support for export of Purchase Orders.
+- Added batch printing for labels. Additionally, labels can also now be printed for vendor products.
+- Improved Ascend Virtual DocType filter support.
+- Added database traffic encryption for improved security.
+- Added new job-based editing system for simultaneous document editing.
+- Reorganized numerous UI layouts.
+
+### Framework Updated
+
+- Updated to Frappe Framework 16.27.1 from 16.26.3 ([Release Notes](https://github.com/frappe/frappe/releases#release-v16.27.1))
+
+### Performance
+
+- Improved caching of Order Item details to significantly reduce redundant Ascend SQL Server queries.
+
+### Bug Fixes
+
+- Fixed issue where scanned barcodes could be saved to a Warehouse Location document scan field.
+- Data Import tool now correctly resolves UPCs when importing from a `xlsx` file.
+- Fixed Virtual DocType search fields not being displayed in Link field search.
+- Fixed UPC display for Order Receipt Items.
+
 ## [0.0.8] - July 10, 2026
 
 ### Features

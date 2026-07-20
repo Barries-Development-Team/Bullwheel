@@ -9,13 +9,14 @@ against a mocked MSSQLDatabase). SCHEMA_CONFIG uses the current simplified forma
 fieldname -> sql_column string.
 """
 
+from datetime import date, datetime
 from unittest.mock import MagicMock, patch
 
 import frappe
 from frappe.tests import UnitTestCase
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
-from bullwheel.ascend.validate_virtual_doctypes import validate_schema_config
+from bullwheel.ascend.validate_virtual_doctypes import validate_schema_config, autoname_mismatch_reason
 
 
 # ─── Test Fixtures ────────────────────────────────────────────────────────────
@@ -218,6 +219,49 @@ class UnitTestValidateSchemaConfig(UnitTestCase):
 		with self.assertRaises(ValueError) as context:
 			validate_schema_config(_UndeclaredColumnQualifier)
 		self.assertIn('cat', str(context.exception))
+
+
+# ─── autoname_mismatch_reason ──────────────────────────────────────────────────
+
+
+class UnitTestAutonameMismatchReason(UnitTestCase):
+
+	def test_non_field_autoname_is_always_safe(self):
+		"""Only a literal 'field:' autoname triggers Frappe's _sync_autoname_field — Prompt,
+		hash, naming_series, etc. never touch this path."""
+		self.assertIsNone(autoname_mismatch_reason(_SimpleVirtualDocType, 'Prompt'))
+		self.assertIsNone(autoname_mismatch_reason(_SimpleVirtualDocType, 'hash'))
+		self.assertIsNone(autoname_mismatch_reason(_SimpleVirtualDocType, None))
+		self.assertIsNone(autoname_mismatch_reason(_SimpleVirtualDocType, ''))
+
+	def test_field_autoname_matching_name_column_is_safe(self):
+		"""Mirrors AscendProduct's real shape: 'name' and 'store_sku' both map to the same
+		underlying column, so _sync_autoname_field's self-check is always a harmless no-op."""
+		class _MirroredNameField(AbstractVirtualDocType):
+			TABLE_NAME = "Products"
+			SCHEMA_CONFIG = {
+				'name':      'Products.[Store UPC]',
+				'store_sku': 'Products.[Store UPC]',
+			}
+		self.assertIsNone(autoname_mismatch_reason(_MirroredNameField, 'field:store_sku'))
+
+	def test_field_autoname_mismatched_column_is_unsafe(self):
+		"""Regression: the exact real-world incident — autoname='field:description' on
+		AscendProduct-shaped SCHEMA_CONFIG silently overwrote Description with the SKU."""
+		reason = autoname_mismatch_reason(_SimpleVirtualDocType, 'field:description')
+		self.assertIsNotNone(reason)
+		self.assertIn('description', reason)
+
+	def test_field_autoname_pointing_at_unmapped_field_is_unsafe(self):
+		reason = autoname_mismatch_reason(_SimpleVirtualDocType, 'field:nonexistent_field')
+		self.assertIsNotNone(reason)
+
+	def test_field_autoname_with_name_expression_is_always_unsafe(self):
+		"""A computed NAME_EXPRESSION has no literal 'name' column at all, so any 'field:'
+		autoname is unsafe regardless of what it points at."""
+		reason = autoname_mismatch_reason(_NameExpressionVirtualDocType, 'field:description')
+		self.assertIsNotNone(reason)
+		self.assertIn('NAME_EXPRESSION', reason)
 
 
 # ─── validate_schema_config — NAME_EXPRESSION ─────────────────────────────────
@@ -601,3 +645,426 @@ class UnitTestGetCount(UnitTestCase):
 		self.assertEqual(count, 7)
 		self.assertIn('Description = %s', captured['query'])
 		self.assertEqual(captured['values'], ['Red Ski'])
+
+
+# ─── db_update ────────────────────────────────────────────────────────────────
+
+
+class _WritableSimpleVirtualDocType(_SimpleVirtualDocType):
+	ALLOW_WRITE = True
+
+
+class _WritableAliasedJoinVirtualDocType(_AliasedJoinVirtualDocType):
+	ALLOW_WRITE = True
+
+
+class _WritableWithModifiedVirtualDocType(AbstractVirtualDocType):
+	"""Mirrors the real Ascend Product config that maps Frappe's 'modified' field to an
+	Ascend column, to guard the datetime-string-to-native-object conversion in db_update."""
+	TABLE_NAME = "Products"
+	SHOW_FIELD_WARNINGS = False
+	ALLOW_WRITE = True
+	SCHEMA_CONFIG = {
+		'name':          'ID',
+		'modified':      'DateModified',
+		'purchase_date': 'PurchaseDate',
+	}
+
+
+class _FakeMetaField:
+	def __init__(self, fieldtype=None, read_only=False, is_virtual=False):
+		self.fieldtype = fieldtype
+		self.read_only = read_only
+		self.is_virtual = is_virtual
+
+
+class _FakeMeta:
+	"""Minimal stand-in for Document.meta — db_insert/db_update's field selection and value
+	normalization only call get_field(fieldname), which real meta resolves from the DocType's
+	declared fields. A fieldname is only treated as having a declared meta field when it's
+	named in one of these three collections; anything else resolves to None, matching real
+	meta.get_field() for a standard/default field like 'creation' or 'modified'."""
+	def __init__(self, fieldtypes: dict = None, read_only_fields: set = None, virtual_fields: set = None):
+		self._fieldtypes = fieldtypes or {}
+		self._read_only_fields = read_only_fields or set()
+		self._virtual_fields = virtual_fields or set()
+
+	def get_field(self, fieldname):
+		known_fields = self._fieldtypes.keys() | self._read_only_fields | self._virtual_fields
+		if fieldname not in known_fields:
+			return None
+		return _FakeMetaField(
+			fieldtype=self._fieldtypes.get(fieldname),
+			read_only=fieldname in self._read_only_fields,
+			is_virtual=fieldname in self._virtual_fields,
+		)
+
+
+def _make_document(document_class, name, fieldtypes=None, read_only_fields=None, virtual_fields=None, **field_values):
+	"""Build a bare instance of a virtual doctype test fixture without going through
+	Document.__init__ (which requires a real registered DocType's meta). db_insert/db_update
+	only read self.name, self.doctype, self.meta, and self.as_dict() off the instance —
+	everything else they touch (SCHEMA_CONFIG, TABLE_NAME, ALLOW_WRITE, _build_where_clause,
+	...) is a class attribute or classmethod, so it resolves normally through the class."""
+	document = object.__new__(document_class)
+	document.doctype = document_class.__name__
+	document.name = name
+	document.meta = _FakeMeta(fieldtypes, read_only_fields, virtual_fields)
+	document.as_dict = lambda: {'name': name, **field_values}
+	return document
+
+
+class UnitTestDbUpdate(UnitTestCase):
+
+	def test_read_only_doctype_raises(self):
+		document = _make_document(_SimpleVirtualDocType, 'SKU-1', description='Red Ski')
+		with self.assertRaises(NotImplementedError):
+			document.db_update()
+
+	def test_missing_name_raises(self):
+		document = _make_document(_WritableSimpleVirtualDocType, None, description='Red Ski')
+		with self.assertRaises(frappe.ValidationError):
+			document.db_update()
+
+	def test_normal_update_matches_exactly_one_row(self):
+		captured = {}
+
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.cursor.rowcount = 1
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			captured['query'] = query
+			captured['values'] = values
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableSimpleVirtualDocType, 'SKU-1',
+			description='Red Ski', quantity=4, store_sku='UPC-1',
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			document.db_update()
+
+		self.assertIn('UPDATE Products SET', captured['query'])
+		self.assertIn('Description = %s', captured['query'])
+		self.assertIn('Quantity = %s', captured['query'])
+		self.assertIn('[Store UPC] = %s', captured['query'])
+		self.assertIn('ID = %s', captured['query'])
+		self.assertEqual(captured['values'], ['Red Ski', 4, 'UPC-1', 'SKU-1'])
+
+	def test_zero_matched_rows_raises_does_not_exist(self):
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.cursor.rowcount = 0
+		fake_database.sql.return_value = []
+
+		document = _make_document(_WritableSimpleVirtualDocType, 'SKU-1', description='Red Ski')
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			with self.assertRaises(frappe.DoesNotExistError):
+				document.db_update()
+
+	def test_multiple_matched_rows_raises(self):
+		"""The core safeguard: an UPDATE that touches more than one row must never be
+		treated as a success, even though the write already executed against the database."""
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.cursor.rowcount = 2
+		fake_database.sql.return_value = []
+
+		document = _make_document(_WritableSimpleVirtualDocType, 'SKU-1', description='Red Ski')
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			with self.assertRaises(frappe.ValidationError):
+				document.db_update()
+
+	def test_unmapped_field_excluded_from_set_clause(self):
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.cursor.rowcount = 1
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			captured['query'] = query
+			captured['values'] = values
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableSimpleVirtualDocType, 'SKU-1',
+			description='Red Ski', quantity=4, store_sku='UPC-1',
+			creation='2026-01-01',  # not present in SCHEMA_CONFIG
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			document.db_update()
+
+		self.assertNotIn('2026-01-01', captured['values'])
+
+	def test_joined_table_column_excluded_from_set_clause(self):
+		"""A plain UPDATE can only target TABLE_NAME — a field mapped to a JOIN_CONFIG
+		table/alias must never end up in the SET clause."""
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.cursor.rowcount = 1
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			captured['query'] = query
+			captured['values'] = values
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableAliasedJoinVirtualDocType, 'ID-1',
+			description='Red Ski', category='Skis',
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			document.db_update()
+
+		self.assertNotIn('cat.Topic', captured['query'])
+		self.assertNotIn('Skis', captured['values'])
+		self.assertIn('Products.Description = %s', captured['query'])
+
+	def test_modified_field_string_is_converted_to_datetime(self):
+		"""Regression: Frappe sets 'modified' to a plain string (e.g. via now()) before
+		save, and pymssql needs a native datetime.datetime object — not that string — to
+		bind a SQL Server datetime parameter correctly."""
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.cursor.rowcount = 1
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			captured['values'] = values
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableWithModifiedVirtualDocType, 'SKU-1',
+			modified='2026-07-17 12:36:35.321314',
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			document.db_update()
+
+		modified_value = captured['values'][0]
+		self.assertIsInstance(modified_value, datetime)
+		self.assertEqual(modified_value, datetime(2026, 7, 17, 12, 36, 35, 321314))
+
+	def test_meta_declared_date_field_string_is_converted(self):
+		"""Same conversion applies to any meta-declared Date field, not just the
+		standard-field fallback used for 'modified'/'creation'."""
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.cursor.rowcount = 1
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			captured['values'] = values
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableWithModifiedVirtualDocType, 'SKU-1',
+			fieldtypes={'purchase_date': 'Date'},
+			purchase_date='2026-07-17',
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			document.db_update()
+
+		self.assertEqual(captured['values'], [date(2026, 7, 17), 'SKU-1'])
+
+	def test_read_only_field_excluded_from_set_clause(self):
+		"""Regression: a SCHEMA_CONFIG-mapped field marked read_only in the DocType meta
+		(mirroring AscendProduct.id, backed by a SQL Server IDENTITY column) must never be
+		written — SQL Server rejects an explicit SET on an identity column."""
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.cursor.rowcount = 1
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			captured['query'] = query
+			captured['values'] = values
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableSimpleVirtualDocType, 'SKU-1',
+			read_only_fields={'quantity'},
+			description='Red Ski', quantity=4, store_sku='UPC-1',
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			document.db_update()
+
+		self.assertNotIn('Quantity = %s', captured['query'])
+		self.assertNotIn(4, captured['values'])
+
+
+# ─── db_insert ────────────────────────────────────────────────────────────────
+
+
+class UnitTestDbInsert(UnitTestCase):
+
+	def test_read_only_doctype_raises(self):
+		document = _make_document(_SimpleVirtualDocType, 'SKU-1', description='Red Ski')
+		with self.assertRaises(NotImplementedError):
+			document.db_insert()
+
+	def test_name_expression_raises(self):
+		document = _make_document(_NameExpressionVirtualDocType, 'STYLE-1-M', description='Red Ski')
+		document.ALLOW_WRITE = True
+		with self.assertRaises(frappe.ValidationError):
+			document.db_insert()
+
+	def test_missing_name_raises(self):
+		document = _make_document(_WritableSimpleVirtualDocType, None, description='Red Ski')
+		with self.assertRaises(frappe.ValidationError):
+			document.db_insert()
+
+	def test_existing_record_raises_duplicate_entry(self):
+		"""The core safeguard: Frappe performs no name-uniqueness check of its own for
+		virtual doctypes before calling db_insert, so db_insert must guard against
+		silently duplicating an existing record."""
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.sql.return_value = [{'count': 1}]
+
+		document = _make_document(_WritableSimpleVirtualDocType, 'SKU-1', description='Red Ski')
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			with self.assertRaises(frappe.DuplicateEntryError):
+				document.db_insert()
+
+		# The INSERT itself must never run once a duplicate is detected.
+		for call in fake_database.sql.call_args_list:
+			query = call.kwargs.get('query') or (call.args[0] if call.args else '')
+			self.assertNotIn('INSERT', query)
+
+	def test_normal_insert_includes_primary_key_column(self):
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			if query and query.strip().startswith('SELECT COUNT'):
+				return [{'count': 0}]
+			captured['query'] = query
+			captured['values'] = values
+			fake_database.cursor.rowcount = 1
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableSimpleVirtualDocType, 'SKU-1',
+			description='Red Ski', quantity=4, store_sku='UPC-1',
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			document.db_insert()
+
+		self.assertIn('INSERT INTO Products', captured['query'])
+		self.assertIn('ID', captured['query'])
+		self.assertIn('Description', captured['query'])
+		self.assertIn('Quantity', captured['query'])
+		self.assertIn('[Store UPC]', captured['query'])
+		self.assertIn('SKU-1', captured['values'])
+		self.assertIn('Red Ski', captured['values'])
+
+	def test_unaffected_insert_raises(self):
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			if query and query.strip().startswith('SELECT COUNT'):
+				return [{'count': 0}]
+			fake_database.cursor.rowcount = 0
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(_WritableSimpleVirtualDocType, 'SKU-1', description='Red Ski')
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			with self.assertRaises(frappe.ValidationError):
+				document.db_insert()
+
+	def test_unwritable_fields_excluded_from_insert(self):
+		"""read_only, is_virtual, and no-value fieldtypes must never appear in the INSERT
+		column list — none of them can hold a caller-supplied value."""
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			if query and query.strip().startswith('SELECT COUNT'):
+				return [{'count': 0}]
+			captured['query'] = query
+			captured['values'] = values
+			fake_database.cursor.rowcount = 1
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableSimpleVirtualDocType, 'SKU-1',
+			read_only_fields={'quantity'},
+			virtual_fields={'store_sku'},
+			description='Red Ski', quantity=4, store_sku='UPC-1',
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			document.db_insert()
+
+		self.assertNotIn('Quantity', captured['query'])
+		self.assertNotIn('[Store UPC]', captured['query'])
+		self.assertIn('Description', captured['query'])

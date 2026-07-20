@@ -7,10 +7,10 @@ import uuid
 
 import frappe
 from frappe.model.document import Document
+from frappe.utils import get_datetime, getdate
 
 from bullwheel.database.SQLServer import MSSQLDatabase
-from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import get_default_ascend_database
-from bullwheel.bullwheel_core import print_console_warning
+from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning
 
 # ─── Static Helper Functions ───────────────────────────────────────
 
@@ -51,6 +51,11 @@ IGNORED_STANDARD_FIELDS = frozenset({
 	'parent', 'parentfield', 'parenttype',
 })
 
+# Frappe's default 'creation'/'modified' fields have a fixed Datetime fieldtype but, unlike
+# custom fields, are not listed in meta.get_field() — so db_update's type normalization can't
+# discover their fieldtype from meta and needs this fallback instead.
+STANDARD_DATETIME_FIELDS = frozenset({'creation', 'modified'})
+
 # Whitelist of filter operators and their SQL renderings. The 'is' operator ("is set" /
 # "not set" list-view filters) is handled separately since it renders as IS [NOT] NULL.
 OPERATOR_MAP = {
@@ -71,6 +76,7 @@ class AbstractVirtualDocType(Document):
 
 	# ─── Subclass Contract — override these ───────────────────────────────────
 	TABLE_NAME: str = None       		# Ascend SQL table name, e.g. "Products"
+	ALLOW_WRITE: bool = False			# If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
 	JOIN_CONFIG: list = None     		# List of JOIN descriptors — see _build_join_clause for the dict shape
 	SCHEMA_CONFIG: dict = None    		# Fieldname -> SQL Column. Must include a "name" entry whose sql_column is the primary key.
 	NAME_EXPRESSION: str = None    		# Optional raw SQL expression for the primary key. When set, overrides
@@ -233,6 +239,17 @@ class AbstractVirtualDocType(Document):
 			return '(' + ' OR '.join(sub_conditions) + ')'
 
 		return cls._format_condition(sql_column, operator, value, values)
+
+	@classmethod
+	def _column_belongs_to_table(cls, sql_column: str) -> bool:
+		"""Returns True when sql_column has no table qualifier (the common case for a
+		SCHEMA_CONFIG with no JOIN_CONFIG) or when its qualifier (the segment before the
+		first dot, stripped of bracket/backtick quoting) matches TABLE_NAME. db_update can
+		only SET columns on TABLE_NAME itself — JOIN_CONFIG tables are read-only."""
+		if '.' not in sql_column:
+			return True
+		table_qualifier = sql_column.split('.')[0].strip('[]`')
+		return table_qualifier.lower() == cls.TABLE_NAME.lower()
 
 	@classmethod
 	def _build_where_clause(cls, values: list, filters=None, or_filters=None) -> str:
@@ -398,7 +415,14 @@ class AbstractVirtualDocType(Document):
 	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, or_filters: list = [], as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
 
+		# Frappe's link search (search_widget) appends a computed `_relevance` column to the
+		# fields list and then strips the trailing column positionally from each returned row.
+		# We drop that non-string field below (we can't map it), so track how many were removed
+		# to re-pad the as_list rows and keep the caller's column alignment — otherwise the
+		# strip would eat a real column (e.g. the description subtitle shown under each option).
+		original_field_count = len(fields)
 		cls._validate_and_clean_fields(fields)
+		removed_field_count = original_field_count - len(fields)
 
 		search_values = cls._search_values_for_name_condition(filters, or_filters) if cls.ALT_NAME_RESOLUTION_FIELDS else None
 		select_fields = fields
@@ -440,7 +464,13 @@ class AbstractVirtualDocType(Document):
 				records = [{field: record.get(field) for field in fields} for record in records]
 
 		if as_list:
-			return [[record.get(field) for field in fields] for record in records]
+			rows = [[record.get(field) for field in fields] for record in records]
+			# Re-pad the columns dropped above (e.g. search's `_relevance`) so callers that
+			# strip trailing columns positionally still line up with the real fields.
+			if removed_field_count:
+				for row in rows:
+					row.extend([None] * removed_field_count)
+			return rows
 
 		return [to_document_dict(record) for record in records]
 	
@@ -467,16 +497,148 @@ class AbstractVirtualDocType(Document):
 
 		return records[0].get('count')
 		  	
-	# ─── Read-Only Guards ─────────────────────────────────────────────────────
+	# ─── Write Methods ─────────────────────────────────────────────────────
 	
-	'''The following methods are required for Virtual Doctypes, however they are not implemented in order to maintain
-	the read-only nature of the Ascend Virtual Doctypes.'''
+
+	@classmethod
+	def _record_exists(cls, name) -> bool:
+		"""True when a record already matches `name` (or any ALT_NAME_RESOLUTION_FIELDS, via
+		the same widening _build_where_clause already applies to name filters). Guards db_insert
+		against silently duplicating a record, since Frappe's virtual-doctype insert flow performs
+		no uniqueness check of its own before calling db_insert."""
+		return cls.get_count(
+			doctype=cls.__name__, filters=[(None, 'name', '=', name)], fields=[],
+			distinct=False, save_user_settings=False, strict=None,
+		) > 0
+
+	def _normalize_write_value(self, field: str, value):
+		"""Converts a document field's value to a type pymssql can bind correctly. Frappe
+		stores Datetime/Date field values as plain strings (e.g. '2026-07-17 12:36:35.321314'
+		for 'modified'), but pymssql needs a native datetime.datetime/datetime.date object to
+		encode the parameter as a SQL Server datetime type — sent as a string, SQL Server must
+		implicitly convert it and can reject the microsecond-precision format Frappe produces."""
+		if not isinstance(value, str):
+			return value
+
+		meta_field = self.meta.get_field(field)
+		fieldtype = meta_field.fieldtype if meta_field else None
+		if fieldtype is None and field in STANDARD_DATETIME_FIELDS:
+			fieldtype = 'Datetime'
+
+		if fieldtype == 'Datetime':
+			return get_datetime(value)
+		if fieldtype == 'Date':
+			return getdate(value)
+		return value
+
+	def _collect_writable_fields(self, *, include_name: bool) -> list[tuple[str, object]]:
+		"""Resolve this document's writable (sql_column, value) pairs against SCHEMA_CONFIG,
+		shared by db_insert and db_update. A field is writable when it has a SCHEMA_CONFIG
+		mapping, that mapping's column belongs to TABLE_NAME (not a JOIN_CONFIG table), and —
+		mirroring order_receipt.py's writable_fieldnames() convention — it isn't read_only,
+		virtual, or a no-value fieldtype in the DocType's meta (read_only in particular is how
+		a server-generated column like a SQL Server IDENTITY field, e.g. AscendProduct.id, is
+		marked). 'name' is only included when include_name is True: db_update writes it into
+		the WHERE clause instead of SET, while db_insert must supply it as a normal column value."""
+		writable_fields = []
+		for field, value in self.as_dict().items():
+			if field == 'name':
+				if not include_name:
+					continue
+			else:
+				meta_field = self.meta.get_field(field)
+				if meta_field and (
+					meta_field.read_only or meta_field.is_virtual
+					or meta_field.fieldtype in frappe.model.no_value_fields
+				):
+					continue
+
+			sql_column = self.SCHEMA_CONFIG.get(field)
+			if sql_column is None:
+				continue
+			if not self._column_belongs_to_table(sql_column):
+				if self.SHOW_FIELD_WARNINGS:
+					print_console_warning(
+						f"Ascend Virtual Doc Warning: Skipping '{field}' for {self.doctype} — "
+						f"column '{sql_column}' does not belong to {self.TABLE_NAME}."
+					)
+				continue
+			writable_fields.append((sql_column, self._normalize_write_value(field, value)))
+		return writable_fields
 
 	def db_insert(self, *args, **kwargs):
-		raise NotImplementedError(f"{self.doctype} is read-only.")
+		"""Insert this document as a new row in TABLE_NAME. Frappe performs no name-uniqueness
+		check for virtual doctypes before calling db_insert (unlike a real doctype, where the
+		database's own primary-key constraint catches a collision), so this method runs its own
+		pre-flight existence check and raises frappe.DuplicateEntryError rather than silently
+		creating a duplicate record."""
+		if not self.ALLOW_WRITE:
+			raise NotImplementedError(f"{self.doctype} is read-only.")
+		if self.NAME_EXPRESSION:
+			frappe.throw(
+				f"Cannot insert {self.doctype}: NAME_EXPRESSION is a computed SQL expression "
+				f"and cannot be supplied directly in an INSERT."
+			)
+		if not self.name:
+			frappe.throw(f"Cannot insert {self.doctype}: no primary key value set.")
+		if self._record_exists(self.name):
+			frappe.throw(f"{self.doctype} '{self.name}' already exists.", frappe.DuplicateEntryError)
+
+		writable_fields = self._collect_writable_fields(include_name=True)
+		if not writable_fields:
+			frappe.throw(f"{self.doctype}: no writable SCHEMA_CONFIG columns resolve for db_insert.")
+
+		columns = ', '.join(column for column, _ in writable_fields)
+		placeholders = ', '.join(['%s'] * len(writable_fields))
+		values = [value for _, value in writable_fields]
+		query = f'INSERT INTO {self.TABLE_NAME} ({columns}) VALUES ({placeholders})'
+
+		with MSSQLDatabase(get_default_ascend_database()) as db:
+			db.sql(query=query, values=values, as_dict=False)
+			inserted_row_count = db.cursor.rowcount
+			if inserted_row_count != 1:
+				frappe.throw(
+					f"Insert into {self.TABLE_NAME} for {self.doctype} '{self.name}' affected "
+					f"{inserted_row_count} rows instead of exactly one."
+				)
 
 	def db_update(self, *args, **kwargs):
-		raise NotImplementedError(f"{self.doctype} is read-only.")
+		"""Push every SCHEMA_CONFIG-mapped field on this document back to its row in TABLE_NAME.
+		Fields are read off the document itself (SCHEMA_CONFIG entries are only a suggestion —
+		not every mapped fieldname is guaranteed to exist on the Document), and only columns
+		that belong to TABLE_NAME are writable; JOIN_CONFIG columns are read-only. The UPDATE's
+		affected-row-count is checked after execution and the whole write is rolled back unless
+		it touched exactly the one associated record."""
+		if not self.ALLOW_WRITE:
+			raise NotImplementedError(f"{self.doctype} is read-only.")
+
+		if not self.name:
+			frappe.throw(f"Cannot update {self.doctype}: no primary key value set.")
+
+		writable_fields = self._collect_writable_fields(include_name=False)
+		if not writable_fields:
+			frappe.throw(f"{self.doctype}: no writable SCHEMA_CONFIG columns resolve for db_update.")
+
+		values = [value for _, value in writable_fields]
+		where_clause = self._build_where_clause(values=values, filters=[(None, 'name', '=', self.name)])
+		query = (
+			f'UPDATE {self.TABLE_NAME} SET '
+			+ ', '.join(f'{column} = %s' for column, _ in writable_fields)
+			+ ' ' + where_clause
+		)
+
+		with MSSQLDatabase(get_default_ascend_database()) as db:
+			db.sql(query=query, values=values, as_dict=False)
+			updated_row_count = db.cursor.rowcount
+
+			if updated_row_count == 0:
+				raise frappe.DoesNotExistError(f"{self.doctype} '{self.name}' could not be updated: no matching record found.")
+			if updated_row_count > 1:
+				frappe.throw(
+					f"Refusing to update {self.doctype} '{self.name}': the WHERE clause matched "
+					f"{updated_row_count} records instead of exactly one. This likely indicates a "
+					f"SCHEMA_CONFIG/ALT_NAME_RESOLUTION_FIELDS misconfiguration."
+				)
 
 	def delete(self, *args, **kwargs):
-		raise NotImplementedError(f"{self.doctype} is read-only.")
+		frappe.throw(f"No! Bad user! Never delete {self.doctype} records!")

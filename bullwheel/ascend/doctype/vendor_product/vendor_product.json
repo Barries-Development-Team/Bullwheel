@@ -2,24 +2,29 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "field:id",
+ "autoname": "prompt",
  "creation": "2026-07-03 11:07:07.541319",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "description",
-  "vendor",
-  "part_number",
   "product",
   "column_break_inpz",
+  "vendor",
+  "part_number",
+  "vendor_product_details_section",
   "cost",
+  "column_break_pdzz",
   "case_quantity",
+  "column_break_xmzj",
   "case_upc",
+  "column_break_sbda",
   "case_msrp",
   "section_break_wmvl",
   "id",
-  "vendor_id",
-  "product_id"
+  "column_break_zjwp",
+  "product_id",
+  "vendor_id"
  ],
  "fields": [
   {
@@ -105,17 +110,38 @@
    "fieldtype": "Data",
    "label": "Product ID",
    "read_only": 1
+  },
+  {
+   "fieldname": "vendor_product_details_section",
+   "fieldtype": "Section Break",
+   "label": "Vendor Product Details"
+  },
+  {
+   "fieldname": "column_break_pdzz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_xmzj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_sbda",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_zjwp",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-03 11:43:42.560232",
+ "modified": "2026-07-17 16:06:44.294353",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Vendor Product",
- "naming_rule": "By fieldname",
+ "naming_rule": "Set by user",
  "owner": "Administrator",
  "permissions": [
   {
@@ -133,6 +159,7 @@
  ],
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
+ "search_fields": "description",
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],

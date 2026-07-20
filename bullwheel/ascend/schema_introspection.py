@@ -68,19 +68,18 @@ def format_schema_table(schema):
 	return "\n".join(lines)
 
 
-def suggest_schema_config(schema, primary_key_column=None):
+def suggest_schema_config(schema, table_name, primary_key_column=None):
 	"""Produce a starter SCHEMA_CONFIG dict from an introspected schema."""
 	config = {}
 
 	if primary_key_column:
 		sql_column = f"[{primary_key_column}]" if " " in primary_key_column else primary_key_column
-		pk_info = schema.get(primary_key_column, {})
 		config["name"] = sql_column
 
 	for column_name, info in schema.items():
 		fieldname = _columnname_to_fieldname(column_name)
 		sql_column = f"[{column_name}]" if " " in column_name else column_name
-		config[fieldname] = sql_column
+		config[fieldname] = f"{table_name}.{sql_column}"
 
 	return config
 
@@ -104,9 +103,22 @@ def introspect_join_schemas(server_document, join_config):
 	return merged
 
 
+"""Ascend columns that must map to specific Frappe standard fieldnames rather
+than their generic snake_case conversion, so edits to the Virtual DocType
+resolve correctly."""
+COLUMN_TO_FIELDNAME_OVERRIDES = {
+	"datemodified": "modified",
+	"modifierid": "modified_by",
+}
+
+
 def _columnname_to_fieldname(column_name):
 	"""Convert a SQL column name (e.g. "Store UPC", "MfgrPartNo") to a snake_case fieldname."""
 	import re
+
+	override = COLUMN_TO_FIELDNAME_OVERRIDES.get(column_name.lower())
+	if override:
+		return override
 
 	# Insert underscores at camelCase boundaries, then normalize separators.
 	spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", column_name)

@@ -1,35 +1,48 @@
 {
  "actions": [],
- "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "UUID",
- "creation": "2026-06-22 17:01:50.596264",
+ "autoname": "field:store_sku",
+ "creation": "2026-07-14 17:51:16.658373",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "product_details_section",
+  "description_section",
   "description",
-  "category",
+  "description_template",
+  "column_break_xvvt",
   "brand",
+  "category",
+  "product_details_section",
   "style_name",
-  "style_number",
-  "color",
   "size",
-  "year",
-  "gender",
-  "season",
   "column_break_swll",
-  "cost",
-  "msrp",
+  "color",
+  "gender",
+  "column_break_xrag",
+  "season",
+  "year",
+  "pricing_section",
+  "price",
+  "column_break_njci",
+  "estimated_cost",
+  "column_break_lktw",
   "case",
+  "case_details_section",
   "case_quantity",
+  "column_break_njxc",
   "case_upc",
-  "cast_msrp",
+  "column_break_ktbb",
+  "case_msrp",
   "section_break_reim",
   "vpn",
   "upc",
-  "mpn"
+  "column_break_qcum",
+  "style_number",
+  "manufacturers_part_number",
+  "column_break_ipev",
+  "store_sku",
+  "vendor"
  ],
  "fields": [
   {
@@ -50,28 +63,12 @@
   {
    "fieldname": "category",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "Category",
-   "options": "Product Category",
-   "reqd": 1
+   "options": "Product Category"
   },
   {
    "fieldname": "column_break_swll",
    "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "cost",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Cost",
-   "reqd": 1
-  },
-  {
-   "fieldname": "msrp",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "MSRP",
-   "reqd": 1
   },
   {
    "fieldname": "section_break_reim",
@@ -79,19 +76,16 @@
    "label": "Identifiers"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "upc",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "UPC (or custom barcode #)"
-  },
-  {
-   "fieldname": "mpn",
-   "fieldtype": "Data",
-   "label": "Manufacturer Part Number (MPN)"
   },
   {
    "fieldname": "style_name",
    "fieldtype": "Data",
-   "label": "Style Name"
+   "label": "Style (Model) Name"
   },
   {
    "fieldname": "style_number",
@@ -134,6 +128,7 @@
    "fieldname": "case_quantity",
    "fieldtype": "Int",
    "label": "Case Quantity",
+   "mandatory_depends_on": "eval:doc.case",
    "non_negative": 1
   },
   {
@@ -141,12 +136,6 @@
    "fieldname": "case_upc",
    "fieldtype": "Data",
    "label": "Case UPC"
-  },
-  {
-   "depends_on": "eval:doc.case",
-   "fieldname": "cast_msrp",
-   "fieldtype": "Currency",
-   "label": "Cast MSRP"
   },
   {
    "fieldname": "product_details_section",
@@ -157,24 +146,132 @@
    "fieldname": "brand",
    "fieldtype": "Data",
    "label": "Brand"
+  },
+  {
+   "fieldname": "description_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "None",
+   "fieldname": "description_template",
+   "fieldtype": "Select",
+   "label": "Description Template",
+   "options": "None"
+  },
+  {
+   "fieldname": "column_break_xvvt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_xrag",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_qcum",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "price",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "MSRP",
+   "reqd": 1
+  },
+  {
+   "fieldname": "estimated_cost",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Cost",
+   "reqd": 1
+  },
+  {
+   "fieldname": "manufacturers_part_number",
+   "fieldtype": "Data",
+   "label": "Manufacturer Part Number (MPN)"
+  },
+  {
+   "depends_on": "eval:doc.case",
+   "fieldname": "case_msrp",
+   "fieldtype": "Currency",
+   "label": "Case MSRP"
+  },
+  {
+   "description": "Generated on save.",
+   "fieldname": "store_sku",
+   "fieldtype": "Data",
+   "label": "Store SKU",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "description": "Set by Order Receipt's scan flow before Quick Entry opens, so the created Vendor Product can be linked to this vendor. Never rendered — left unset outside that flow.",
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Vendor",
+   "options": "Vendor"
+  },
+  {
+   "depends_on": "eval:doc.case",
+   "fieldname": "case_details_section",
+   "fieldtype": "Section Break",
+   "label": "Case Details"
+  },
+  {
+   "fieldname": "column_break_njxc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ktbb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pricing_section",
+   "fieldtype": "Section Break",
+   "label": "Pricing"
+  },
+  {
+   "fieldname": "column_break_njci",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_lktw",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ipev",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
- "istable": 1,
  "links": [],
- "modified": "2026-07-06 10:30:43.557259",
+ "modified": "2026-07-17 16:46:16.323648",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",
- "naming_rule": "UUID",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
- "permissions": [],
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
  "quick_entry": 1,
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
+ "show_title_field_in_link": 1,
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],
- "title_field": "description"
+ "title_field": "vpn"
 }

@@ -103,10 +103,8 @@
   },
   {
    "fieldname": "scan_here",
-   "fieldtype": "Data",
-   "label": "Add Item",
-   "options": "Barcode",
-   "placeholder": "Scan here"
+   "fieldtype": "HTML",
+   "label": ""
   }
  ],
  "grid_page_length": 50,

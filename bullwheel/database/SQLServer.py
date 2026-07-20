@@ -63,6 +63,7 @@ class MSSQLDatabase:
 				password=self.password,
 				database=self.current_database,
 				timeout=self.timeout,
+				encryption='require',
 			)
 			self.cursor = self.connection.cursor(as_dict=False)
 		except pymssql.OperationalError as error:
