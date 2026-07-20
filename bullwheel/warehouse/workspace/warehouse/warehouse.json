@@ -1,12 +1,16 @@
 {
  "app": "bullwheel",
  "charts": [],
- "content": "[{\"id\":\"TPSYDXDUlp\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Warehouse Home</span>\",\"col\":12}},{\"id\":\"HdI4zIbdj3\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Open Bay\",\"col\":12}},{\"id\":\"6dea3MhSOm\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Warehouse Location Tree\",\"col\":3}},{\"id\":\"Y5H0v9CeWJ\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Find Product\",\"col\":3}}]",
+ "content": "[{\"id\":\"TPSYDXDUlp\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Warehouse Home</span>\",\"col\":12}},{\"id\":\"6c_cEluwVp\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Warehouse Locations\",\"col\":5}},{\"id\":\"0_SPhiFkLC\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Inventory\",\"col\":6}}]",
  "creation": "2026-07-07 11:25:44.131551",
  "custom_blocks": [
   {
-   "custom_block_name": "Open Bay",
-   "label": "Open Bay"
+   "custom_block_name": "Inventory",
+   "label": "Inventory"
+  },
+  {
+   "custom_block_name": "Warehouse Locations",
+   "label": "Warehouse Locations"
   }
  ],
  "docstatus": 0,
@@ -19,7 +23,7 @@
  "label": "Warehouse",
  "link_type": "DocType",
  "links": [],
- "modified": "2026-07-10 17:59:24.563009",
+ "modified": "2026-07-20 13:19:36.608246",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Warehouse",
@@ -29,23 +33,7 @@
  "quick_lists": [],
  "roles": [],
  "sequence_id": 0.0,
- "shortcuts": [
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Find Product",
-   "link_to": "find-product",
-   "type": "Page"
-  },
-  {
-   "color": "Blue",
-   "doc_view": "Tree",
-   "label": "Warehouse Location Tree",
-   "link_to": "Warehouse Location",
-   "stats_filter": "[]",
-   "type": "DocType"
-  }
- ],
+ "shortcuts": [],
  "title": "Warehouse",
  "type": "Workspace"
 }
