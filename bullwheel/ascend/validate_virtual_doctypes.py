@@ -233,6 +233,7 @@ def _check_autoname_safety(doctype_name: str, controller) -> None:
 	the exact mechanism). A read-only DocType only gets a console warning — no data is at risk
 	yet, but the same misconfiguration will corrupt data the moment ALLOW_WRITE is flipped on,
 	so it's worth surfacing early rather than waiting to rediscover it the same way."""
+	frappe.reload_doctype(doctype_name)
 	autoname = frappe.get_meta(doctype_name).autoname
 	mismatch_reason = autoname_mismatch_reason(controller, autoname)
 	if not mismatch_reason:
