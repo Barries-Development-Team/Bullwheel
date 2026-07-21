@@ -2,6 +2,12 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.0.1] - July 20, 2026
+
+### Bug Fix
+
+- Fixed `_check_autoname_safety` not reloading DocType config from JSON during `bench migrate`, causing a migrate failure.
+
 ## [1.0.0] - July 20, 2026
 
 ### Features
