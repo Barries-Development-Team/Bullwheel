@@ -406,7 +406,11 @@ class AbstractVirtualDocType(Document):
 		for record in records:
 			record = dict(record)
 			record['name'] = next(
-				(record[field] for field in candidate_fields if str(record.get(field)) in search_values),
+				(
+					record[field]
+					for field in candidate_fields
+					if (value := str(record.get(field))) in search_values or value.lower() in search_values # Search values may sometimes be normalized to all lower-case.
+				),
 				record.get('name'),
 			)
 			echoed.append(record)
