@@ -2,8 +2,6 @@
 
 Warehouse and operations management software for [Barrie's Ski and Sports](https://barriessports.com), built as a custom [Frappe Framework](https://frappeframework.com/) v16 app. Bullwheel runs in tandem with the store's [Ascend RMS](https://www.ascendrms.com/) point-of-sale system, connecting to Ascend's Microsoft SQL Server database to extend it with warehouse, receiving, and labeling workflows that Ascend doesn't cover.
 
-This is an internal business tool for Barrie's Ski and Sports. It is not distributed publicly.
-
 ## Features
 
 - **Location Tracking** — bin-level inventory locations with a group/leaf hierarchy (`Warehouse Location`, `Location Inventory`)
