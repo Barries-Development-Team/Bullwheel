@@ -1,4 +1,44 @@
-# Virtual DocType Link-Title Patch
+# Monkey Patches
+
+Bullwheel patches a small number of Frappe core behaviors at process startup, rather than
+modifying Frappe itself. This document covers every patch currently applied, where the code
+lives, and how each one works. It replaces the former `VIRTUAL_LINK_TITLE_PATCH.md` (that
+patch is now § 1 below).
+
+| # | Patch | Module | Fixes |
+|---|---|---|---|
+| 1 | Virtual DocType link titles | `bullwheel/overrides/virtual_link_title.py` | "Show Title in Link Fields" crashing for virtual DocTypes |
+| 2 | Google OAuth `drive` domain callback | `bullwheel/overrides/google_oauth_patch.py` | Missing OAuth callback route for the `offsite_backups` app's Google Drive integration |
+
+Both are applied once from `bullwheel/__init__.py`:
+
+```python
+from bullwheel.overrides.virtual_link_title import apply as _apply_virtual_link_title_patch
+from bullwheel.overrides.google_oauth_patch import apply as _apply_google_oauth_patch
+
+_apply_virtual_link_title_patch()
+_apply_google_oauth_patch()
+```
+
+**Why here?** `frappe.get_hooks()` imports each installed app's `hooks` module very early in
+every Frappe process (web request, background worker, scheduler). Importing `bullwheel.hooks`
+imports the `bullwheel` package, which runs `bullwheel/__init__.py`. Therefore both patches are
+installed **before** any code that depends on them can run, in every process type — no
+`hooks.py` wiring is required for either.
+
+Both follow the same two conventions:
+
+- **Idempotent.** Each `apply()` sets a flag on the patched object and returns immediately on
+  subsequent calls, so importing `bullwheel` more than once per process (or once per worker) is
+  harmless.
+- **Additive, not destructive.** Neither patch replaces Frappe core files. `virtual_link_title`
+  rebinds two `Database` methods to wrapper functions that delegate to the originals for every
+  case they don't specifically handle. `google_oauth_patch` only adds a missing dict entry,
+  using `setdefault` so it never overwrites an existing one.
+
+---
+
+# 1. Virtual DocType Link-Title Patch
 
 **Module:** `bullwheel/overrides/virtual_link_title.py`
 **Applied from:** `bullwheel/__init__.py`
@@ -6,9 +46,7 @@
 (e.g. `Ascend Product`) whose data lives in an external SQL Server rather than a `tab<DocType>`
 table.
 
----
-
-## 1. Background — what "Show Title in Link Fields" does
+## 1.1 Background — what "Show Title in Link Fields" does
 
 A DocType can set two properties:
 
@@ -31,9 +69,7 @@ frappe.db.get_values(doctype, {"name": ("in", names)}, [...]) # bulk (version di
 Both of these ultimately live on the `Database` class
 (`frappe.database.database.Database.get_value` / `get_values`).
 
----
-
-## 2. The problem — virtual DocTypes have no table
+## 1.2 The problem — virtual DocTypes have no table
 
 `frappe.db.get_value` / `get_values` go **straight to the SQL query builder**, which builds a query
 against a physical `tab<DocType>` table. A **virtual DocType** (`is_virtual = 1`) has **no such
@@ -62,9 +98,7 @@ Every affected code path bottoms out at the same two `Database` methods:
 | **Version diff on save** | `frappe.core.doctype.version.version` | `get_values` |
 | Print view / Communication / Notification / Listview group-by | various | `get_value` |
 
----
-
-## 3. The design decision — patch the single choke point
+## 1.3 The design decision — patch the single choke point
 
 Only `get_link_title` is a *whitelisted* method (hookable via `override_whitelisted_methods`); the
 rest are internal and not hookable. Rather than patch each path individually, Bullwheel patches the
@@ -84,9 +118,7 @@ The wrapper intercepts a call **only** when *both* are true:
 For everything else it **delegates to the original implementation untouched**, so behaviour for real
 DocTypes — and for any exotic virtual query that isn't a name lookup — is unchanged.
 
----
-
-## 4. How it is applied
+## 1.4 How it is applied
 
 `bullwheel/__init__.py`:
 
@@ -94,11 +126,6 @@ DocTypes — and for any exotic virtual query that isn't a name lookup — is un
 from bullwheel.overrides.virtual_link_title import apply as _apply_virtual_link_title_patch
 _apply_virtual_link_title_patch()
 ```
-
-**Why here?** `frappe.get_hooks()` imports each installed app's `hooks` module very early in every
-Frappe process (web request, background worker, scheduler). Importing `bullwheel.hooks` imports the
-`bullwheel` package, which runs `bullwheel/__init__.py`. Therefore the patch is installed **before**
-any whitelisted method or `getdoc` can run, in every process type.
 
 `apply()` is **idempotent** — it sets a flag (`Database._bullwheel_virtual_link_title_patched`) and
 returns early on subsequent calls, so repeated imports are harmless:
@@ -116,11 +143,9 @@ Because it rebinds methods **on the class**, every existing and future `frappe.d
 wrapped versions. The originals are captured at import time (`_original_get_value`,
 `_original_get_values`) so the wrappers can delegate to them.
 
----
+## 1.5 How the patch works — component by component
 
-## 5. How the patch works — component by component
-
-### 5.1 The wrappers
+### 1.5.1 The wrappers
 
 Both wrappers share the same structure. `get_value` returns a single row; `get_values` returns a
 list of rows.
@@ -140,7 +165,7 @@ def _patched_get_value(self, doctype, filters=None, fieldname="name", *args, **k
   `_names_from_filters(filters)` returns a non-`None` list. If either fails, `names is None` and the
   call is delegated to the original.
 
-### 5.2 The virtual check + re-entrancy guard — `_is_virtual_link_doctype`
+### 1.5.2 The virtual check + re-entrancy guard — `_is_virtual_link_doctype`
 
 Determining whether a DocType is virtual calls `is_virtual_doctype(doctype)`, which internally does
 `frappe.get_meta(doctype)`. Loading meta issues **`frappe.db.get_value("DocType", ...)`** — i.e. it
@@ -169,7 +194,7 @@ def _is_virtual_link_doctype(doctype):
 - After the first successful check, `is_virtual_doctype` is `@site_cache`d, so subsequent checks are a
   cheap dict lookup with no DB round-trip.
 
-### 5.3 Recognising a name-only lookup — `_names_from_filters`
+### 1.5.3 Recognising a name-only lookup — `_names_from_filters`
 
 The wrapper only intercepts lookups that select rows **by `name`** — that is the exact shape every
 title path produces. `_names_from_filters` normalises the supported shapes into a **list of names**,
@@ -178,6 +203,7 @@ and returns `None` for anything else (signalling "not a title lookup — don't t
 | Filter shape | Example | Result |
 |---|---|---|
 | bare name string | `"PROD-1"` | `["PROD-1"]` |
+| bare integer name | `194151633641` | `["194151633641"]` |
 | dict, name equality | `{"name": "PROD-1"}` | `["PROD-1"]` |
 | dict, name `in` | `{"name": ("in", ["PROD-1", "PROD-2"])}` | `["PROD-1", "PROD-2"]` |
 | dict, explicit `=` | `{"name": ("=", "PROD-1")}` | `["PROD-1"]` |
@@ -197,7 +223,7 @@ Two small helpers support it:
 > **Design note:** returning `None` vs `[]` is deliberate. `[]` is a valid "no names requested"
 > result; `None` means "this is not a name-only lookup, delegate to the original."
 
-### 5.4 Resolving the values — `_read_fields`
+### 1.5.4 Resolving the values — `_read_fields`
 
 Once we have a name and the requested field(s), `_read_fields` fetches them **through the
 controller** instead of the database:
@@ -225,11 +251,11 @@ It returns the requested field values **in order**, or `None` if the record does
   document. `get_cached_doc` also means repeated lookups of the same record within a request are
   served from cache — matching the `cache=True` intent of the title call sites.
 - **Optional optimized path** — if the controller exposes a `get_link_field_values(name, fieldnames)`
-  classmethod, it is used instead. See §6.
+  classmethod, it is used instead. See § 1.6.
 - `get_controller(doctype)` is imported from `frappe.model.base_document` (there is **no**
   `frappe.get_controller` in this Frappe version) and is cached after first import.
 
-### 5.5 Return-shape parity
+### 1.5.5 Return-shape parity
 
 Frappe callers expect specific return shapes depending on the arguments. The wrappers reproduce them
 exactly, so callers cannot tell a virtual result from a real one:
@@ -258,9 +284,7 @@ exactly, so callers cannot tell a virtual result from a real one:
 > is safe. A hypothetical positional `as_dict` on a virtual **name** lookup does not occur in
 > practice; non-name-shaped virtual calls already delegate.
 
----
-
-## 6. The optional optimization hook — `get_link_field_values`
+## 1.6 The optional optimization hook — `get_link_field_values`
 
 The default `_read_fields` path loads the **whole** document to read one or two columns. For a form
 with a handful of links that is negligible (and cached), but a list view rendering many *distinct*
@@ -300,9 +324,7 @@ through `normalize_record` so GUID (`uuid.UUID`) values become strings. Fields w
 Virtual DocTypes that do **not** subclass the framework simply fall back to the `get_cached_doc`
 path — nothing is required of them.
 
----
-
-## 7. End-to-end example: opening a form that links a product
+## 1.7 End-to-end example: opening a form that links a product
 
 1. User opens a **Warehouse Location** whose child table links an `Ascend Product`.
 2. Frappe's `getdoc` runs `set_link_titles` →
@@ -319,9 +341,7 @@ path — nothing is required of them.
 
 No "Table doesn't exist" error, and the Link field renders a friendly label.
 
----
-
-## 8. Safety, edge cases, and interactions
+## 1.8 Safety, edge cases, and interactions
 
 - **No recursion.** The thread-local guard ensures the meta/controller lookups triggered *during* the
   virtual check delegate to the original `Database` methods. The value-resolution path
@@ -334,9 +354,7 @@ No "Table doesn't exist" error, and the Link field renders a friendly label.
   `{"description": "..."}`) returns `None` from `_names_from_filters` and delegates to the original.
 - **Missing records** return `None` (single) or are skipped (bulk), mirroring Frappe's own behaviour.
 
----
-
-## 9. Testing
+## 1.9 Testing
 
 - `bullwheel/overrides/test_virtual_link_title.py`
   - `_names_from_filters` across all supported and rejected shapes.
@@ -365,9 +383,7 @@ frappe.db.get_value("Ascend Product", "<id>", "description")         # title, no
 frappe.db.get_value("User", "Administrator", "first_name")           # real DocType: unchanged
 ```
 
----
-
-## 10. Maintenance notes
+## 1.10 Maintenance notes
 
 - **Frappe upgrades.** The patch mirrors the signatures of `Database.get_value` / `get_values` and
   forwards unknown arguments via `*args, **kwargs`. If a future Frappe changes those signatures (e.g.
@@ -382,3 +398,101 @@ frappe.db.get_value("User", "Administrator", "first_name")           # real DocT
 - **Scope.** This module solves *link-title resolution* only. It does not make arbitrary
   `frappe.db.get_value(virtual_doctype, {arbitrary filters})` queries work — those still delegate to
   the original and are unsupported for virtual DocTypes.
+
+---
+
+# 2. Google OAuth `drive` Domain Callback Patch
+
+**Module:** `bullwheel/overrides/google_oauth_patch.py`
+**Applied from:** `bullwheel/__init__.py`
+**Purpose:** Register the missing `drive` OAuth domain so Frappe routes Google Drive OAuth
+callbacks to the `offsite_backups` app's `Google Drive` integration.
+
+## 2.1 Background — how Frappe dispatches Google OAuth callbacks
+
+Frappe core ships built-in Google integrations for a handful of domains — `mail`, `contacts`,
+`indexing` — each backed by a DocType with an `authorize_access` method that completes the OAuth
+flow. `frappe.integrations.google_oauth` keeps a module-level dict,
+`_DOMAIN_CALLBACK_METHODS`, mapping each domain name to the dotted path of the method that should
+run when Google redirects back to the callback endpoint after the user grants access:
+
+```python
+_DOMAIN_CALLBACK_METHODS = {
+    "mail": "frappe.integrations.doctype.google_settings...authorize_access",
+    "contacts": "...",
+    "indexing": "...",
+}
+```
+
+The callback endpoint looks up the `state` parameter's domain in this dict and calls whatever
+method is registered there.
+
+## 2.2 The problem — `offsite_backups` is not a Frappe core app
+
+Bullwheel uses a separate app, `offsite_backups`, for scheduled Google Drive backups. It provides
+its own `Google Drive` DocType with an `authorize_access` classmethod
+(`offsite_backups.offsite_backups.doctype.google_drive.google_drive.authorize_access`), and needs a
+`drive` entry in `_DOMAIN_CALLBACK_METHODS` to receive the OAuth redirect. Because `offsite_backups`
+is a separate app from Frappe core, that entry does not exist by default — a Drive OAuth flow
+redirects back with no route for its domain, and the callback silently does nothing (or errors,
+depending on Frappe version) instead of finishing authorization.
+
+## 2.3 The fix — add the missing dict entry at startup
+
+Rather than modify Frappe core or fork the callback dispatch logic, the patch inserts the single
+missing entry into the dict that already exists for this purpose:
+
+```python
+import frappe.integrations.google_oauth as _google_oauth
+
+_DRIVE_CALLBACK = "offsite_backups.offsite_backups.doctype.google_drive.google_drive.authorize_access"
+_PATCHED_FLAG = "_bullwheel_google_oauth_drive_patched"
+
+
+def apply():
+    if getattr(_google_oauth, _PATCHED_FLAG, False):
+        return
+
+    _google_oauth._DOMAIN_CALLBACK_METHODS.setdefault("drive", _DRIVE_CALLBACK)
+    setattr(_google_oauth, _PATCHED_FLAG, True)
+```
+
+This is not a method-rebinding patch like § 1 — it mutates a plain dict, using
+`setdefault` so that if a future Frappe version ships its own `drive` entry, the existing value is
+left untouched rather than overwritten.
+
+## 2.4 How it is applied
+
+`bullwheel/__init__.py`:
+
+```python
+from bullwheel.overrides.google_oauth_patch import apply as _apply_google_oauth_patch
+_apply_google_oauth_patch()
+```
+
+As with the link-title patch, this runs the moment `bullwheel.hooks` (and therefore
+`bullwheel/__init__.py`) is imported — before any OAuth callback could possibly fire — in every
+process type (web request, background worker, scheduler).
+
+`apply()` is **idempotent**: it sets `_bullwheel_google_oauth_drive_patched` on the
+`google_oauth` module and returns immediately on subsequent calls, so repeated imports across
+worker processes are harmless.
+
+## 2.5 Safety, edge cases, and interactions
+
+- **Non-destructive.** `setdefault` never overwrites an existing `drive` entry — if a future
+  Frappe version adds native support for it, the patch becomes a no-op for that key.
+- **No effect on other domains.** `mail`, `contacts`, and `indexing` are untouched.
+- **Depends on `offsite_backups` being installed.** The registered dotted path only resolves
+  successfully if the `offsite_backups` app is installed on the site; the patch itself has no
+  import-time dependency on that app (it only stores a string), so applying it does not fail even
+  if `offsite_backups` is absent — the callback would simply fail to resolve the path if a Drive
+  OAuth flow were attempted without the app installed.
+
+## 2.6 Maintenance notes
+
+- **Frappe upgrades.** If a future Frappe version renames `_DOMAIN_CALLBACK_METHODS` or
+  restructures how domain callbacks are dispatched, this patch will need to target the new
+  structure.
+- **`offsite_backups` refactors.** If the `Google Drive` DocType or its `authorize_access` method
+  moves, update `_DRIVE_CALLBACK` to match the new dotted path.
