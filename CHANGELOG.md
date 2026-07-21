@@ -2,6 +2,13 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.0.2] - July 20, 2026
+
+### Bug Fixes
+
+- Fixed Data Import failing to verify Ascend Products when the UPC contains uppercase letters.
+- Applied temporary hotfix to correct get_list only retrieving 20 items for Virtual DocTypes.
+
 ## [1.0.1] - July 20, 2026
 
 ### Bug Fix
