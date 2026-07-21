@@ -1,3 +1,5 @@
+<img width="128" height="128" alt="bullwheel_frappe_icon" src="https://github.com/user-attachments/assets/f188754e-07a7-4ac7-98ad-86596eff0d75" />
+
 # Bullwheel
 
 Warehouse and operations management software for [Barrie's Ski and Sports](https://barriessports.com), built as a custom [Frappe Framework](https://frappeframework.com/) v16 app. Bullwheel runs in tandem with the store's [Ascend RMS](https://www.ascendrms.com/) point-of-sale system, connecting to Ascend's Microsoft SQL Server database to extend it with warehouse, receiving, and labeling workflows that Ascend doesn't cover.
