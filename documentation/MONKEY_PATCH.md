@@ -7,14 +7,14 @@ patch is now § 1 below).
 
 | # | Patch | Module | Fixes |
 |---|---|---|---|
-| 1 | Virtual DocType link titles | `bullwheel/overrides/virtual_link_title.py` | "Show Title in Link Fields" crashing for virtual DocTypes |
-| 2 | Google OAuth `drive` domain callback | `bullwheel/overrides/google_oauth_patch.py` | Missing OAuth callback route for the `offsite_backups` app's Google Drive integration |
+| 1 | Virtual DocType link titles | `bullwheel/monkey_patches/virtual_link_title.py` | "Show Title in Link Fields" crashing for virtual DocTypes |
+| 2 | Google OAuth `drive` domain callback | `bullwheel/monkey_patches/google_oauth_patch.py` | Missing OAuth callback route for the `offsite_backups` app's Google Drive integration |
 
 Both are applied once from `bullwheel/__init__.py`:
 
 ```python
-from bullwheel.overrides.virtual_link_title import apply as _apply_virtual_link_title_patch
-from bullwheel.overrides.google_oauth_patch import apply as _apply_google_oauth_patch
+from bullwheel.monkey_patches.virtual_link_title import apply as _apply_virtual_link_title_patch
+from bullwheel.monkey_patches.google_oauth_patch import apply as _apply_google_oauth_patch
 
 _apply_virtual_link_title_patch()
 _apply_google_oauth_patch()
@@ -40,7 +40,7 @@ Both follow the same two conventions:
 
 # 1. Virtual DocType Link-Title Patch
 
-**Module:** `bullwheel/overrides/virtual_link_title.py`
+**Module:** `bullwheel/monkey_patches/virtual_link_title.py`
 **Applied from:** `bullwheel/__init__.py`
 **Purpose:** Make Frappe's **"Show Title in Link Fields"** feature work for **virtual DocTypes**
 (e.g. `Ascend Product`) whose data lives in an external SQL Server rather than a `tab<DocType>`
@@ -123,7 +123,7 @@ DocTypes — and for any exotic virtual query that isn't a name lookup — is un
 `bullwheel/__init__.py`:
 
 ```python
-from bullwheel.overrides.virtual_link_title import apply as _apply_virtual_link_title_patch
+from bullwheel.monkey_patches.virtual_link_title import apply as _apply_virtual_link_title_patch
 _apply_virtual_link_title_patch()
 ```
 
@@ -356,7 +356,7 @@ No "Table doesn't exist" error, and the Link field renders a friendly label.
 
 ## 1.9 Testing
 
-- `bullwheel/overrides/test_virtual_link_title.py`
+- `bullwheel/monkey_patches/test_virtual_link_title.py`
   - `_names_from_filters` across all supported and rejected shapes.
   - `get_value` / `get_values` **return-shape parity** (scalar, list row, `as_dict`, `pluck`, missing
     records) against a stubbed controller.
@@ -403,7 +403,7 @@ frappe.db.get_value("User", "Administrator", "first_name")           # real DocT
 
 # 2. Google OAuth `drive` Domain Callback Patch
 
-**Module:** `bullwheel/overrides/google_oauth_patch.py`
+**Module:** `bullwheel/monkey_patches/google_oauth_patch.py`
 **Applied from:** `bullwheel/__init__.py`
 **Purpose:** Register the missing `drive` OAuth domain so Frappe routes Google Drive OAuth
 callbacks to the `offsite_backups` app's `Google Drive` integration.
@@ -466,7 +466,7 @@ left untouched rather than overwritten.
 `bullwheel/__init__.py`:
 
 ```python
-from bullwheel.overrides.google_oauth_patch import apply as _apply_google_oauth_patch
+from bullwheel.monkey_patches.google_oauth_patch import apply as _apply_google_oauth_patch
 _apply_google_oauth_patch()
 ```
 

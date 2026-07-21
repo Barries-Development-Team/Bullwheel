@@ -456,7 +456,7 @@ lowercase, hyphenated GUID string.
 diff), and core's query engine has **no virtual-doctype routing** — left alone it
 runs the query against a `tab<DocType>` table that doesn't exist, raising
 `Table '...' doesn't exist`. Bullwheel closes this gap in
-`bullwheel/overrides/virtual_link_title.py`: it patches `Database.get_value` and
+`bullwheel/monkey_patches/virtual_link_title.py`: it patches `Database.get_value` and
 `Database.get_values` (installed once from `bullwheel/__init__.py`) so that, when the
 DocType is virtual **and** the filters select rows purely by `name`, the value is
 read through the controller's `load_from_db` instead of the database. All other calls
