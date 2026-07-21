@@ -14,7 +14,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests import UnitTestCase
 
-from bullwheel.overrides import virtual_link_title
+from bullwheel.monkey_patches import virtual_link_title
 
 _VIRTUAL_DOCTYPE = "Ascend Product"
 
