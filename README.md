@@ -6,16 +6,10 @@ Warehouse and operations management software for [Barrie's Ski and Sports](https
 
 - **Location Tracking** — bin-level inventory locations with a group/leaf hierarchy (`Warehouse Location`, `Location Inventory`)
 - **Ski-Binding Pair Tracking** — linked ski/binding combinations sold as a set
-- **Swap Sales** — swap and online pricing tracked per product (`Product Price`)
-- **Warehouse Fetch / Picklists** — adjusts location and quantity when an item is sold directly from the warehouse
-- **Inventory Counting and Scheduling** — daily warehouse bay count assignments
+- **Extended Product Pricing** — swap and online pricing tracked per product (`Product Price`)
 - **Receiving** — single-pass order receipt builder with barcode scanning, new vendor/product staging, and count verification (see [`documentation/RECEIVING_FLOW.md`](documentation/RECEIVING_FLOW.md))
 - **Tagging / Label Printing** — Zebra ZPL label printing (swap tags, Ascend tags, warehouse bay labels) over raw TCP, network or USB (see [`documentation/LABEL_PRINTING.md`](documentation/LABEL_PRINTING.md))
 - **Description Templates** — Jinja-driven auto-generated product descriptions (see [`documentation/DESCRIPTION_TEMPLATES.md`](documentation/DESCRIPTION_TEMPLATES.md))
-- **Automated Online Listings**
-- **Data Backups** — automated off-site backups to Google Drive, with scheduled pruning
-- **Automated Software Updates** — checks GitHub for new releases
-- **Automated Changelog** — see [`CHANGELOG.md`](CHANGELOG.md)
 - **Easy Feature Additions** — isolated branch workflow with heavy backend testing
 
 ## Architecture
