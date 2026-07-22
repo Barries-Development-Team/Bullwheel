@@ -17,8 +17,8 @@ frappe.ui.form.on('Ascend Product', {
 
 		frm.add_custom_button(__('Find Product'), () => {
 			bullwheel.warehouse.product_location_dialog({
-				product_sku_or_upc: frm.name,
-				description: frm.description
+				product_sku_or_upc: frm.doc.name,
+				description: frm.doc.description
 			})
 		}, __('Warehouse'));
 	},
