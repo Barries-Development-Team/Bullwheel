@@ -6,7 +6,7 @@ import frappe
 from frappe.utils import cint
 
 @frappe.whitelist()
-def get_locations_for_product(product):
+def get_locations_for_product(product: str) -> list:
 	"""Return all Warehouse Locations that contain the given product, with quantity.
 
 	Queries the Location Inventory child table for rows matching the product name
