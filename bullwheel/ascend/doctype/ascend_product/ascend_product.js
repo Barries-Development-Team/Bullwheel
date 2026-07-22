@@ -14,6 +14,13 @@ frappe.ui.form.on('Ascend Product', {
 		frm.add_custom_button(__('Check Out'), () => {
 			bullwheel.warehouse.check_out_item({ product: frm.doc.name });
 		}, __('Warehouse'));
+
+		frm.add_custom_button(__('Find Product'), () => {
+			bullwheel.warehouse.product_location_dialog({
+				product_sku_or_upc: frm.name,
+				description: frm.description
+			})
+		}, __('Warehouse'));
 	},
 
 	edit_swap_price(frm) {

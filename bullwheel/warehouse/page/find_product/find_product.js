@@ -40,7 +40,7 @@ frappe.pages['find-product'].on_page_load = function(wrapper) {
 		search_field.$input.blur();
 
 		frappe.call({
-			method: 'bullwheel.warehouse.stock_handler.get_locations_for_product',
+			method: 'bullwheel.warehouse.stock_handler.get_product_locations',
 			args: { product: product },
 			callback: function(response) {
 				var locations = response.message || [];

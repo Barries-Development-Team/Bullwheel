@@ -7,6 +7,81 @@
 
 frappe.provide('bullwheel.warehouse');
 
+// Dialog UI for listing Ascend Product locations
+// product_sku_or_upc - it's in the name
+// description - Optional. Many circumstances where this function would be called already have the description, so it can be provided here to save a query.
+bullwheel.warehouse.product_location_dialog = function(product_sku_or_upc, description = null) {
+	// Get product description if not provided
+	if (description === null) {
+		frappe.call({
+			method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_values',
+			args: {
+				name: product_sku_or_upc,
+				fields: JSON.stringify(["description"])
+			},
+			callback: function(response) { description = response.message.description}
+		})
+	}
+
+	// Fetch product locations
+	var locations
+	frappe.call({
+		method: 'bullwheel.warehouse.stock_handler.get_product_locations',
+		args: { product: product_sku_or_upc },
+		callback: function(response) { locations = response.message || [];}
+	})
+
+	// Return if no locations were found
+	if (!locations.length) {
+		frappe.msgprint({
+			title: __('Not Found'),
+			indicator: 'red',
+			message: __(`No warehouse location quantities found for ${description} (${product_sku_or_upc})`)
+		})
+		return;
+	}
+
+	// Dialog Box with HTML field
+	let dialog = new frappe.ui.Dialog({
+		title: __('Product Locations'),
+		fields: [
+			{
+				fieldname: 'results',
+				fieldtype: 'HTML'
+			}
+		],
+		primary_action_label: __('OK'),
+		primary_action() {
+			dialog.hide();
+		}
+	})
+
+	// Build results table
+	var $table = $(`
+		<table class="table table-bordered table-hover">
+			<thead>
+				<tr>
+					<th>Product ID</th>
+					<th>Warehouse Location</th>
+					<th style="text-align: right;">Quantity</th>
+				</tr>
+			</thead>
+			<tbody></tbody>
+		</table>
+	`);
+	locations.forEach(function(row) { // Add row for each location
+		var $row = $('<tr>')
+			.append($('<td>').text(product))
+			.append($('<td>').text(row.parent))
+			.append($('<td style="text-align: right;">').text(row.quantity));
+		$table.find('tbody').append($row);
+	});
+	$results.append($table);
+	dialog.fields_dict.results.set_html($table)
+
+	dialog.show()
+}
+
 // Prompt for a product, a leaf Warehouse Location, and a quantity, then add that
 // quantity to the location's on-hand inventory.
 //
