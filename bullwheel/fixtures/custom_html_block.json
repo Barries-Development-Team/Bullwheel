@@ -2,8 +2,8 @@
  {
   "docstatus": 0,
   "doctype": "Custom HTML Block",
-  "html": "<div class=\"warehouse-locations-card\">\n\t<div class=\"warehouse-locations-card-title\">Warehouse Locations</div>\n\t<div class=\"warehouse-locations-card-actions\">\n\t\t<button type=\"button\" class=\"btn btn-link btn-open-warehouse-location\">\n\t\t\tOpen Warehouse Location\n\t\t</button>\n\t\t<button type=\"button\" class=\"btn btn-link btn-warehouse-location-tree\">\n\t\t\tWarehouse Location Tree\n\t\t</button>\n\t</div>\n</div>\n",
-  "modified": "2026-07-20 12:58:20.054829",
+  "html": "<div class=\"warehouse-locations-card\">\n\t<div class=\"warehouse-locations-card-title\">Warehouse Locations</div>\n\t<div class=\"warehouse-locations-card-actions\">\n\t\t<button type=\"button\" class=\"btn btn-secondary btn-open-warehouse-location\">\n\t\t\tOpen Warehouse Location\n\t\t</button>\n\t\t<button type=\"button\" class=\"btn btn-secondary btn-warehouse-location-tree\">\n\t\t\tWarehouse Location Tree\n\t\t</button>\n\t</div>\n</div>\n",
+  "modified": "2026-07-22 22:34:04.649239",
   "name": "Warehouse Locations",
   "private": 0,
   "roles": [],
@@ -13,12 +13,12 @@
  {
   "docstatus": 0,
   "doctype": "Custom HTML Block",
-  "html": "<div class=\"inventory-card\">\n\t<div class=\"inventory-card-title\">Inventory</div>\n\t<div class=\"inventory-card-actions\">\n\t\t<button type=\"button\" class=\"btn btn-link btn-find-product\">\n\t\t\tFind Product\n\t\t</button>\n\t\t<button type=\"button\" class=\"btn btn-link btn-check-in-item\">\n\t\t\tCheck-In Item\n\t\t</button>\n\t\t<button type=\"button\" class=\"btn btn-link btn-check-out-item\">\n\t\t\tCheck-Out Item\n\t\t</button>\n\t</div>\n</div>\n",
-  "modified": "2026-07-20 15:38:03.147884",
+  "html": "<div class=\"inventory-card\">\n\t<div class=\"inventory-card-title\">Inventory</div>\n\t<div class=\"inventory-card-actions\">\n\t\t<button type=\"button\" class=\"btn btn-primary btn-find-product\">\n\t\t\tFind Product\n\t\t</button>\n\t\t<button type=\"button\" class=\"btn btn-secondary btn-check-in-item\">\n\t\t\tCheck-In Item\n\t\t</button>\n\t\t<button type=\"button\" class=\"btn btn-secondary btn-check-out-item\">\n\t\t\tCheck-Out Item\n\t\t</button>\n\t</div>\n</div>\n",
+  "modified": "2026-07-22 22:33:32.205145",
   "name": "Inventory",
   "private": 0,
   "roles": [],
-  "script": "let find_product_button = root_element.querySelector(\".btn-find-product\");\nlet check_in_button = root_element.querySelector(\".btn-check-in-item\");\nlet check_out_button = root_element.querySelector(\".btn-check-out-item\");\n\nfind_product_button.addEventListener(\"click\", () => {\n\tfrappe.set_route(\"find-product\");\n});\n\ncheck_in_button.addEventListener(\"click\", () => {\n    bullwheel.warehouse.check_in_item();\n});\n\ncheck_out_button.addEventListener(\"click\", () => {\n    bullwheel.warehouse.check_out_item();\n});",
+  "script": "let find_product_button = root_element.querySelector(\".btn-find-product\");\nlet check_in_button = root_element.querySelector(\".btn-check-in-item\");\nlet check_out_button = root_element.querySelector(\".btn-check-out-item\");\n\nfind_product_button.addEventListener(\"click\", () => {\n    let d = new frappe.ui.Dialog({\n        title: 'Enter product SKU',\n        fields: [\n            {\n                label: 'Product',\n                fieldname: 'product',\n                fieldtype: 'Link',\n                options: 'Ascend Product',\n                description: 'Alternatively, you may find product locations by utilizing the \"Find Product\" button on any Ascend Product document view.'\n            }\n        ],\n        size: 'small', // small, large, extra-large \n        primary_action_label: 'Submit',\n        primary_action(values) {\n            d.hide();\n            bullwheel.warehouse.product_location_dialog({\n        \t\tproduct_sku: values.product\n        \t})\n        }\n    });\n    d.show();\n});\n\ncheck_in_button.addEventListener(\"click\", () => {\n    bullwheel.warehouse.check_in_item();\n});\n\ncheck_out_button.addEventListener(\"click\", () => {\n    bullwheel.warehouse.check_out_item();\n});",
   "style": ".inventory-card {\n\tborder: 1px solid var(--border-color);\n\tborder-radius: var(--border-radius-md);\n\tpadding: 12px;\n}\n\n.inventory-card-title {\n\tfont-weight: 600;\n\tmargin-bottom: 8px;\n}\n\n.inventory-card-actions {\n\tdisplay: flex;\n\tflex-direction: column;\n\talign-items: flex-start;\n\tgap: 8px;\n}\n"
  }
 ]
