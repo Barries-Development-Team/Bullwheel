@@ -7,6 +7,61 @@
 
 frappe.provide('bullwheel.warehouse');
 
+// Dialog UI for listing Ascend Product locations
+// product_sku - Ascend SKU of the product.
+// description - Optional. Many circumstances where this function would be called already have the description, so it can be provided here to save a query.
+import { productLocationTable } from "./product_location_table";
+
+bullwheel.warehouse.product_location_dialog = function(products = []) {
+
+	processed_products = products.map(({sku, description = null}) => {
+		return {sku, description};
+	})	
+
+	// Get product description if not provided
+	if (description === null) {
+		frappe.call({
+			method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_values',
+			args: {
+				name: product_sku,
+				fields: JSON.stringify(["description"])
+			},
+			callback: function(response) { description = response.message.description}
+		})
+	}
+
+	frappe.call({
+		method: 'bullwheel.warehouse.stock_handler.get_product_locations',
+		args: { product: product_sku },
+		callback: function(response) {
+			var locations = response.message || [];
+			// Return if no locations were found
+			if (!locations.length) {
+				frappe.msgprint({
+					title: __('Not Found'),
+					indicator: 'red',
+					message: __(`No warehouse location quantities were found for ${description} (${product_sku}).`)
+				})
+				return;
+			}
+
+			// Dialog Box with HTML field
+			let dialog = new frappe.ui.Dialog({
+				title: __('Product Locations'),
+				primary_action_label: __('OK'),
+				primary_action() {
+					dialog.hide();
+				}
+			})
+			
+			dialog.$body.html(productLocationTable(locations)); 
+
+			dialog.show();
+		}
+	})	
+}
+
+
 // Prompt for a product, a leaf Warehouse Location, and a quantity, then add that
 // quantity to the location's on-hand inventory.
 //

@@ -2,6 +2,18 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.0] - Unreleased
+
+### Features
+
+- Overhauled the process of finding products in Warehouse Locations.
+    - Replaced the Find Product page with a dialog prompt.
+    - Added Find Product buttons to Ascend Products.
+
+### Bug Fixes
+
+- Fixed UI element updates (such as Workspaces and Desktop Icons) and Roles not being applied on app update.
+
 ## [1.0.2] - July 20, 2026
 
 ### Bug Fixes

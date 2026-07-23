@@ -6,7 +6,7 @@ import frappe
 from frappe.utils import cint
 
 @frappe.whitelist()
-def get_locations_for_product(product):
+def get_product_locations(product: str) -> list:
 	"""Return all Warehouse Locations that contain the given product, with quantity.
 
 	Queries the Location Inventory child table for rows matching the product name
@@ -15,7 +15,7 @@ def get_locations_for_product(product):
 	rows = frappe.db.get_all(
 		"Location Inventory",
 		filters={"product": product, "parenttype": "Warehouse Location"},
-		fields=["parent", "quantity"],
+		fields=["parent", "product", "quantity"],
 		order_by="parent asc",
 	)
 	return rows

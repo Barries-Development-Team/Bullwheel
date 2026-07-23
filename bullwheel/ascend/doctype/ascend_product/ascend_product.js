@@ -9,11 +9,18 @@ frappe.ui.form.on('Ascend Product', {
 
 		frm.add_custom_button(__('Check In'), () => {
 			bullwheel.warehouse.check_in_item({ product: frm.doc.name });
-		}, __('Warehouse'));
+		}, __('Check In/Out'));
 
 		frm.add_custom_button(__('Check Out'), () => {
 			bullwheel.warehouse.check_out_item({ product: frm.doc.name });
-		}, __('Warehouse'));
+		}, __('Check In/Out'));
+
+		frm.add_custom_button(__('Find Product'), () => {
+			bullwheel.warehouse.product_location_dialog({
+				product_sku: frm.doc.name, 
+				description: frm.doc.description
+			})
+		});
 	},
 
 	edit_swap_price(frm) {
