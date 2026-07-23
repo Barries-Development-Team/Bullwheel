@@ -12,7 +12,12 @@ frappe.provide('bullwheel.warehouse');
 // description - Optional. Many circumstances where this function would be called already have the description, so it can be provided here to save a query.
 import { productLocationTable } from "./product_location_table";
 
-bullwheel.warehouse.product_location_dialog = function({product_sku, description} = {description: null}) {
+bullwheel.warehouse.product_location_dialog = function(products = []) {
+
+	processed_products = products.map(({sku, description = null}) => {
+		return {sku, description};
+	})	
+
 	// Get product description if not provided
 	if (description === null) {
 		frappe.call({
