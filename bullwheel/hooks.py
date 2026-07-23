@@ -31,10 +31,29 @@ fixtures = [
     "Zebra Printer Label",
     "Global Search Settings",
     "Custom HTML Block",
-    "Workflow",
+    {
+        "doctype": "Workflow",
+        "filters": [["name", "=", "Order Receipt Receiving"]]
+    },
     "Workflow State",
-    "Workflow Action",
-    "Description Template"
+    "Description Template",
+    {
+        "doctype": "Workspace",
+        "filters": [["app", "=", "bullwheel"]]
+    },
+    {
+        "doctype": "Workspace Sidebar Item",
+        "filters": [["parent", "in", ["Ascend", "Bullwheel", "Warehouse"]]]
+    },
+    {
+        "doctype": "Desktop Icon",
+        "filters": [["app", "=", "bullwheel"]]
+    },
+    {
+        "doctype": "Role",
+        "filters": [["name", "=", "Warehouse Staff"]]
+    }
+    
 ]
 
 # Includes in <head>
