@@ -38,18 +38,6 @@ fixtures = [
     "Workflow State",
     "Description Template",
     {
-        "doctype": "Workspace",
-        "filters": [["app", "=", "bullwheel"]]
-    },
-    {
-        "doctype": "Workspace Sidebar Item",
-        "filters": [["parent", "in", ["Ascend", "Bullwheel", "Warehouse"]]]
-    },
-    {
-        "doctype": "Desktop Icon",
-        "filters": [["app", "=", "bullwheel"]]
-    },
-    {
         "doctype": "Role",
         "filters": [["name", "=", "Warehouse Staff"]]
     }
