@@ -7,7 +7,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 ### Features
 
 - Overhauled the process of finding Products in Warehouse Locations
-    - Replaced the Find Product page with a dialog prompt.\
+    - Replaced the Find Product page with a dialog prompt.
     - Added Find Product buttons to Ascend Products.
 
 ### Bug Fixes
