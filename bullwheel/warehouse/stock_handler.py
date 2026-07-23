@@ -15,7 +15,7 @@ def get_product_locations(product: str) -> list:
 	rows = frappe.db.get_all(
 		"Location Inventory",
 		filters={"product": product, "parenttype": "Warehouse Location"},
-		fields=["parent", "quantity"],
+		fields=["parent", "product", "quantity"],
 		order_by="parent asc",
 	)
 	return rows
