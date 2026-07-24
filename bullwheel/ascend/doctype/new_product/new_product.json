@@ -11,6 +11,7 @@
   "description",
   "description_template",
   "column_break_xvvt",
+  "vendor",
   "brand",
   "category",
   "product_details_section",
@@ -52,7 +53,7 @@
   "manufacturers_part_number",
   "column_break_ipev",
   "store_sku",
-  "vendor"
+  "vpn_prefix"
  ],
  "fields": [
   {
@@ -61,7 +62,8 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Vendor Part Number (VPN)",
-   "reqd": 1
+   "placeholder": "Generated on save",
+   "read_only": 1
   },
   {
    "fieldname": "description",
@@ -219,20 +221,28 @@
    "label": "Case MSRP"
   },
   {
-   "description": "Generated on save.",
    "fieldname": "store_sku",
    "fieldtype": "Data",
    "label": "Store SKU",
+   "placeholder": "Generated on save",
    "read_only": 1,
    "unique": 1
   },
   {
-   "description": "Set by Order Receipt's scan flow before Quick Entry opens, so the created Vendor Product can be linked to this vendor. Never rendered \u2014 left unset outside that flow.",
+   "description": "Order Receipt's scan flow seeds this (so the created Vendor Product can be linked to this vendor) and hides the field for that flow specifically — see new_product.js and the __created_via_order_receipt seed property.",
    "fieldname": "vendor",
    "fieldtype": "Link",
-   "hidden": 1,
+   "hidden_depends_on": "eval:doc.__created_via_order_receipt",
    "label": "Vendor",
    "options": "Vendor"
+  },
+  {
+   "description": "Set by Order Receipt's scan flow before the New Product form dialog opens. Read by before_insert to generate the Vendor Part Number.",
+   "fieldname": "vpn_prefix",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "VPN Prefix",
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.case",
@@ -338,7 +348,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-23 22:33:41.136611",
+ "modified": "2026-07-23 22:56:54.754367",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",

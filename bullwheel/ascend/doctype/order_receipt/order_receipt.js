@@ -253,15 +253,20 @@ async function open_vendor_link_dialog(frm, record) {
 // Form runs the doctype's client scripts, so live description regeneration works during
 // receiving, and the after-insert callback fires on save no matter how the user saves (the
 // old Quick Entry path lost the callback if the user clicked "Edit Full Form"). The scanned
-// value and this receipt's vendor are seeded onto the document before the modal opens
-// (vendor is a hidden field, never rendered) — New Product's own insert hooks (see
-// new_product.py) create the Ascend Product and, since vendor is set, the linked
-// Vendor Product.
+// value, this receipt's vendor, and this receipt's vpn_prefix are seeded onto the document
+// before the modal opens (vpn_prefix is a hidden field, never rendered) — New Product's own
+// insert hooks (see new_product.py) generate the Vendor Part Number, create the Ascend
+// Product, and, since vendor is set, the linked Vendor Product. Vendor is visible by default
+// on New Product, but this flow sets it automatically from the receipt, so
+// __created_via_order_receipt (a client-only property, never persisted — see new_product.json's
+// vendor field) hides it specifically for this flow rather than for manual vendor entry.
 function open_new_product_form_dialog(frm, scanned_value) {
 	frappe.model.with_doctype('New Product', () => {
 		const seed_document = frappe.model.get_new_doc('New Product');
 		seed_document.upc = scanned_value;
 		seed_document.vendor = frm.doc.vendor;
+		seed_document.vpn_prefix = frm.doc.vpn_prefix;
+		seed_document.__created_via_order_receipt = 1;
 
 		bullwheel.forms.open_form_dialog('New Product', {
 			seed_document: seed_document,
