@@ -8,13 +8,11 @@ frappe.provide('bullwheel.warehouse');
 // description - Optional. Many circumstances where this function would be called already have the description, so it can be provided here to save a query.
 import { productLocationTable } from "./product_location_table";
 
-bullwheel.warehouse.product_location_dialog = function(products = []) {
+bullwheel.warehouse.product_location_dialog = function({ product_sku, description = null } = {}) {
 
-	processed_products = products.map(({sku, description = null}) => {
-		return {sku, description};
-	})	
-
-	// Get product description if not provided
+	// Look up the description only when the caller did not already supply one,
+	// then open the dialog — nested so the "not found" message always has the
+	// description available rather than racing an in-flight lookup.
 	if (description === null) {
 		frappe.call({
 			method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_values',
@@ -22,39 +20,46 @@ bullwheel.warehouse.product_location_dialog = function(products = []) {
 				name: product_sku,
 				fields: JSON.stringify(["description"])
 			},
-			callback: function(response) { description = response.message.description}
+			callback: function(response) {
+				description = response.message.description;
+				show_locations();
+			}
 		})
+	} else {
+		show_locations();
 	}
 
-	frappe.call({
-		method: 'bullwheel.warehouse.stock_handler.get_product_locations',
-		args: { product: product_sku },
-		callback: function(response) {
-			var locations = response.message || [];
-			// Return if no locations were found
-			if (!locations.length) {
-				frappe.msgprint({
-					title: __('Not Found'),
-					indicator: 'red',
-					message: __(`No warehouse location quantities were found for ${description} (${product_sku}).`)
-				})
-				return;
-			}
-
-			// Dialog Box with HTML field
-			let dialog = new frappe.ui.Dialog({
-				title: __('Product Locations'),
-				primary_action_label: __('OK'),
-				primary_action() {
-					dialog.hide();
+	function show_locations() {
+		frappe.call({
+			method: 'bullwheel.warehouse.stock_handler.get_product_locations',
+			args: { product: product_sku },
+			callback: function(response) {
+				var locations = response.message || [];
+				// Return if no locations were found
+				if (!locations.length) {
+					frappe.msgprint({
+						title: __('Not Found'),
+						indicator: 'red',
+						message: __(`No warehouse location quantities were found for ${description} (${product_sku}).`)
+					})
+					return;
 				}
-			})
-			
-			dialog.$body.html(productLocationTable(locations)); 
 
-			dialog.show();
-		}
-	})	
+				// Dialog Box with HTML field
+				let dialog = new frappe.ui.Dialog({
+					title: __('Product Locations'),
+					primary_action_label: __('OK'),
+					primary_action() {
+						dialog.hide();
+					}
+				})
+
+				dialog.$body.html(productLocationTable(locations));
+
+				dialog.show();
+			}
+		})
+	}
 }
 
 // Shared item check-in/check-out dialogs. Registered on the `bullwheel.warehouse`

@@ -11,8 +11,8 @@ frappe.listview_settings['Ascend Product'] = {
                 return;
             }
             bullwheel.warehouse.product_location_dialog({
-				product_sku: selected.map(product => product.name), 
-				description: selected.map(product => product.description)
+				product_sku: selected[0].name,
+				description: selected[0].description
 			})
         })
 
