@@ -2,7 +2,7 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
-## [1.1.0] - Unreleased
+## [1.1.0] - July 24, 2026
 
 ### Features
 
