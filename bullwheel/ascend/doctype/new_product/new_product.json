@@ -64,12 +64,12 @@
    "reqd": 1
   },
   {
-   "description": "Auto-generated when a Description Template is chosen below; edit directly only when Description Template is left blank.",
    "fieldname": "description",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Description",
    "mandatory_depends_on": "eval:!doc.description_template",
+   "placeholder": "Auto-generated when a Description Template is chosen below; edit directly only when Description Template is left blank.",
    "read_only_depends_on": "eval:doc.description_template",
    "unique": 1
   },
@@ -98,10 +98,10 @@
   },
   {
    "allow_in_quick_entry": 1,
-   "description": "Do NOT include product type (e.g., Skis, Snowboard Bindings).",
    "fieldname": "style_name",
    "fieldtype": "Data",
-   "label": "Style (Model) Name"
+   "label": "Style (Model) Name",
+   "placeholder": "Do NOT include product type (e.g., Skis, Snowboard Bindings)."
   },
   {
    "fieldname": "style_number",
@@ -325,8 +325,7 @@
    "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)",
    "fieldname": "binding_brand_and_model",
    "fieldtype": "Data",
-   "label": "Binding Brand and Model",
-   "mandatory_depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)"
+   "label": "Binding Brand and Model"
   },
   {
    "allow_in_quick_entry": 1,
@@ -339,7 +338,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-23 20:20:11.087072",
+ "modified": "2026-07-23 22:33:41.136611",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",
