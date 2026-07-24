@@ -37,10 +37,22 @@ function regenerate_description(frm) {
 // frappe.validated); setting frappe.validated = false on "No" stops the save the same way
 // a failed validation would. Only guards creation — saving edits to an existing record
 // does not re-prompt.
+//
+// The Save button is disabled here explicitly because frappe.ui.form.save() (save.js) only
+// disables it once validate + before_save have already resolved — while this confirm dialog
+// is up, the button underneath is still clickable. A second click during that gap (plus the
+// before_insert round-trip to Ascend for VPN generation) starts a second, fully independent
+// save before the first has assigned this document a real name, so the server processes both
+// as separate inserts: two New Product records, each running its own after_insert, i.e. two
+// Ascend Product records — and only one wins the race to claim a Vendor Product, since the
+// second one's part-number match check runs after the first has already committed.
 function confirm_new_product_save(frm) {
 	if (!frm.is_new()) {
 		return;
 	}
+
+	const primary_button = frm.page.btn_primary;
+	primary_button.prop("disabled", true);
 
 	return new Promise((resolve) => {
 		frappe.confirm(
@@ -48,6 +60,7 @@ function confirm_new_product_save(frm) {
 			() => resolve(),
 			() => {
 				frappe.validated = false;
+				primary_button.prop("disabled", false);
 				resolve();
 			}
 		);
@@ -80,4 +93,11 @@ for (const fieldname of DESCRIPTION_SOURCE_FIELDS) {
 	handlers[fieldname] = regenerate_description;
 }
 
-frappe.ui.form.on("New Product", handlers);
+// bullwheel.forms.open_form_dialog (form_dialog.js) constructs a brand-new frappe.ui.form.Form
+// on every open, unlike Frappe's own cached FormFactory — so ScriptManager.setup() re-evaluates
+// this whole file each time, and a bare frappe.ui.form.on() call here would re-register every
+// handler and accumulate duplicates in frappe.ui.form.handlers (which persists for the browser
+// session across those re-evaluations). This guard registers once per session.
+if (!frappe.ui.form.handlers["New Product"]?.before_save) {
+	frappe.ui.form.on("New Product", handlers);
+}
