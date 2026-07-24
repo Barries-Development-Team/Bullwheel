@@ -16,7 +16,11 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
-from bullwheel.ascend.validate_virtual_doctypes import validate_schema_config, autoname_mismatch_reason
+from bullwheel.ascend.validate_virtual_doctypes import (
+	validate_schema_config,
+	autoname_mismatch_reason,
+	_linked_id_field_structural_problems,
+)
 
 
 # ─── Test Fixtures ────────────────────────────────────────────────────────────
@@ -711,6 +715,14 @@ def _make_document(document_class, name, fieldtypes=None, read_only_fields=None,
 	document.name = name
 	document.meta = _FakeMeta(fieldtypes, read_only_fields, virtual_fields)
 	document.as_dict = lambda: {'name': name, **field_values}
+	# BaseDocument.set() consults self._table_fieldnames; the real attribute is populated by
+	# BaseDocument.__init__, which object.__new__ bypasses. An empty tuple lets set() treat every
+	# key as a scalar field (the only kind these fixtures use).
+	document._table_fieldnames = ()
+	# Field values are also exposed as real instance attributes so self.get(fieldname) — used by
+	# _resolve_linked_id_fields to read a display field — resolves them from __dict__.
+	for fieldname, field_value in field_values.items():
+		setattr(document, fieldname, field_value)
 	return document
 
 
@@ -1068,3 +1080,190 @@ class UnitTestDbInsert(UnitTestCase):
 		self.assertNotIn('Quantity', captured['query'])
 		self.assertNotIn('[Store UPC]', captured['query'])
 		self.assertIn('Description', captured['query'])
+
+
+# ─── LINKED_ID_FIELDS — resolution on write ───────────────────────────────────
+
+
+class _LinkedCategoryDocType(AbstractVirtualDocType):
+	"""Stands in for the 'Product Category' linked DocType — the resolution target whose
+	database_id (Categories.ID) backs a product's category_id (Products.TopicID)."""
+	TABLE_NAME = "Categories"
+	SHOW_FIELD_WARNINGS = False
+	SCHEMA_CONFIG = {
+		'name':        'Categories.Topic',
+		'database_id': 'Categories.ID',
+	}
+
+
+class _LinkedIdVirtualDocType(AbstractVirtualDocType):
+	"""AscendProduct-shaped: a JOIN-sourced 'category' display field paired with a writable
+	'category_id' on the primary table, resolved through the linked 'Product Category' DocType."""
+	TABLE_NAME = "Products"
+	SHOW_FIELD_WARNINGS = False
+	ALLOW_WRITE = True
+	JOIN_CONFIG = [
+		{'join': 'LEFT JOIN', 'table': 'Categories', 'alias': 'cat', 'on': 'Products.TopicID = cat.ID'}
+	]
+	SCHEMA_CONFIG = {
+		'name':        'Products.ID',
+		'description': 'Products.Description',
+		'category':    'cat.Topic',
+		'category_id': 'Products.TopicID',
+	}
+	LINKED_ID_FIELDS = {
+		'category': {
+			'id_field':      'category_id',
+			'link_doctype':  'Product Category',
+			'link_id_field': 'database_id',
+		},
+	}
+
+
+def _stub_linked_controller(return_value):
+	"""A minimal linked controller whose get_values returns a fixed value, standing in for the
+	real linked DocType that get_controller resolves at runtime (patched into the base module)."""
+	class _StubLinked:
+		@classmethod
+		def get_values(cls, name, fields):
+			return return_value
+	return _StubLinked
+
+
+class UnitTestResolveLinkedIdFields(UnitTestCase):
+
+	def test_resolves_and_sets_id_field(self):
+		"""The chosen display value is resolved through the linked DocType and its id written
+		onto the paired id field, so the writable FK column reflects the edit."""
+		document = _make_document(_LinkedIdVirtualDocType, 'ID-1', category='Skis')
+		stub = _stub_linked_controller(frappe._dict({'database_id': 'GUID-1'}))
+		with patch('bullwheel.ascend.virtual_doctype_base.get_controller', return_value=stub):
+			document._resolve_linked_id_fields()
+		self.assertEqual(document.get('category_id'), 'GUID-1')
+
+	def test_unresolvable_display_value_aborts(self):
+		"""A display value that resolves to no linked record aborts the save rather than writing
+		a stale or NULL id."""
+		document = _make_document(_LinkedIdVirtualDocType, 'ID-1', category='Ghost')
+		with patch(
+			'bullwheel.ascend.virtual_doctype_base.get_controller',
+			return_value=_stub_linked_controller(None),
+		):
+			with self.assertRaises(frappe.ValidationError):
+				document._resolve_linked_id_fields()
+
+	def test_none_resolved_id_aborts(self):
+		"""A linked record found but with a NULL id column is treated as unresolvable."""
+		document = _make_document(_LinkedIdVirtualDocType, 'ID-1', category='Ghost')
+		with patch(
+			'bullwheel.ascend.virtual_doctype_base.get_controller',
+			return_value=_stub_linked_controller(frappe._dict({'database_id': None})),
+		):
+			with self.assertRaises(frappe.ValidationError):
+				document._resolve_linked_id_fields()
+
+	def test_empty_display_clears_id_without_lookup(self):
+		"""An empty display value clears the id field and skips the resolution query entirely."""
+		document = _make_document(_LinkedIdVirtualDocType, 'ID-1', category='', category_id='OLD-GUID')
+		with patch('bullwheel.ascend.virtual_doctype_base.get_controller') as fake_get_controller:
+			document._resolve_linked_id_fields()
+			fake_get_controller.assert_not_called()
+		self.assertIsNone(document.get('category_id'))
+
+	def test_no_linked_id_fields_is_noop(self):
+		"""A controller without LINKED_ID_FIELDS resolves nothing and never touches get_controller."""
+		document = _make_document(_WritableSimpleVirtualDocType, 'SKU-1', description='Red Ski')
+		with patch('bullwheel.ascend.virtual_doctype_base.get_controller') as fake_get_controller:
+			document._resolve_linked_id_fields()
+			fake_get_controller.assert_not_called()
+
+	def test_db_update_aborts_on_unresolvable_display(self):
+		"""Resolution runs inside db_update, so an unresolvable category rejects the whole save
+		before any SQL write is attempted."""
+		document = _make_document(_LinkedIdVirtualDocType, 'ID-1', description='Red Ski', category='Ghost')
+		with patch(
+			'bullwheel.ascend.virtual_doctype_base.get_controller',
+			return_value=_stub_linked_controller(None),
+		):
+			with self.assertRaises(frappe.ValidationError):
+				document.db_update()
+
+
+# ─── LINKED_ID_FIELDS — structural validation ─────────────────────────────────
+
+
+class UnitTestLinkedIdFieldStructuralProblems(UnitTestCase):
+	"""The DB-free structural half of the convention check. The meta-dependent coverage and
+	read-only checks are exercised end-to-end by `bench migrate`."""
+
+	def _patch_get_controller(self):
+		"""Resolve the 'Product Category' link_doctype to the stand-in controller above."""
+		return patch(
+			'bullwheel.ascend.validate_virtual_doctypes.get_controller',
+			side_effect=lambda name: {'Product Category': _LinkedCategoryDocType}[name],
+		)
+
+	def test_valid_config_has_no_problems(self):
+		with self._patch_get_controller():
+			self.assertEqual(_linked_id_field_structural_problems(_LinkedIdVirtualDocType), [])
+
+	def test_missing_required_key_is_flagged(self):
+		class _MissingKey(_LinkedIdVirtualDocType):
+			LINKED_ID_FIELDS = {'category': {'id_field': 'category_id'}}  # no link_doctype/link_id_field
+		with self._patch_get_controller():
+			problems = _linked_id_field_structural_problems(_MissingKey)
+		self.assertTrue(any('category' in problem for problem in problems))
+
+	def test_id_field_on_join_table_is_flagged(self):
+		"""A JOIN column can't be written, so an id_field mapped to one defeats the convention."""
+		class _JoinIdField(_LinkedIdVirtualDocType):
+			SCHEMA_CONFIG = {
+				'name':        'Products.ID',
+				'category':    'cat.Topic',
+				'category_id': 'cat.ID',  # on the joined table, not Products
+			}
+		with self._patch_get_controller():
+			problems = _linked_id_field_structural_problems(_JoinIdField)
+		self.assertTrue(any('category_id' in problem for problem in problems))
+
+	def test_unmapped_display_field_is_flagged(self):
+		class _UnmappedDisplay(_LinkedIdVirtualDocType):
+			LINKED_ID_FIELDS = {
+				'nonexistent': {
+					'id_field':      'category_id',
+					'link_doctype':  'Product Category',
+					'link_id_field': 'database_id',
+				},
+			}
+		with self._patch_get_controller():
+			problems = _linked_id_field_structural_problems(_UnmappedDisplay)
+		self.assertTrue(any('nonexistent' in problem for problem in problems))
+
+	def test_unmapped_link_id_field_is_flagged(self):
+		class _BadLinkIdField(_LinkedIdVirtualDocType):
+			LINKED_ID_FIELDS = {
+				'category': {
+					'id_field':      'category_id',
+					'link_doctype':  'Product Category',
+					'link_id_field': 'not_a_field',  # absent from Product Category's SCHEMA_CONFIG
+				},
+			}
+		with self._patch_get_controller():
+			problems = _linked_id_field_structural_problems(_BadLinkIdField)
+		self.assertTrue(any('not_a_field' in problem for problem in problems))
+
+	def test_unresolvable_link_doctype_is_flagged(self):
+		class _BadLinkDoctype(_LinkedIdVirtualDocType):
+			LINKED_ID_FIELDS = {
+				'category': {
+					'id_field':      'category_id',
+					'link_doctype':  'Nope',
+					'link_id_field': 'database_id',
+				},
+			}
+		with patch(
+			'bullwheel.ascend.validate_virtual_doctypes.get_controller',
+			side_effect=Exception('no such doctype'),
+		):
+			problems = _linked_id_field_structural_problems(_BadLinkDoctype)
+		self.assertTrue(any('Nope' in problem for problem in problems))

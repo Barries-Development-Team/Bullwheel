@@ -30,6 +30,7 @@ class AscendProduct(AbstractVirtualDocType):
 		'name': 'Products.[Store UPC]',
 		'id': 'Products.ID',
 		'category': 'cat.Topic',
+		'category_id':'Products.TopicID',
 		'description': 'Products.Description',
 		'price': 'Products.Price',
 		'estimated_cost': 'Products.EstCost',
@@ -76,6 +77,18 @@ class AscendProduct(AbstractVirtualDocType):
 		'season': 'Products.Season',
 		'year': 'Products.Year',
 		'gender': 'Products.Gender'
+	}
+
+	# 'category' displays the joined column cat.Topic, which can't be written directly. Its
+	# foreign key lives on Products as TopicID (mapped to 'category_id'). On save the framework
+	# resolves the chosen category (a Product Category name) to its Categories.ID via the linked
+	# DocType's database_id field and writes it to category_id -> Products.TopicID.
+	LINKED_ID_FIELDS = {
+		'category': {
+			'id_field': 'category_id',
+			'link_doctype': 'Product Category',
+			'link_id_field': 'database_id',
+		},
 	}
 
 	JOIN_CONFIG = [

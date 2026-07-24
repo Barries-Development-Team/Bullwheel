@@ -35,10 +35,12 @@
   "max_din",
   "pricing_section",
   "price",
-  "column_break_njci",
   "estimated_cost",
-  "column_break_lktw",
   "case",
+  "column_break_njci",
+  "product_pricing_rule",
+  "swap_price",
+  "online_price",
   "case_details_section",
   "case_quantity",
   "column_break_njxc",
@@ -266,10 +268,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "column_break_lktw",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "column_break_ipev",
    "fieldtype": "Column Break"
   },
@@ -341,12 +339,31 @@
    "fieldname": "max_din",
    "fieldtype": "Data",
    "label": "Max DIN"
+  },
+  {
+   "fieldname": "swap_price",
+   "fieldtype": "Currency",
+   "label": "Swap Price",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "online_price",
+   "fieldtype": "Currency",
+   "label": "Online Price",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "product_pricing_rule",
+   "fieldtype": "Link",
+   "label": "Swap/Online Pricing Rule",
+   "options": "Product Pricing Rule",
+   "placeholder": "Leave blank to set manually"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-23 23:04:39.257405",
+ "modified": "2026-07-24 10:37:47.480819",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",

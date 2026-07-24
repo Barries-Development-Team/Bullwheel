@@ -7,6 +7,7 @@ import uuid
 
 import frappe
 from frappe.model.document import Document
+from frappe.model.base_document import get_controller
 from frappe.utils import get_datetime, getdate
 
 from bullwheel.database.SQLServer import MSSQLDatabase
@@ -86,6 +87,12 @@ class AbstractVirtualDocType(Document):
 	ALT_NAME_RESOLUTION_FIELDS: list = None	# Optional list of additional SCHEMA_CONFIG fieldnames a record can also be
 	                             		# identified by, in addition to 'name' (e.g. ['upc'] lets a Store-SKU-keyed
 	                             		# doctype also be looked up by UPC).
+	LINKED_ID_FIELDS: dict = None		# Maps an editable, JOIN-sourced display field to the writable id field on
+	                             		# TABLE_NAME that stores its foreign key, plus the linked virtual DocType used
+	                             		# to resolve the display value to that id on save. See _resolve_linked_id_fields.
+	                             		# Shape: { 'category': {'id_field': 'category_id',
+	                             		#                       'link_doctype': 'Product Category',
+	                             		#                       'link_id_field': 'database_id'} }
 
 
 	# ─── Helper Methods  ──────────────────────────────────────────────────────
@@ -570,6 +577,45 @@ class AbstractVirtualDocType(Document):
 			writable_fields.append((sql_column, self._normalize_write_value(field, value)))
 		return writable_fields
 
+	def _resolve_linked_id_fields(self) -> None:
+		"""Resolve every LINKED_ID_FIELDS display field to the id it references and write that id
+		onto the paired id field, so the writable foreign-key column on TABLE_NAME reflects the
+		user's edit to the (read-only, JOIN-sourced) display field.
+
+		A display field maps to a joined column that cannot be written directly (e.g. 'category'
+		-> 'cat.Topic'); its foreign key lives on TABLE_NAME as a paired id field (e.g. 'category_id'
+		-> 'Products.TopicID'). Because the display field is a Link to another virtual DocType, the
+		id is resolved through that DocType's get_values — the chosen display value is exactly the
+		linked record's primary key, and link_id_field names the column holding its id.
+
+		The resolved id is set on the document before _collect_writable_fields runs, so it is written
+		as a normal TABLE_NAME column. An empty display value clears the id field. A non-empty display
+		value that resolves to no linked record aborts the save with frappe.throw — the user picked a
+		value the framework cannot resolve an id for, and silently writing a stale or NULL id would
+		corrupt the record's category."""
+		if not self.LINKED_ID_FIELDS:
+			return
+
+		for display_field, config in self.LINKED_ID_FIELDS.items():
+			id_field = config['id_field']
+			link_doctype = config['link_doctype']
+			link_id_field = config['link_id_field']
+
+			display_value = self.get(display_field)
+			if not display_value:
+				self.set(id_field, None)
+				continue
+
+			linked_controller = get_controller(link_doctype)
+			resolved = linked_controller.get_values(display_value, [link_id_field])
+			if not resolved or resolved.get(link_id_field) is None:
+				frappe.throw(
+					f"Cannot save {self.doctype} '{self.name}': {display_field} '{display_value}' "
+					f"does not resolve to a {link_doctype} record, so its {id_field} cannot be "
+					f"determined. Choose a value that exists in {link_doctype}."
+				)
+			self.set(id_field, resolved.get(link_id_field))
+
 	def db_insert(self, *args, **kwargs):
 		"""Insert this document as a new row in TABLE_NAME. Frappe performs no name-uniqueness
 		check for virtual doctypes before calling db_insert (unlike a real doctype, where the
@@ -588,6 +634,7 @@ class AbstractVirtualDocType(Document):
 		if self._record_exists(self.name):
 			frappe.throw(f"{self.doctype} '{self.name}' already exists.", frappe.DuplicateEntryError)
 
+		self._resolve_linked_id_fields()
 		writable_fields = self._collect_writable_fields(include_name=True)
 		if not writable_fields:
 			frappe.throw(f"{self.doctype}: no writable SCHEMA_CONFIG columns resolve for db_insert.")
@@ -619,6 +666,7 @@ class AbstractVirtualDocType(Document):
 		if not self.name:
 			frappe.throw(f"Cannot update {self.doctype}: no primary key value set.")
 
+		self._resolve_linked_id_fields()
 		writable_fields = self._collect_writable_fields(include_name=False)
 		if not writable_fields:
 			frappe.throw(f"{self.doctype}: no writable SCHEMA_CONFIG columns resolve for db_update.")

@@ -100,10 +100,25 @@ class NewProduct(Document):
 		)
 
 	def validate(self):
-		"""Re-render the Description (in case fields changed since autoname) and enforce the
-		binding requirement for ski hardgoods server-side, so the rule holds on the Quick Entry
-		receiving path (which does not run the form's field scripts)."""
+		"""Re-render the Description (in case fields changed since autoname) and re-derive the
+		Swap and Online prices, so both hold on the Quick Entry receiving path (which does not
+		run the form's field scripts)."""
 		self._render_description()
+		self._compute_pricing()
+
+	def _compute_pricing(self):
+		"""Re-derive Swap Price and Online Price from the selected Product Pricing Rule and this
+		document's MSRP (the `price` field), so the saved values always reflect the rule's current
+		percentages and this document's current MSRP rather than trusting whatever the client last
+		previewed. Runs server-side — and on the Quick Entry receiving path, where the form's
+		live-preview script (see new_product.js) never executes. With no rule selected the prices
+		are left as entered, matching the form's manual-entry path."""
+		if not self.product_pricing_rule:
+			return
+
+		computed_prices = compute_swap_and_online_price(self.price, self.product_pricing_rule)
+		self.swap_price = computed_prices["swap_price"]
+		self.online_price = computed_prices["online_price"]
 
 
 	def _render_description(self):
@@ -200,3 +215,19 @@ def to_import_row(product):
 			continue
 		row[template_column] = getattr(product, field_name, None)
 	return row
+
+@frappe.whitelist()
+def compute_swap_and_online_price(msrp: float, product_pricing_rule_name: str) -> dict:
+	computed_prices = {
+		'swap_price': 0.0,
+		'online_price': 0.0
+	}
+	if not msrp:
+		return computed_prices
+
+	product_pricing_rule = frappe.get_cached_doc('Product Pricing Rule', product_pricing_rule_name)
+	
+	computed_prices["swap_price"] = swap_price if (swap_price := round(msrp * (1 - product_pricing_rule.swap_percentage)) - 0.05) > 0 else 0
+	computed_prices["online_price"] = online_price if (online_price := round(msrp * (1 - product_pricing_rule.online_percentage)) - 0.05) > 0 else 0
+
+	return computed_prices
