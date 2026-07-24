@@ -51,7 +51,8 @@ class FormDialog {
 	// Constructs the real frappe.ui.form.Form inside the dialog body and renders the seeded
 	// document into it. in_form = false is the framework's escape hatch for out-of-page forms:
 	// it suppresses the save-triggered route change (rename_notify) and the browser
-	// title/breadcrumb writes (refresh_header).
+	// title write (refresh_header) — but NOT the breadcrumb calls, which need a separate
+	// guard below.
 	build_and_refresh_form() {
 		this.form_container = document.createElement('div');
 		this.dialog.body.appendChild(this.form_container);
@@ -66,6 +67,21 @@ class FormDialog {
 		this.previous_cur_frm = window.cur_frm;
 		const route_key = frappe.get_route_str();
 		const previous_page_entry = frappe.ui.pages[route_key];
+
+		// initialize_new_doc() and refresh_header() call frappe.breadcrumbs.add()/update()
+		// unconditionally (not gated by in_form/in_dialog). update() resolves the doc to
+		// display from the BROWSER'S CURRENT ROUTE, not from this form — so whenever the
+		// underlying page is itself a Form route (e.g. opening this dialog from Order
+		// Receipt), it looks up a docname that doesn't match this dialog's phantom
+		// document, gets undefined back, and throws. Because breadcrumbs.update() runs
+		// inside render_form()'s run_serially chain, that throw aborts every later step,
+		// including refresh_fields() — which is why only one field would render. Breadcrumb
+		// display is meaningless for a modal anyway, so no-op both for the dialog's lifetime
+		// and restore the real functions on teardown.
+		this.previous_breadcrumbs_add = frappe.breadcrumbs.add;
+		this.previous_breadcrumbs_update = frappe.breadcrumbs.update;
+		frappe.breadcrumbs.add = () => {};
+		frappe.breadcrumbs.update = () => {};
 
 		this.form.refresh(this.seed_document.name);
 
@@ -106,7 +122,8 @@ class FormDialog {
 	}
 
 	// Releases everything the embedded Form attached globally: the unsaved-changes
-	// beforeunload listener, the cur_frm global, and the dialog's DOM subtree.
+	// beforeunload listener, the cur_frm global, the breadcrumbs no-op patch, and the
+	// dialog's DOM subtree.
 	teardown() {
 		if (this.teardown_completed) {
 			return;
@@ -116,6 +133,8 @@ class FormDialog {
 		if (window.cur_frm === this.form) {
 			window.cur_frm = this.previous_cur_frm || null;
 		}
+		frappe.breadcrumbs.add = this.previous_breadcrumbs_add;
+		frappe.breadcrumbs.update = this.previous_breadcrumbs_update;
 		this.dialog.$wrapper.remove();
 	}
 }
