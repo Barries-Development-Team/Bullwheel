@@ -209,7 +209,7 @@ function queue_add_or_increment_item(frm, vpn, cost, description, upc) {
 // background job.
 async function open_vendor_link_dialog(frm, record) {
 
-	const generated_vpn = await bullwheel.ascend.generate_vpn({
+	const generated_vpn_response = await frappe.call('bullwheel.ascend.doctype.vendor_product.vendor_product.generate_vpn', {
 		vendor_id: frm.doc.cached_vendor_id,
 		vpn_prefix: frm.doc.vpn_prefix,
 		brand: record.brand,
@@ -217,6 +217,7 @@ async function open_vendor_link_dialog(frm, record) {
 		size: record.size,
 		color: record.color
 	});
+	const generated_vpn = generated_vpn_response.message;
 
 	const dialog = new frappe.ui.Dialog({
 		title: __('Link Vendor Product'),

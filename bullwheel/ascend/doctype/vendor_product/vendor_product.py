@@ -1,6 +1,8 @@
 # Copyright (c) 2026, Barrie's Ski and Sports and contributors
 # For license information, please see license.txt
 
+import re
+
 import frappe
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
@@ -53,11 +55,11 @@ class VendorProduct(AbstractVirtualDocType):
     }
 	]
 
-@frappe.whitelist()
-def vendor_product_match_count(vendor_id, part_number, part_number_similarity: str = 'equals') -> int:
-	"""Check whether a VendorProducts row already exists for this vendor, matching part_number
-	either exactly or via a wildcard LIKE depending on part_number_similarity. Returns the
-	number of matching rows."""
+def _part_number_match_count(ascend, vendor_id, part_number, part_number_similarity: str = 'equals') -> int:
+	"""Count VendorProducts rows for this vendor matching part_number, either exactly or via a
+	wildcard LIKE depending on part_number_similarity. Runs on an already-open ascend connection
+	so callers that need several checks in a row (e.g. a counter-suffix search) share one
+	connection instead of opening a new one per check."""
 
 	match part_number_similarity:
 		case 'equals':
@@ -67,16 +69,64 @@ def vendor_product_match_count(vendor_id, part_number, part_number_similarity: s
 			query = "SELECT ID FROM VendorProducts WHERE VendorID = %s AND PartNumber LIKE %s"
 			values = [vendor_id, f'%{part_number}%']
 
-	with MSSQLDatabase(get_default_ascend_database()) as ascend:
-		existing = ascend.sql(
-			query=query,
-			values=values,
-			as_dict=True,
-		)
-	if existing:
-		return len(existing)
+	existing = ascend.sql(query=query, values=values, as_dict=True)
+	return len(existing)
 
-	return 0
+
+@frappe.whitelist()
+def vendor_product_match_count(vendor_id, part_number, part_number_similarity: str = 'equals') -> int:
+	"""Check whether a VendorProducts row already exists for this vendor, matching part_number
+	either exactly or via a wildcard LIKE depending on part_number_similarity. Returns the
+	number of matching rows."""
+
+	with MSSQLDatabase(get_default_ascend_database()) as ascend:
+		return _part_number_match_count(ascend, vendor_id, part_number, part_number_similarity)
+
+
+def _format_vpn_component(value) -> str:
+	"""Normalize one VPN component: strip anything that isn't alphanumeric or whitespace,
+	collapse remaining whitespace to a single "-", then uppercase."""
+
+	value = re.sub(r'[^a-zA-Z0-9\s]', '', str(value).strip())
+	return re.sub(r'\s+', '-', value).upper()
+
+
+PART_NUMBER_LIMIT = 45  # Ascend's Part Number column allows 50 characters; kept as a safety margin.
+
+
+@frappe.whitelist()
+def generate_vpn(vendor_id, vpn_prefix, brand, model, size=None, color=None) -> str:
+	"""Build a unique Ascend part number as Vendor Acronym-Brand-Model-Size-Color-Counter: brand
+	is capped to its first two words and model is truncated if needed to stay within
+	PART_NUMBER_LIMIT, then a counter suffix (-1, -2, …) is searched for, inside one Ascend
+	connection, until a part number with no existing VendorProducts match is found."""
+
+	def build_base_vpn(model_value):
+		components = [vpn_prefix, limited_brand, model_value, size, color]
+		formatted = [_format_vpn_component(component) for component in components if component is not None and str(component).strip() != '']
+		return '-'.join(formatted)
+
+	limited_brand = ' '.join(brand.strip().split()[:2])
+	base_vpn = build_base_vpn(model)
+
+	# Still over the limit: shorten "model" by exactly the overage rather than a fixed amount,
+	# so short overages cost as little of "model" as possible.
+	if len(base_vpn) > PART_NUMBER_LIMIT:
+		overage = len(base_vpn) - PART_NUMBER_LIMIT
+		formatted_model = _format_vpn_component(model)
+		truncated_model = formatted_model[:max(0, len(formatted_model) - overage)]
+		base_vpn = build_base_vpn(truncated_model)
+
+	if len(base_vpn) > PART_NUMBER_LIMIT:
+		frappe.throw(f'Generated VPN "{base_vpn}" exceeds the {PART_NUMBER_LIMIT}-character limit even after truncating "model".')
+
+	counter = 1
+	with MSSQLDatabase(get_default_ascend_database()) as ascend:
+		while True:
+			candidate = f"{base_vpn}-{counter}"
+			if not _part_number_match_count(ascend, vendor_id, candidate):
+				return candidate
+			counter += 1
 
 def create_vendor_product(
 	vendor_id, product_id, part_number, cost, description=None,
@@ -89,14 +139,7 @@ def create_vendor_product(
 
 	
 	with MSSQLDatabase(get_default_ascend_database()) as ascend:
-		# This function intentionally does not utilize the vendor_product_exists() method provided 
-		# by this file to avoid multiple database connections.
-		existing = ascend.sql(
-			"SELECT ID FROM VendorProducts WHERE VendorID = %s AND PartNumber = %s",
-			[vendor_id, part_number],
-			as_dict=True,
-		)
-		if existing:
+		if _part_number_match_count(ascend, vendor_id, part_number):
 			return False
 
 		# Raw parameterized INSERT instead of the virtual doctype framework: NAME_EXPRESSION
