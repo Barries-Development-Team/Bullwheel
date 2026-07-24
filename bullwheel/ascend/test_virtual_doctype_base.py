@@ -704,7 +704,7 @@ class _FakeMeta:
 		)
 
 
-def _make_document(document_class, name, fieldtypes=None, read_only_fields=None, virtual_fields=None, **field_values):
+def _make_document(document_class, name, fieldtypes=None, read_only_fields=None, virtual_fields=None, is_new=True, **field_values):
 	"""Build a bare instance of a virtual doctype test fixture without going through
 	Document.__init__ (which requires a real registered DocType's meta). db_insert/db_update
 	only read self.name, self.doctype, self.meta, and self.as_dict() off the instance —
@@ -719,6 +719,10 @@ def _make_document(document_class, name, fieldtypes=None, read_only_fields=None,
 	# BaseDocument.__init__, which object.__new__ bypasses. An empty tuple lets set() treat every
 	# key as a scalar field (the only kind these fixtures use).
 	document._table_fieldnames = ()
+	# is_new() reads __islocal off the document. It drives _resolve_linked_id_fields' change
+	# detection (a new record always resolves; an update only resolves changed display fields).
+	# Update-path tests pass is_new=False and stub get_latest() to supply the prior values.
+	document.__dict__['__islocal'] = 1 if is_new else 0
 	# Field values are also exposed as real instance attributes so self.get(fieldname) — used by
 	# _resolve_linked_id_fields to read a display field — resolves them from __dict__.
 	for fieldname, field_value in field_values.items():
@@ -1120,13 +1124,18 @@ class _LinkedIdVirtualDocType(AbstractVirtualDocType):
 	}
 
 
-def _stub_linked_controller(return_value):
-	"""A minimal linked controller whose get_values returns a fixed value, standing in for the
-	real linked DocType that get_controller resolves at runtime (patched into the base module)."""
+def _stub_linked_controller(return_value, match_count=1):
+	"""A minimal linked controller standing in for the real linked DocType that get_controller
+	resolves at runtime (patched into the base module). get_values returns a fixed value; get_count
+	returns match_count, letting a test drive the ambiguity guard (match_count > 1)."""
 	class _StubLinked:
 		@classmethod
 		def get_values(cls, name, fields):
 			return return_value
+
+		@classmethod
+		def get_count(cls, **kwargs):
+			return match_count
 	return _StubLinked
 
 
@@ -1176,6 +1185,36 @@ class UnitTestResolveLinkedIdFields(UnitTestCase):
 		with patch('bullwheel.ascend.virtual_doctype_base.get_controller') as fake_get_controller:
 			document._resolve_linked_id_fields()
 			fake_get_controller.assert_not_called()
+
+	def test_ambiguous_display_value_aborts(self):
+		"""A display value matching more than one linked record yields no single id, so the save
+		is rejected rather than silently picking an arbitrary one."""
+		document = _make_document(_LinkedIdVirtualDocType, 'ID-1', category='Duplicated')
+		stub = _stub_linked_controller(frappe._dict({'database_id': 'GUID-1'}), match_count=2)
+		with patch('bullwheel.ascend.virtual_doctype_base.get_controller', return_value=stub):
+			with self.assertRaises(frappe.ValidationError):
+				document._resolve_linked_id_fields()
+
+	def test_update_skips_resolution_when_display_unchanged(self):
+		"""On update, a display field unchanged from the persisted record is left alone — no lookup,
+		and the existing id field is preserved (guards against clobbering an orphaned/empty value)."""
+		document = _make_document(
+			_LinkedIdVirtualDocType, 'ID-1', is_new=False, category='Skis', category_id='EXISTING-ID',
+		)
+		document.get_latest = lambda: frappe._dict({'category': 'Skis'})
+		with patch('bullwheel.ascend.virtual_doctype_base.get_controller') as fake_get_controller:
+			document._resolve_linked_id_fields()
+			fake_get_controller.assert_not_called()
+		self.assertEqual(document.get('category_id'), 'EXISTING-ID')
+
+	def test_update_resolves_when_display_changed(self):
+		"""On update, a changed display field is resolved and its id field rewritten."""
+		document = _make_document(_LinkedIdVirtualDocType, 'ID-1', is_new=False, category='NewCat')
+		document.get_latest = lambda: frappe._dict({'category': 'OldCat'})
+		stub = _stub_linked_controller(frappe._dict({'database_id': 'GUID-NEW'}))
+		with patch('bullwheel.ascend.virtual_doctype_base.get_controller', return_value=stub):
+			document._resolve_linked_id_fields()
+		self.assertEqual(document.get('category_id'), 'GUID-NEW')
 
 	def test_db_update_aborts_on_unresolvable_display(self):
 		"""Resolution runs inside db_update, so an unresolvable category rejects the whole save

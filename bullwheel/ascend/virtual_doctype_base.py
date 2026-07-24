@@ -588,25 +588,47 @@ class AbstractVirtualDocType(Document):
 		id is resolved through that DocType's get_values — the chosen display value is exactly the
 		linked record's primary key, and link_id_field names the column holding its id.
 
+		Resolution is change-triggered: on update, a display field whose value already matches the
+		persisted record is left untouched. This avoids a lookup on every save when nothing changed
+		and, critically, avoids clobbering the id field when a record that loaded with an empty or
+		unresolvable display value (e.g. an orphaned foreign key whose JOIN yields NULL) is saved
+		after an unrelated edit. On insert there is no prior record, so every mapping is resolved.
+
 		The resolved id is set on the document before _collect_writable_fields runs, so it is written
 		as a normal TABLE_NAME column. An empty display value clears the id field. A non-empty display
-		value that resolves to no linked record aborts the save with frappe.throw — the user picked a
-		value the framework cannot resolve an id for, and silently writing a stale or NULL id would
-		corrupt the record's category."""
+		value aborts the save with frappe.throw when it resolves to no linked record (the user picked a
+		value the framework cannot resolve an id for — silently writing a stale or NULL id would
+		corrupt the record) or to more than one (an ambiguous name yields no single id to write)."""
 		if not self.LINKED_ID_FIELDS:
 			return
 
+		previous = None if self.is_new() else self.get_latest()
+
 		for display_field, config in self.LINKED_ID_FIELDS.items():
+			display_value = self.get(display_field)
+			if previous is not None and previous.get(display_field) == display_value:
+				continue
+
 			id_field = config['id_field']
 			link_doctype = config['link_doctype']
 			link_id_field = config['link_id_field']
 
-			display_value = self.get(display_field)
 			if not display_value:
 				self.set(id_field, None)
 				continue
 
 			linked_controller = get_controller(link_doctype)
+			match_count = linked_controller.get_count(
+				doctype=link_doctype, filters=[(None, 'name', '=', display_value)], fields=[],
+				distinct=False, save_user_settings=False, strict=None,
+			)
+			if match_count > 1:
+				frappe.throw(
+					f"Cannot save {self.doctype} '{self.name}': {display_field} '{display_value}' "
+					f"matches {match_count} {link_doctype} records, so its {id_field} is ambiguous. "
+					f"The {link_doctype} name must be unique to resolve a single id."
+				)
+
 			resolved = linked_controller.get_values(display_value, [link_id_field])
 			if not resolved or resolved.get(link_id_field) is None:
 				frappe.throw(

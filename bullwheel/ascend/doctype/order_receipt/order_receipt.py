@@ -27,14 +27,14 @@ class OrderReceipt(Document):
 	def total_order_items(self):
 		total = 0
 		for item in self.order_items:
-			total += item.quantity
+			total += item.quantity or 0
 		return total
-	
+
 	@property
 	def subtotal(self):
 		total = 0
 		for item in self.order_items:
-			total += item.quantity * item.cost
+			total += (item.quantity or 0) * (item.cost or 0)
 		return total
 	
 	@property

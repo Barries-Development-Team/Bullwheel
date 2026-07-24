@@ -1,0 +1,18 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Product Pricing Rule",
+  "modified": "2026-07-24 11:28:09.035517",
+  "name": "SWAP-60-ONLINE-50-OFF",
+  "online_percentage": 0.5,
+  "swap_percentage": 0.6
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Product Pricing Rule",
+  "modified": "2026-07-24 12:06:46.105081",
+  "name": "SWAP-50-ONLINE-40-OFF",
+  "online_percentage": 0.4,
+  "swap_percentage": 0.5
+ }
+]

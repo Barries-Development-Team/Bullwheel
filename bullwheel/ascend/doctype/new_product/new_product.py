@@ -111,7 +111,7 @@ class NewProduct(Document):
 		"""Re-render the Description (in case fields changed since autoname) and re-derive the
 		Swap and Online prices, so both hold on the Quick Entry receiving path (which does not
 		run the form's field scripts)."""
-		if len(self.upc) >= 20:
+		if self.upc and len(self.upc) > 20:
 			frappe.throw('Max length for UPC is 20 characters.')
 		self._render_description()
 		self._compute_pricing()
@@ -163,6 +163,11 @@ class NewProduct(Document):
 
 		if self.vendor:
 			product_record = AscendProduct.get_values(self.store_sku, ["id"])
+			if not product_record:
+				frappe.throw(
+					f'Ascend Product "{self.store_sku}" was not found immediately after creation; '
+					f'cannot create its Vendor Product.'
+				)
 			create_vendor_product(
 				vendor_id=self._resolve_vendor_id(),
 				product_id=product_record["id"],

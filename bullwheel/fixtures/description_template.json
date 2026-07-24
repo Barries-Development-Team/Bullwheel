@@ -2,6 +2,14 @@
  {
   "docstatus": 0,
   "doctype": "Description Template",
+  "modified": "2026-07-23 22:47:31.359617",
+  "name": "Snowboard Binding",
+  "template": "{{ doc.brand }} \n{%- if doc.year %} {{ doc.year }}{% endif %}\n{%- if doc.gender %} {{ doc.gender }}{% endif %}\n{{ doc.style_name }}\n{%- if doc.size %} {{ doc.size }}cm{% endif %}\n Snowboard Binding - \n{%- if doc.color %} {{ doc.color }}{% endif %}",
+  "template_name": "Snowboard Binding"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Description Template",
   "modified": "2026-07-20 16:13:10.590824",
   "name": "Retail Ski",
   "template": "{{ doc.brand }} \n{%- if doc.year %} {{ doc.year }}{% endif %}\n{{ doc.style_name }}\n{%- if doc.size %} {{ doc.size }}cm{% endif %}\n Skis",
