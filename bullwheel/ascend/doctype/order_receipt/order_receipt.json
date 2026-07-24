@@ -9,6 +9,7 @@
   "details",
   "vendor",
   "vpn_prefix",
+  "cached_vendor_id",
   "po",
   "column_break_yjnq",
   "order_status",
@@ -130,12 +131,18 @@
    "hidden": 1,
    "label": "VPN Prefix",
    "read_only": 1
+  },
+  {
+   "fieldname": "cached_vendor_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Cached Vendor ID"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-23 18:32:11.840752",
+ "modified": "2026-07-23 18:46:44.018057",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",

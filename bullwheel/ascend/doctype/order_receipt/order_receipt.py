@@ -15,6 +15,11 @@ from bullwheel.ascend.import_sheets import build_import_sheet, serve_file_downlo
 
 
 class OrderReceipt(Document):
+
+	def validate(self):
+		if not self.cached_vendor_id:
+			self.cached_vendor_id = Vendor.get_values(name = self.vendor, fields = ['vendor_id'])
+
 	@property
 	def total_order_items(self):
 		total = 0
