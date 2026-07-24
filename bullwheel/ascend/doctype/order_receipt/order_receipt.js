@@ -213,7 +213,7 @@ async function open_vendor_link_dialog(frm, record) {
 		vendor_id: frm.doc.cached_vendor_id,
 		vpn_prefix: frm.doc.vpn_prefix,
 		brand: record.brand,
-		model: record.model,
+		model: record.style_name,
 		size: record.size,
 		color: record.color
 	});

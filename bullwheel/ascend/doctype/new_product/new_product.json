@@ -98,6 +98,7 @@
   },
   {
    "allow_in_quick_entry": 1,
+   "description": "Do NOT include product type (e.g., Skis, Snowboard Bindings).",
    "fieldname": "style_name",
    "fieldtype": "Data",
    "label": "Style (Model) Name"
@@ -126,6 +127,7 @@
    "label": "Year"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "gender",
    "fieldtype": "Data",
    "label": "Gender"
@@ -337,7 +339,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-20 17:24:38.208240",
+ "modified": "2026-07-23 20:20:11.087072",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",

@@ -19,6 +19,10 @@ function format_vpn_component(value) {
         .toUpperCase();
 }
 
+// Ascend's Part Number column is limited to 50 characters; 45 is used as the effective limit
+// to leave a margin of safety.
+const PART_NUMBER_LIMIT = 45;
+
 // Async: appending the Counter component requires checking Ascend for an existing VendorProducts
 // row with that exact part number, one candidate at a time, via vendor_product_match_count.
 bullwheel.ascend.generate_vpn = async function({
@@ -32,10 +36,29 @@ bullwheel.ascend.generate_vpn = async function({
     // VPN Components
     // Vendor Acronym-Brand-Model-Size-Color-Counter
 
-    const base_vpn = [vpn_prefix, brand, model, size, color]
+    // Brand alone can run long (e.g. "The North Face Inc."); cap it to its first two words
+    // up front so it doesn't dominate the character budget.
+    const limited_brand = brand.trim().split(/\s+/).slice(0, 2).join(' ');
+
+    const build_base_vpn = (model_value) => [vpn_prefix, limited_brand, model_value, size, color]
         .filter((value) => value != null && String(value).trim() !== '')
         .map(format_vpn_component)
         .join('-');
+
+    let base_vpn = build_base_vpn(model);
+
+    // Still over the limit: shorten "model" by exactly the overage rather than a fixed amount,
+    // so short overages cost as little of "model" as possible.
+    if (base_vpn.length > PART_NUMBER_LIMIT) {
+        const overage = base_vpn.length - PART_NUMBER_LIMIT;
+        const formatted_model = format_vpn_component(model);
+        const truncated_model = formatted_model.slice(0, Math.max(0, formatted_model.length - overage));
+        base_vpn = build_base_vpn(truncated_model);
+    }
+
+    if (base_vpn.length > PART_NUMBER_LIMIT) {
+        throw new Error(`bullwheel.ascend.generate_vpn: generated VPN "${base_vpn}" exceeds the ${PART_NUMBER_LIMIT}-character limit even after truncating "model".`);
+    }
 
     for (let counter = 1; ; counter++) {
         const candidate_vpn = `${base_vpn}-${counter}`;
