@@ -66,8 +66,9 @@ def _generate_store_sku(description):
 	STORE_SKU_RANDOM_DIGITS random digits, then its last letter, all upper-cased. Retries
 	against Ascend on collision — the random digits make one vanishingly unlikely, but a fresh
 	Products table lookup backs every attempt rather than trusting a single draw to be unique."""
-	prefix = description[:3].upper()
-	suffix = description[-1:].upper()
+	description_continuous = "".join(description.split()) # Remove all whitespace
+	prefix = description_continuous[:3].upper()
+	suffix = description_continuous[-1:].upper()
 
 	for _ in range(MAX_STORE_SKU_ATTEMPTS):
 		digits = "".join(str(random.randint(0, 9)) for _ in range(STORE_SKU_RANDOM_DIGITS))
