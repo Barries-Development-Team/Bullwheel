@@ -229,10 +229,8 @@
    "unique": 1
   },
   {
-   "description": "Order Receipt's scan flow seeds this (so the created Vendor Product can be linked to this vendor) and hides the field for that flow specifically — see new_product.js and the __created_via_order_receipt seed property.",
    "fieldname": "vendor",
    "fieldtype": "Link",
-   "hidden_depends_on": "eval:doc.__created_via_order_receipt",
    "label": "Vendor",
    "options": "Vendor"
   },
@@ -348,7 +346,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-23 22:56:54.754367",
+ "modified": "2026-07-23 23:04:39.257405",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",

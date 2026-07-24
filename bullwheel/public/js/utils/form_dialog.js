@@ -60,10 +60,17 @@ class FormDialog {
 		this.form = new frappe.ui.form.Form(this.doctype, this.form_container, false);
 
 		// Form.refresh sets the global cur_frm, and the Page built during Form.setup overwrites
-		// frappe.ui.pages for the *current* route. Snapshot both; the page registry is restored
-		// immediately (Page construction is synchronous inside refresh), while cur_frm is
-		// deliberately left pointing at the dialog form until teardown so the global Ctrl+S
-		// handler saves the form the user is looking at.
+		// frappe.ui.pages for the *current* route. Snapshot both and restore them right after
+		// this synchronous call returns. cur_frm matters beyond convenience: Frappe's realtime
+		// doc_update listener (frappe/model/model.js) routes entirely off cur_frm.doc.doctype/name
+		// — if it's left pointing at this dialog's phantom document, a doc_update for whatever
+		// document is actually open *behind* the modal (e.g. an Order Receipt a background scan
+		// job just saved) takes the listener's "different document" branch and purges that
+		// document from locals instead of quietly reloading it, which surfaces to the user as
+		// the underlying page appearing to reload and lose state. The dialog's own Save button
+		// is unaffected by this restore — it calls this.frm.save(...) via closure (see
+		// toolbar.js's set_page_actions), not cur_frm — so only the global Ctrl+S shortcut loses
+		// the ability to target this dialog while it's open; use the visible Save button instead.
 		this.previous_cur_frm = window.cur_frm;
 		const route_key = frappe.get_route_str();
 		const previous_page_entry = frappe.ui.pages[route_key];
@@ -90,6 +97,7 @@ class FormDialog {
 		} else {
 			delete frappe.ui.pages[route_key];
 		}
+		window.cur_frm = this.previous_cur_frm || null;
 	}
 
 	// Closes the dialog and fires the after_insert callback once the document saves.
@@ -123,7 +131,9 @@ class FormDialog {
 
 	// Releases everything the embedded Form attached globally: the unsaved-changes
 	// beforeunload listener, the cur_frm global, the breadcrumbs no-op patch, and the
-	// dialog's DOM subtree.
+	// dialog's DOM subtree. The cur_frm restore here is a backstop, not the primary fix —
+	// Form.refresh() re-sets cur_frm to this.form every time it runs (including internally
+	// after a successful save), so this catches whatever the most recent refresh left behind.
 	teardown() {
 		if (this.teardown_completed) {
 			return;

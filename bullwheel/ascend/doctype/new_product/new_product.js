@@ -54,11 +54,22 @@ function confirm_new_product_save(frm) {
 	});
 }
 
+// Vendor is visible by default (set directly on the DocType), but Order Receipt's scan flow
+// seeds it automatically — see open_new_product_form_dialog in order_receipt.js — so it hides
+// the field for that flow specifically. Handled here in JS, keyed off the __created_via_order_receipt
+// seed property, rather than the field's own hidden_depends_on: that property lives in the same
+// DocType JSON the field's default visibility is edited through, so a doctype-editor save that
+// doesn't include it would silently wipe it out again.
+function toggle_vendor_visibility(frm) {
+	frm.toggle_display("vendor", !frm.doc.__created_via_order_receipt);
+}
+
 // The Ski Details fields show (and Binding Brand and Model becomes required) via
 // depends_on/mandatory_depends_on expressions on the DocType that read the configured prefix
 // from frappe.boot.ski_category_prefix (see bullwheel_core/__init__.py). Those run on the full form and
 // in the Quick Entry receiving modal alike, so no form-script visibility logic is needed here.
 const handlers = {
+	onload: toggle_vendor_visibility,
 	description_template(frm) {
 		regenerate_description(frm);
 	},
