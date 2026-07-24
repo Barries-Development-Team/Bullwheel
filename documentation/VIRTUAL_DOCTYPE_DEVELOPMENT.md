@@ -288,6 +288,49 @@ since a new record's identifier must be supplied as a normal column value —
 except when `NAME_EXPRESSION` is set, in which case `db_insert` raises: a
 computed SQL expression has no single column to insert a literal value into.
 
+### Editing a JOIN-sourced field — `LINKED_ID_FIELDS`
+
+A field mapped to a `JOIN_CONFIG` column (e.g. `category` → `cat.Topic`) **cannot be
+written** — a plain `INSERT`/`UPDATE` only targets `TABLE_NAME`, so
+`_collect_writable_fields` skips it. Left unpaired, a user's edit to such a field
+**silently vanishes** on save. The fix is a convention: pair every editable joined
+*display* field with a writable *id* field that maps to the foreign-key column on
+`TABLE_NAME`, and declare the pairing in `LINKED_ID_FIELDS`.
+
+```python
+LINKED_ID_FIELDS = {
+    'category': {                          # the joined display field (maps to cat.Topic)
+        'id_field': 'category_id',         # writable field mapping to Products.TopicID
+        'link_doctype': 'Product Category',# the DocType 'category' links to
+        'link_id_field': 'database_id',    # field on that DocType holding the id (Categories.ID)
+    },
+}
+```
+
+Because the display field is a `Link` to another virtual DocType, the chosen value *is*
+that DocType's primary key. On every save (`db_insert`/`db_update`), the framework
+resolves the display value to its id through the linked DocType's `get_values` and writes
+that id onto the paired id field (which is then persisted as a normal `TABLE_NAME`
+column). Behavior:
+
+- **Resolved** → the id field is set and written (`Products.TopicID` is updated).
+- **Unresolvable** (the display value matches no linked record) → the save is **rejected**
+  with `frappe.throw`, rather than writing a stale or `NULL` id.
+- **Empty** display value → the id field is cleared (`NULL`).
+
+**DocType JSON.** Mark the id field `"hidden": 1` (it's machine-managed) but leave it
+**not** `read_only` — a read-only field is never written, which would re-introduce the
+silent data loss. The display field stays a normal editable `Link`.
+
+**Enforcement (`bench migrate`).** `validate_virtual_doctypes.py` checks the convention:
+each `LINKED_ID_FIELDS` entry must be structurally sound (display + id fields mapped, the
+id field's column on `TABLE_NAME`, the linked DocType and its id field resolvable, the id
+field declared and not read-only), and — the coverage rule — **every editable field mapped
+to a JOIN column must be paired**. On a write-enabled DocType (`ALLOW_WRITE = True`) any
+violation **raises and blocks the migration**; on a read-only DocType it is a console
+warning (no data is at risk until `ALLOW_WRITE` is enabled). This mirrors the autoname
+safety check.
+
 **Single-record / no-duplicate safeguards.** `db_update` scopes its `UPDATE` by
 `name` the same way `load_from_db` does (including any `ALT_NAME_RESOLUTION_FIELDS`
 widening), then checks the SQL Server driver's affected-row-count after

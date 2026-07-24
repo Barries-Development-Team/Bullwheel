@@ -253,6 +253,126 @@ def _check_autoname_safety(doctype_name: str, controller) -> None:
 	)
 
 
+def _linked_id_field_structural_problems(controller) -> list:
+	"""Collect the SCHEMA_CONFIG-only violations of the LINKED_ID_FIELDS convention — the checks
+	that need no DocType meta. Each entry must name the required keys, its display field and id_field
+	must both be in SCHEMA_CONFIG, the id_field must map to a column on TABLE_NAME (a JOIN column
+	can't be written), and link_doctype/link_id_field must resolve to a real linked virtual DocType
+	controller and one of its mapped fields. Returns a list of problem strings (empty when sound)."""
+	problems = []
+	schema_config = controller.SCHEMA_CONFIG or {}
+	linked_id_fields = controller.LINKED_ID_FIELDS or {}
+
+	for display_field, config in linked_id_fields.items():
+		if not isinstance(config, dict) or not all(key in config for key in ('id_field', 'link_doctype', 'link_id_field')):
+			problems.append(
+				f"LINKED_ID_FIELDS['{display_field}'] must be a dict with 'id_field', "
+				f"'link_doctype', and 'link_id_field' keys."
+			)
+			continue
+
+		id_field = config['id_field']
+		link_doctype = config['link_doctype']
+		link_id_field = config['link_id_field']
+
+		if display_field not in schema_config:
+			problems.append(f"LINKED_ID_FIELDS display field '{display_field}' has no SCHEMA_CONFIG mapping.")
+		if id_field not in schema_config:
+			problems.append(f"LINKED_ID_FIELDS['{display_field}'].id_field '{id_field}' has no SCHEMA_CONFIG mapping.")
+		elif not controller._column_belongs_to_table(schema_config[id_field]):
+			problems.append(
+				f"LINKED_ID_FIELDS['{display_field}'].id_field '{id_field}' maps to "
+				f"'{schema_config[id_field]}', which is not a column on TABLE_NAME "
+				f"'{controller.TABLE_NAME}' and so cannot be written."
+			)
+
+		try:
+			linked_controller = get_controller(link_doctype)
+		except Exception:
+			linked_controller = None
+		if not (isinstance(linked_controller, type) and issubclass(linked_controller, AbstractVirtualDocType)):
+			problems.append(
+				f"LINKED_ID_FIELDS['{display_field}'].link_doctype '{link_doctype}' does not resolve "
+				f"to a virtual DocType controller."
+			)
+		elif link_id_field not in (linked_controller.SCHEMA_CONFIG or {}):
+			problems.append(
+				f"LINKED_ID_FIELDS['{display_field}'].link_id_field '{link_id_field}' has no "
+				f"SCHEMA_CONFIG mapping on {link_doctype}."
+			)
+
+	return problems
+
+
+def _linked_id_field_meta_problems(doctype_name: str, controller) -> list:
+	"""Collect the meta-dependent violations of the LINKED_ID_FIELDS convention. Each pairing's
+	id_field must be a declared, non-read-only DocType field (a read-only or undeclared id field
+	would never be written, re-introducing the silent data loss this convention closes). And for
+	coverage: every editable DocType field (declared, not read-only, not virtual, not a no-value
+	fieldtype) whose SCHEMA_CONFIG column lives on a JOIN table rather than TABLE_NAME must be paired
+	via LINKED_ID_FIELDS — otherwise a user's edit to it silently vanishes on save."""
+	problems = []
+	schema_config = controller.SCHEMA_CONFIG or {}
+	linked_id_fields = controller.LINKED_ID_FIELDS or {}
+	meta = frappe.get_meta(doctype_name)
+
+	for display_field, config in linked_id_fields.items():
+		if not isinstance(config, dict) or 'id_field' not in config:
+			continue  # Malformed entries are reported by the structural pass.
+		id_field = config['id_field']
+		id_meta_field = meta.get_field(id_field)
+		if not id_meta_field:
+			problems.append(
+				f"LINKED_ID_FIELDS['{display_field}'].id_field '{id_field}' is not a declared "
+				f"field on {doctype_name}, so its resolved id would never be written."
+			)
+		elif id_meta_field.read_only:
+			problems.append(
+				f"LINKED_ID_FIELDS['{display_field}'].id_field '{id_field}' is read_only on "
+				f"{doctype_name}; a read-only id field is never written. Make it hidden but not read_only."
+			)
+
+	for field in meta.fields:
+		if field.fieldtype in no_value_fields or field.get('is_virtual') or field.read_only:
+			continue
+		sql_column = schema_config.get(field.fieldname)
+		if sql_column is None:
+			continue  # Unmapped fields are reported by _warn_unmapped_json_fields.
+		if not controller._column_belongs_to_table(sql_column) and field.fieldname not in linked_id_fields:
+			problems.append(
+				f"Field '{field.fieldname}' is editable and maps to JOIN column '{sql_column}' "
+				f"(not on TABLE_NAME '{controller.TABLE_NAME}'), but has no LINKED_ID_FIELDS pairing. "
+				f"Edits to it would silently vanish on save. Pair it with a writable id field via "
+				f"LINKED_ID_FIELDS, or mark it read_only."
+			)
+
+	return problems
+
+
+def _check_linked_id_fields(doctype_name: str, controller) -> None:
+	"""Enforce the LINKED_ID_FIELDS convention. On a write-enabled DocType (ALLOW_WRITE=True) any
+	violation blocks the migration, since the next save would either silently drop a joined-field
+	edit or fail to write a resolved id. A read-only DocType only gets a console warning — no data
+	is at risk yet, but the same misconfiguration bites the moment ALLOW_WRITE is enabled. Mirrors
+	_check_autoname_safety's severity split."""
+	problems = (
+		_linked_id_field_structural_problems(controller)
+		+ _linked_id_field_meta_problems(doctype_name, controller)
+	)
+	if not problems:
+		return
+
+	joined = '\n  - '.join(problems)
+	if controller.ALLOW_WRITE:
+		raise ValueError(f"{doctype_name}: LINKED_ID_FIELDS convention violated:\n  - {joined}")
+
+	print_console_warning(
+		f"Virtual DocType Validation: {doctype_name} — LINKED_ID_FIELDS convention violated (this "
+		f"DocType is currently read-only, so no data is at risk yet, but this will corrupt data the "
+		f"moment ALLOW_WRITE is enabled):\n  - {joined}"
+	)
+
+
 def _introspected_columns_for(controller, server_document) -> tuple:
 	"""Introspect the controller's primary table and joined tables from the live Ascend
 	database. Returns (primary column names, joined column names)."""
@@ -271,6 +391,7 @@ def validate_all_virtual_doctype_schemas() -> None:
 		validate_schema_config(controller)
 		_warn_unmapped_json_fields(doctype_name, controller)
 		_check_autoname_safety(doctype_name, controller)
+		_check_linked_id_fields(doctype_name, controller)
 
 	for doctype_name, controller in controllers:
 		try:

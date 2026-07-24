@@ -40,6 +40,7 @@ CASE_COLUMNS = {"CaseQty", "CaseUPC", "CaseMSRP"}
 ASCEND_PRODUCT_FIELDS = [
 	"description", "price", "estimated_cost", "upc", "manufacturers_part_number",
 	"brand", "color", "size", "style_name", "style_number", "season", "year", "gender",
+	"category"
 ]
 
 # New Product fieldnames copied onto a Ski with Bindings field of the same name. The Store SKU
@@ -51,6 +52,13 @@ SKI_WITH_BINDINGS_FIELDS = [
 
 STORE_SKU_RANDOM_DIGITS = 8
 MAX_STORE_SKU_ATTEMPTS = 20
+
+# Product Price records to create in after_insert, mapping each Product Price `pricing_type`
+# to the New Product field holding the computed amount. A zero or empty amount is skipped.
+PRODUCT_PRICE_TYPE_TO_FIELD = {
+	"Ski Swap Price": "swap_price",
+	"Online Listing Price": "online_price",
+}
 
 
 def _generate_store_sku(description):
@@ -100,10 +108,27 @@ class NewProduct(Document):
 		)
 
 	def validate(self):
-		"""Re-render the Description (in case fields changed since autoname) and enforce the
-		binding requirement for ski hardgoods server-side, so the rule holds on the Quick Entry
-		receiving path (which does not run the form's field scripts)."""
+		"""Re-render the Description (in case fields changed since autoname) and re-derive the
+		Swap and Online prices, so both hold on the Quick Entry receiving path (which does not
+		run the form's field scripts)."""
+		if self.upc and len(self.upc) > 20:
+			frappe.throw('Max length for UPC is 20 characters.')
 		self._render_description()
+		self._compute_pricing()
+
+	def _compute_pricing(self):
+		"""Re-derive Swap Price and Online Price from the selected Product Pricing Rule and this
+		document's MSRP (the `price` field), so the saved values always reflect the rule's current
+		percentages and this document's current MSRP rather than trusting whatever the client last
+		previewed. Runs server-side — and on the Quick Entry receiving path, where the form's
+		live-preview script (see new_product.js) never executes. With no rule selected the prices
+		are left as entered, matching the form's manual-entry path."""
+		if not self.product_pricing_rule:
+			return
+
+		computed_prices = compute_swap_and_online_price(self.price, self.product_pricing_rule)
+		self.swap_price = computed_prices["swap_price"]
+		self.online_price = computed_prices["online_price"]
 
 
 	def _render_description(self):
@@ -134,8 +159,15 @@ class NewProduct(Document):
 		if self._is_ski_hardgood():
 			self._create_ski_with_bindings()
 
+		self._create_product_prices()
+
 		if self.vendor:
 			product_record = AscendProduct.get_values(self.store_sku, ["id"])
+			if not product_record:
+				frappe.throw(
+					f'Ascend Product "{self.store_sku}" was not found immediately after creation; '
+					f'cannot create its Vendor Product.'
+				)
 			create_vendor_product(
 				vendor_id=self._resolve_vendor_id(),
 				product_id=product_record["id"],
@@ -175,6 +207,23 @@ class NewProduct(Document):
 		})
 		ski.insert()
 
+	def _create_product_prices(self):
+		"""Create a Product Price record for each computed Swap and Online price, linking it to the
+		Ascend Product just created (named by store_sku). A price of 0 or None is skipped, so a
+		product priced only for one channel — or one with no pricing rule at all — gets only the
+		records it has amounts for. Product Price names itself via its own autoname."""
+		for pricing_type, field in PRODUCT_PRICE_TYPE_TO_FIELD.items():
+			price = self.get(field)
+			if not price:
+				continue
+
+			frappe.get_doc({
+				"doctype": "Product Price",
+				"pricing_type": pricing_type,
+				"product": self.store_sku,
+				"price": price,
+			}).insert()
+
 
 @frappe.whitelist()
 def generate_description(template_name, product):
@@ -200,3 +249,19 @@ def to_import_row(product):
 			continue
 		row[template_column] = getattr(product, field_name, None)
 	return row
+
+@frappe.whitelist()
+def compute_swap_and_online_price(msrp: float, product_pricing_rule_name: str) -> dict:
+	computed_prices = {
+		'swap_price': 0.0,
+		'online_price': 0.0
+	}
+	if not msrp:
+		return computed_prices
+
+	product_pricing_rule = frappe.get_cached_doc('Product Pricing Rule', product_pricing_rule_name)
+	
+	computed_prices["swap_price"] = swap_price if (swap_price := round(msrp * (1 - product_pricing_rule.swap_percentage)) - 0.05) > 0 else 0
+	computed_prices["online_price"] = online_price if (online_price := round(msrp * (1 - product_pricing_rule.online_percentage)) - 0.05) > 0 else 0
+
+	return computed_prices

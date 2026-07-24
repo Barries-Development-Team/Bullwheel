@@ -12,6 +12,12 @@ const DESCRIPTION_SOURCE_FIELDS = [
 	"binding_brand_and_model"
 ];
 
+// Fields whose change should re-derive Swap Price and Online Price from the chosen Product
+// Pricing Rule. `price` carries the MSRP the rule's percentages are applied to (its label is
+// "MSRP"); `product_pricing_rule` selects which rule to apply. Note `price` also appears in
+// DESCRIPTION_SOURCE_FIELDS, so both regenerators run when it changes — see add_field_handler.
+const PRICING_SOURCE_FIELDS = ["price", "product_pricing_rule"];
+
 function regenerate_description(frm) {
 	if (!frm.doc.description_template) {
 		return;
@@ -29,6 +35,81 @@ function regenerate_description(frm) {
 			}
 		},
 	});
+}
+
+// Re-derive Swap Price and Online Price from the selected Product Pricing Rule and the current
+// MSRP (the `price` field). With no rule selected the fields are left alone — the rule's
+// placeholder invites entering the prices manually — matching the server-side _compute_pricing.
+function regenerate_pricing(frm) {
+	if (!frm.doc.product_pricing_rule) {
+		return;
+	}
+
+	frappe.call({
+		method: "bullwheel.ascend.doctype.new_product.new_product.compute_swap_and_online_price",
+		args: {
+			msrp: frm.doc.price,
+			product_pricing_rule_name: frm.doc.product_pricing_rule,
+		},
+		callback(response) {
+			if (response.message) {
+				frm.set_value("swap_price", response.message.swap_price);
+				frm.set_value("online_price", response.message.online_price);
+			}
+		},
+	});
+}
+
+// Vendor is visible by default (set directly on the DocType), but Order Receipt's scan flow
+// seeds it automatically — see open_new_product_form_dialog in order_receipt.js — so it hides
+// the field for that flow specifically. Handled here in JS, keyed off the __created_via_order_receipt
+// seed property, rather than the field's own hidden_depends_on: that property lives in the same
+// DocType JSON the field's default visibility is edited through, so a doctype-editor save that
+// doesn't include it would silently wipe it out again.
+function toggle_vendor_visibility(frm) {
+	frm.toggle_display("vendor", !frm.doc.__created_via_order_receipt);
+}
+
+// The Ski Details fields show (and Binding Brand and Model becomes required) via
+// depends_on/mandatory_depends_on expressions on the DocType that read the configured prefix
+// from frappe.boot.ski_category_prefix (see bullwheel_core/__init__.py). Those run on the full form and
+// in the Quick Entry receiving modal alike, so no form-script visibility logic is needed here.
+const handlers = {
+	onload: toggle_vendor_visibility,
+	description_template(frm) {
+		regenerate_description(frm);
+	},
+	before_save: confirm_new_product_save,
+};
+
+// Register a change handler for a field, composing with any already registered for it rather
+// than overwriting — `price` drives both the Description and the pricing regenerators, so both
+// must fire on its change.
+function add_field_handler(fieldname, handler) {
+	const existing = handlers[fieldname];
+	handlers[fieldname] = existing
+		? (frm) => {
+			existing(frm);
+			handler(frm);
+		}
+		: handler;
+}
+
+for (const fieldname of DESCRIPTION_SOURCE_FIELDS) {
+	add_field_handler(fieldname, regenerate_description);
+}
+
+for (const fieldname of PRICING_SOURCE_FIELDS) {
+	add_field_handler(fieldname, regenerate_pricing);
+}
+
+// bullwheel.forms.open_form_dialog (form_dialog.js) constructs a brand-new frappe.ui.form.Form
+// on every open, unlike Frappe's own cached FormFactory — so ScriptManager.setup() re-evaluates
+// this whole file each time, and a bare frappe.ui.form.on() call here would re-register every
+// handler and accumulate duplicates in frappe.ui.form.handlers (which persists for the browser
+// session across those re-evaluations). This guard registers once per session.
+if (!frappe.ui.form.handlers["New Product"]?.before_save) {
+	frappe.ui.form.on("New Product", handlers);
 }
 
 // Confirms intentional creation before a brand-new product record is saved. Returning a
@@ -65,39 +146,4 @@ function confirm_new_product_save(frm) {
 			}
 		);
 	});
-}
-
-// Vendor is visible by default (set directly on the DocType), but Order Receipt's scan flow
-// seeds it automatically — see open_new_product_form_dialog in order_receipt.js — so it hides
-// the field for that flow specifically. Handled here in JS, keyed off the __created_via_order_receipt
-// seed property, rather than the field's own hidden_depends_on: that property lives in the same
-// DocType JSON the field's default visibility is edited through, so a doctype-editor save that
-// doesn't include it would silently wipe it out again.
-function toggle_vendor_visibility(frm) {
-	frm.toggle_display("vendor", !frm.doc.__created_via_order_receipt);
-}
-
-// The Ski Details fields show (and Binding Brand and Model becomes required) via
-// depends_on/mandatory_depends_on expressions on the DocType that read the configured prefix
-// from frappe.boot.ski_category_prefix (see bullwheel_core/__init__.py). Those run on the full form and
-// in the Quick Entry receiving modal alike, so no form-script visibility logic is needed here.
-const handlers = {
-	onload: toggle_vendor_visibility,
-	description_template(frm) {
-		regenerate_description(frm);
-	},
-	before_save: confirm_new_product_save,
-};
-
-for (const fieldname of DESCRIPTION_SOURCE_FIELDS) {
-	handlers[fieldname] = regenerate_description;
-}
-
-// bullwheel.forms.open_form_dialog (form_dialog.js) constructs a brand-new frappe.ui.form.Form
-// on every open, unlike Frappe's own cached FormFactory — so ScriptManager.setup() re-evaluates
-// this whole file each time, and a bare frappe.ui.form.on() call here would re-register every
-// handler and accumulate duplicates in frappe.ui.form.handlers (which persists for the browser
-// session across those re-evaluations). This guard registers once per session.
-if (!frappe.ui.form.handlers["New Product"]?.before_save) {
-	frappe.ui.form.on("New Product", handlers);
 }

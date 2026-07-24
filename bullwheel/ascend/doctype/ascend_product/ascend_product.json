@@ -42,7 +42,8 @@
   "column_break_bvyk",
   "style_number",
   "database_identifiers_section",
-  "id"
+  "id",
+  "category_id"
  ],
  "fields": [
   {
@@ -217,6 +218,7 @@
    "collapsible": 1,
    "fieldname": "database_identifiers_section",
    "fieldtype": "Section Break",
+   "hidden": 1,
    "label": "Database Identifiers"
   },
   {
@@ -246,6 +248,12 @@
   {
    "fieldname": "column_break_ckpt",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "category_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Category (Topic) ID"
   }
  ],
  "grid_page_length": 50,
@@ -253,7 +261,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-20 17:44:17.286820",
+ "modified": "2026-07-24 10:11:03.921351",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",
