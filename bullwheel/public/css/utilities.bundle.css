@@ -1,0 +1,27 @@
+/* Copyright (c) 2026, Barrie's Ski and Sports and contributors
+   For license information, please see license.txt */
+
+/* Near-fullscreen modal for bullwheel.forms.open_form_dialog — the widest built-in Dialog
+   size (modal-xl) is too narrow for a multi-column Form layout. */
+.bullwheel-form-dialog .modal-dialog {
+	max-width: calc(100vw - 4rem);
+	width: calc(100vw - 4rem);
+}
+
+.bullwheel-form-dialog .modal-body {
+	max-height: calc(100vh - 10rem);
+	overflow-y: auto;
+}
+
+/* .page-head is position: sticky with a top offset sized for the desk navbar, which sits
+   behind the modal backdrop here; re-pin it to the top of the scrolling modal body so the
+   Save button stays visible while a long form scrolls. */
+.bullwheel-form-dialog .page-head {
+	top: 0;
+}
+
+/* The assignments/tags/share sidebar is dead weight for a brand-new document and steals
+   width from the field layout. */
+.bullwheel-form-dialog .layout-side-section {
+	display: none;
+}

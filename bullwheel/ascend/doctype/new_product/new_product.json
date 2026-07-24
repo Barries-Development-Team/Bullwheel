@@ -11,6 +11,7 @@
   "description",
   "description_template",
   "column_break_xvvt",
+  "vendor",
   "brand",
   "category",
   "product_details_section",
@@ -52,7 +53,7 @@
   "manufacturers_part_number",
   "column_break_ipev",
   "store_sku",
-  "vendor"
+  "vpn_prefix"
  ],
  "fields": [
   {
@@ -61,15 +62,16 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Vendor Part Number (VPN)",
-   "reqd": 1
+   "placeholder": "Generated on save",
+   "read_only": 1
   },
   {
-   "description": "Auto-generated when a Description Template is chosen below; edit directly only when Description Template is left blank.",
    "fieldname": "description",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Description",
    "mandatory_depends_on": "eval:!doc.description_template",
+   "placeholder": "Auto-generated when a Description Template is chosen below; edit directly only when Description Template is left blank.",
    "read_only_depends_on": "eval:doc.description_template",
    "unique": 1
   },
@@ -100,7 +102,8 @@
    "allow_in_quick_entry": 1,
    "fieldname": "style_name",
    "fieldtype": "Data",
-   "label": "Style (Model) Name"
+   "label": "Style (Model) Name",
+   "placeholder": "Do NOT include product type (e.g., Skis, Snowboard Bindings)."
   },
   {
    "fieldname": "style_number",
@@ -126,6 +129,7 @@
    "label": "Year"
   },
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "gender",
    "fieldtype": "Data",
    "label": "Gender"
@@ -217,20 +221,26 @@
    "label": "Case MSRP"
   },
   {
-   "description": "Generated on save.",
    "fieldname": "store_sku",
    "fieldtype": "Data",
    "label": "Store SKU",
+   "placeholder": "Generated on save",
    "read_only": 1,
    "unique": 1
   },
   {
-   "description": "Set by Order Receipt's scan flow before Quick Entry opens, so the created Vendor Product can be linked to this vendor. Never rendered \u2014 left unset outside that flow.",
    "fieldname": "vendor",
    "fieldtype": "Link",
-   "hidden": 1,
    "label": "Vendor",
    "options": "Vendor"
+  },
+  {
+   "description": "Set by Order Receipt's scan flow before the New Product form dialog opens. Read by before_insert to generate the Vendor Part Number.",
+   "fieldname": "vpn_prefix",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "VPN Prefix",
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.case",
@@ -323,8 +333,7 @@
    "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)",
    "fieldname": "binding_brand_and_model",
    "fieldtype": "Data",
-   "label": "Binding Brand and Model",
-   "mandatory_depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)"
+   "label": "Binding Brand and Model"
   },
   {
    "allow_in_quick_entry": 1,
@@ -337,7 +346,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-20 17:24:38.208240",
+ "modified": "2026-07-23 23:04:39.257405",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",

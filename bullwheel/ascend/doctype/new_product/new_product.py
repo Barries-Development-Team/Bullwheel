@@ -8,7 +8,7 @@ from frappe.model.document import Document
 
 from bullwheel.ascend.doctype.ascend_product.ascend_product import AscendProduct
 from bullwheel.ascend.doctype.vendor.vendor import Vendor
-from bullwheel.ascend.doctype.vendor_product.vendor_product import create_vendor_product
+from bullwheel.ascend.doctype.vendor_product.vendor_product import create_vendor_product, generate_vpn
 
 # Maps Ascend Vendor Products template column headers to New Product fieldnames.
 # Columns absent from this map (ID, IsNonInventory, eCommerce, Color Code, JH QTY)
@@ -80,14 +80,31 @@ class NewProduct(Document):
 		if not self.store_sku:
 			self.store_sku = _generate_store_sku(self.description)
 
+	def before_insert(self):
+		"""Generate this document's Vendor Part Number via Ascend's part-numbering scheme,
+		when a vendor was seeded onto this document (see Order Receipt's
+		open_new_product_form_dialog). Must run before insert: after_insert's
+		create_vendor_product call passes self.vpn on as the new Vendor Product's part
+		number. Products created without a vendor context (e.g. from the New Product list
+		view) are left with no VPN, same as before this existed."""
+		if not self.vendor:
+			return
+
+		self.vpn = generate_vpn(
+			vendor_id=self._resolve_vendor_id(),
+			vpn_prefix=self.vpn_prefix,
+			brand=self.brand,
+			model=self.style_name,
+			size=self.size,
+			color=self.color,
+		)
+
 	def validate(self):
 		"""Re-render the Description (in case fields changed since autoname) and enforce the
 		binding requirement for ski hardgoods server-side, so the rule holds on the Quick Entry
 		receiving path (which does not run the form's field scripts)."""
 		self._render_description()
 
-		if self._is_ski_hardgood() and not self.binding_brand_and_model:
-			frappe.throw("Binding Brand and Model is required for ski hardgoods.")
 
 	def _render_description(self):
 		"""Re-render the Description from the chosen Description Template (if any) so the saved
@@ -103,7 +120,7 @@ class NewProduct(Document):
 	def after_insert(self):
 		"""Create the Ascend Product this New Product represents, then a Ski with Bindings
 		record when the category marks it as a ski, and — when a vendor was seeded onto this
-		document (see Order Receipt's open_new_product_quick_entry) — the Vendor Product
+		document (see Order Receipt's open_new_product_form_dialog) — the Vendor Product
 		linking it to that vendor. Runs after the local New Product record is committed, so a
 		Store SKU collision or Ascend connectivity failure surfaces as an ordinary insert error
 		rather than leaving Ascend and Bullwheel out of sync."""
@@ -118,13 +135,9 @@ class NewProduct(Document):
 			self._create_ski_with_bindings()
 
 		if self.vendor:
-			vendor_record = Vendor.get_values(self.vendor, ["id"])
-			if not vendor_record:
-				frappe.throw(f'Vendor "{self.vendor}" was not found in Ascend.')
-
 			product_record = AscendProduct.get_values(self.store_sku, ["id"])
 			create_vendor_product(
-				vendor_id=vendor_record["id"],
+				vendor_id=self._resolve_vendor_id(),
 				product_id=product_record["id"],
 				part_number=self.vpn,
 				cost=self.estimated_cost,
@@ -133,6 +146,15 @@ class NewProduct(Document):
 				case_upc=self.case_upc if self.case else None,
 				case_msrp=self.case_msrp if self.case else None,
 			)
+
+	def _resolve_vendor_id(self):
+		"""Look up this document's seeded Vendor's Ascend ID. Shared by before_insert (VPN
+		generation) and after_insert (Vendor Product creation) — both need the same lookup
+		once a vendor has been seeded onto the document."""
+		vendor_record = Vendor.get_values(self.vendor, ["id"])
+		if not vendor_record:
+			frappe.throw(f'Vendor "{self.vendor}" was not found in Ascend.')
+		return vendor_record["id"]
 
 	def _is_ski_hardgood(self):
 		"""True when this product's category marks it as a ski that needs a Ski with Bindings

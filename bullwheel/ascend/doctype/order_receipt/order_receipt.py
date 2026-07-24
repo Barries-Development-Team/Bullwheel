@@ -15,6 +15,14 @@ from bullwheel.ascend.import_sheets import build_import_sheet, serve_file_downlo
 
 
 class OrderReceipt(Document):
+
+	def validate(self):
+		if not self.cached_vendor_id:
+			vendor_record = Vendor.get_values(name=self.vendor, fields=['id'])
+			if not vendor_record:
+				frappe.throw(f'Vendor "{self.vendor}" was not found in Ascend.')
+			self.cached_vendor_id = vendor_record.id
+
 	@property
 	def total_order_items(self):
 		total = 0
@@ -205,20 +213,23 @@ def queue_add_or_increment_item(docname, vpn, cost=None, description=None, upc=N
 	)
 
 @frappe.whitelist()
-def scan_item(id: str, vendor: str, docname: str):
+def scan_item(id: str, vendor: str, cached_vendor_id: str):
 	"""Resolve a scanned identifier to an item this order can receive. Checks, in order: a
 	Vendor Product in Ascend for this vendor, then any Product in Ascend. Returns a
 	(status, record) tuple; status is one of 'vpn found', 'product found', or 'not found'."""
+
+	if not cached_vendor_id:
+		frappe.throw('Order Receipt has no cached vendor ID. Re-save the document to populate it.')
 
 	# Determine if Vendor Product exists for the scanned item.
 
 	vpn_query = ('SELECT VP.PartNumber as vpn, VP.Cost as cost, P.Description as description, P.UPC as upc  '
 			'FROM VendorProducts as VP '
 			'JOIN Products as P ON VP.ProductID = P.ID '
-			'WHERE VP.VendorID = (SELECT ID FROM Vendors WHERE Name = %s) AND (P.UPC = %s OR P.[Store UPC] = %s OR P.MfgrPartNo = %s)'
+			'WHERE VP.VendorID = %s AND (P.UPC = %s OR P.[Store UPC] = %s OR P.MfgrPartNo = %s)'
 	)
 
-	values = [vendor, id, id, id]
+	values = [cached_vendor_id, id, id, id]
 
 	with MSSQLDatabase(get_default_ascend_database()) as ascend:
 		result = ascend.sql(
@@ -233,11 +244,11 @@ def scan_item(id: str, vendor: str, docname: str):
 			record['vpn'] = vendor_product_name
 			return ('vpn found', record)
 		
-		# Determine if Product exists for the scanned item. ID and MfgrPartNo are included so
-		# the vendor-link dialog can create the missing Vendor Product without re-querying Ascend.
+		# Determine if Product exists for the scanned item. Custom lookup is used instead of virtual doctype methods to avoid reestablishing database connection.
 
 		product_query = ('SELECT ID as product_id, [Store UPC] as store_sku, UPC as upc, '
-			'Description as description, EstCost as cost, MfgrPartNo as mpn '
+			'Description as description, EstCost as cost, MfgrPartNo as mpn, Brand as brand, '
+			'Color as color, StyleName as style_name, Size as size '
 			'FROM Products '
 			'WHERE UPC = %s OR [Store UPC] = %s OR MfgrPartNo = %s'
 		)
@@ -264,16 +275,16 @@ def link_vendor_product(docname, product_id, part_number, cost, description=None
 	directly in the caller's vendor-link dialog instead of failing silently in a background
 	job; the receipt mutation itself still goes through add_or_increment_item's row lock."""
 
-	vendor = frappe.db.get_value("Order Receipt", docname, "vendor")
-	if not vendor:
+	receipt = frappe.db.get_value("Order Receipt", docname, ["vendor", "cached_vendor_id"], as_dict=True)
+	if not receipt or not receipt.vendor:
 		frappe.throw(f'Order Receipt "{docname}" has no vendor set.')
+	if not receipt.cached_vendor_id:
+		frappe.throw(f'Order Receipt "{docname}" has no cached vendor ID. Re-save the document to populate it.')
 
-	vendor_record = Vendor.get_values(vendor, ["id"])
-	if not vendor_record:
-		frappe.throw(f'Vendor "{vendor}" was not found in Ascend.')
+	vendor = receipt.vendor
 
 	create_vendor_product(
-		vendor_id=vendor_record["id"],
+		vendor_id=receipt.cached_vendor_id,
 		product_id=product_id,
 		part_number=part_number,
 		cost=cost,

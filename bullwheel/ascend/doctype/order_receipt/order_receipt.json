@@ -7,8 +7,10 @@
  "engine": "InnoDB",
  "field_order": [
   "details",
-  "po",
   "vendor",
+  "vpn_prefix",
+  "cached_vendor_id",
+  "po",
   "column_break_yjnq",
   "order_status",
   "column_break_rlmm",
@@ -122,12 +124,27 @@
   {
    "fieldname": "column_break_sctf",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vpn_prefix",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "VPN Prefix",
+   "read_only": 1
+  },
+  {
+   "description": "Populated on document validation, if empty.",
+   "fieldname": "cached_vendor_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Cached Vendor ID",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-17 16:39:44.162914",
+ "modified": "2026-07-23 19:02:21.255938",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",

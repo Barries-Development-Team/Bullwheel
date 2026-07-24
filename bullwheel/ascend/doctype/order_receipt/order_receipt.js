@@ -207,12 +207,23 @@ function queue_add_or_increment_item(frm, vpn, cost, description, upc) {
 // adds/increments the matching order item. Runs synchronously (not via the queue) so an
 // Ascend insert failure is reported back into this dialog instead of failing silently in a
 // background job.
-function open_vendor_link_dialog(frm, record) {
+async function open_vendor_link_dialog(frm, record) {
+
+	const generated_vpn_response = await frappe.call('bullwheel.ascend.doctype.vendor_product.vendor_product.generate_vpn', {
+		vendor_id: frm.doc.cached_vendor_id,
+		vpn_prefix: frm.doc.vpn_prefix,
+		brand: record.brand,
+		model: record.style_name,
+		size: record.size,
+		color: record.color
+	});
+	const generated_vpn = generated_vpn_response.message;
+
 	const dialog = new frappe.ui.Dialog({
 		title: __('Link Vendor Product'),
 		fields: [
 			{fieldname: 'description', label: __('Description'), fieldtype: 'Data', read_only: 1, default: record.description},
-			{fieldname: 'part_number', label: __('Part Number (VPN)'), fieldtype: 'Data', reqd: 1, default: record.mpn},
+			{fieldname: 'part_number', label: __('Part Number (VPN)'), fieldtype: 'Data', reqd: 1, default: generated_vpn },
 			{fieldname: 'cost', label: __('Cost'), fieldtype: 'Currency', reqd: 1, default: record.cost}
 		],
 		primary_action_label: __('Link & Add'),
@@ -237,46 +248,49 @@ function open_vendor_link_dialog(frm, record) {
 	dialog.show();
 }
 
-// 'not found': nothing in Ascend matches the scanned identifier. Opens the New Product
-// doctype's native Quick Entry modal (it declares quick_entry: 1) rather than a custom
-// dialog — Quick Entry renders only the doctype's required fields, which is a tighter,
-// scan-friendly form than the full New Product record. The scanned value and this receipt's
-// vendor are seeded onto the underlying document before the modal opens (upc isn't rendered
-// unless new_product.json's upc field is given allow_in_quick_entry; vendor is a hidden field
-// never rendered at all) — New Product's own insert hooks (see new_product.py) create the
-// Ascend Product and, since vendor is set, the linked Vendor Product.
-//
-// Caveat: if the user clicks "Edit Full Form", or the insert fails and Quick Entry redirects
-// there, this after-insert callback does not fire (Frappe's full-form save path consumes a
-// different route hook than Quick Entry sets), so the order item isn't auto-added here. The
-// Ascend records are still created once the document is eventually saved though — New
-// Product's insert hooks run the same regardless of which form saved it — so a re-scan
-// afterward now finds it.
-function open_new_product_quick_entry(frm, scanned_value) {
+// 'not found': nothing in Ascend matches the scanned identifier. Opens the full New Product
+// form inside a modal (bullwheel.forms.open_form_dialog) rather than Quick Entry — the real
+// Form runs the doctype's client scripts, so live description regeneration works during
+// receiving, and the after-insert callback fires on save no matter how the user saves (the
+// old Quick Entry path lost the callback if the user clicked "Edit Full Form"). The scanned
+// value, this receipt's vendor, and this receipt's vpn_prefix are seeded onto the document
+// before the modal opens (vpn_prefix is a hidden field, never rendered) — New Product's own
+// insert hooks (see new_product.py) generate the Vendor Part Number, create the Ascend
+// Product, and, since vendor is set, the linked Vendor Product. Vendor is visible by default
+// on New Product, but this flow sets it automatically from the receipt, so
+// __created_via_order_receipt (a client-only property, never persisted — see new_product.json's
+// vendor field) hides it specifically for this flow rather than for manual vendor entry.
+function open_new_product_form_dialog(frm, scanned_value) {
 	frappe.model.with_doctype('New Product', () => {
-		const doc = frappe.model.get_new_doc('New Product');
-		doc.upc = scanned_value;
-		doc.vendor = frm.doc.vendor;
+		const seed_document = frappe.model.get_new_doc('New Product');
+		seed_document.upc = scanned_value;
+		seed_document.vendor = frm.doc.vendor;
+		seed_document.vpn_prefix = frm.doc.vpn_prefix;
+		seed_document.__created_via_order_receipt = 1;
 
-		frappe.ui.form.make_quick_entry('New Product', (new_product) => {
-			queue_add_or_increment_item(
-				frm,
-				`${new_product.vpn} (${frm.doc.vendor})`, // matches VendorProduct.NAME_EXPRESSION
-				new_product.estimated_cost,
-				new_product.description,
-				new_product.upc
-			);
-		}, null, doc);
+		bullwheel.forms.open_form_dialog('New Product', {
+			seed_document: seed_document,
+			after_insert(new_product) {
+				queue_add_or_increment_item(
+					frm,
+					`${new_product.vpn} (${frm.doc.vendor})`, // matches VendorProduct.NAME_EXPRESSION
+					new_product.estimated_cost,
+					new_product.description,
+					new_product.upc
+				);
+			},
+		});
 	});
 }
 
 // Dispatch a scanned identifier: resolve it via scan_item, then route the result through the
-// serialized queue (add/increment an order item), the vendor-link dialog, or New Product
-// Quick Entry.
+// serialized queue (add/increment an order item), the vendor-link dialog, or the New Product
+// form dialog.
 function handle_scan(frm, scanned_value) {
 	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.scan_item', {
 		id: scanned_value,
 		vendor: frm.doc.vendor,
+		cached_vendor_id: frm.doc.cached_vendor_id,
 		docname: frm.doc.name
 	}).then((response) => {
 		const [status, record] = response.message || [];
@@ -291,7 +305,7 @@ function handle_scan(frm, scanned_value) {
 			// No record of this item anywhere — confirm before creating one from scratch.
 			frappe.confirm(
 				`No product found for "${frappe.utils.escape_html(scanned_value)}". Create a new product record?`,
-				() => open_new_product_quick_entry(frm, scanned_value)
+				() => open_new_product_form_dialog(frm, scanned_value)
 			);
 		}
 	});
@@ -332,7 +346,61 @@ function setup_scan_box(frm) {
 	});
 }
 
+// On a new receipt's first save, prompt for the vpn_prefix acronym (used later when
+// generating VPNs for products on this order) instead of silently defaulting it. Suggests
+// an acronym derived from the selected vendor's name but lets the user override it. Returns
+// a Promise so before_save's caller (frappe.run_serially) awaits the dialog before the
+// mandatory-field check and the actual save proceed.
+function prompt_vpn_prefix(frm) {
+	return new Promise((resolve, reject) => {
+		let confirmed = false;
+
+		const dialog = new frappe.ui.Dialog({
+			title: __('Confirm VPN Prefix'),
+			fields: [
+				{
+					fieldname: 'vpn_prefix',
+					label: __('VPN Prefix'),
+					description: 'This value will be prepended to new vendor part numbers.',
+					fieldtype: 'Data',
+					reqd: 1,
+					default: bullwheel.ascend.generate_vendor_acronym(frm.doc.vendor)
+				}
+			],
+			primary_action_label: __('Confirm'),
+			primary_action: (values) => {
+				// Ensure prefix is not empty.
+				const vpn_prefix = (values.vpn_prefix || '').trim();
+				if (!vpn_prefix) {
+					dialog.set_df_property('vpn_prefix', 'description', __('VPN Prefix cannot be empty.'));
+					return;
+				}
+
+				confirmed = true;
+				frm.set_value('vpn_prefix', vpn_prefix);
+				dialog.hide();
+				resolve();
+			},
+			// Closed (Escape / backdrop) without confirming: block the save rather than
+			// silently proceeding with no prefix.
+			onhide: () => {
+				if (!confirmed) {
+					frappe.validated = false;
+					reject();
+				}
+			}
+		});
+
+		dialog.show();
+	});
+}
+
 frappe.ui.form.on("Order Receipt", {
+	before_save(frm) {
+		// Vendor is itself a required field: if it's missing, let the normal mandatory-field
+		// check (which runs right after before_save) report that instead of prompting here.
+		if (frm.is_new() && frm.doc.vendor) return prompt_vpn_prefix(frm);
+	},
  	refresh(frm) {
 		if (!frm.is_new()) {
 			// Regenerates the buttons so that the receiving actions are always before the table actions.

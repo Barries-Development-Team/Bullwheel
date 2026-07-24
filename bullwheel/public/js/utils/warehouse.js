@@ -1,10 +1,6 @@
 // Copyright (c) 2026, Barrie's Ski and Sports and contributors
 // For license information, please see license.txt
 
-// Shared item check-in/check-out dialogs. Registered on the `bullwheel.warehouse`
-// namespace rather than exported, because this bundle is loaded through
-// `app_include_js` — DocType and Page scripts have no way to import from it.
-
 frappe.provide('bullwheel.warehouse');
 
 // Dialog UI for listing Ascend Product locations
@@ -61,6 +57,9 @@ bullwheel.warehouse.product_location_dialog = function(products = []) {
 	})	
 }
 
+// Shared item check-in/check-out dialogs. Registered on the `bullwheel.warehouse`
+// namespace rather than exported, because this bundle is loaded through
+// `app_include_js` — DocType and Page scripts have no way to import from it.
 
 // Prompt for a product, a leaf Warehouse Location, and a quantity, then add that
 // quantity to the location's on-hand inventory.
