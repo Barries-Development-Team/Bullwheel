@@ -347,6 +347,7 @@ function prompt_vpn_prefix(frm) {
 				{
 					fieldname: 'vpn_prefix',
 					label: __('VPN Prefix'),
+					description: 'This value will be prepended to new vendor part numbers.',
 					fieldtype: 'Data',
 					reqd: 1,
 					default: bullwheel.ascend.generate_vendor_acronym(frm.doc.vendor)
@@ -354,7 +355,7 @@ function prompt_vpn_prefix(frm) {
 			],
 			primary_action_label: __('Confirm'),
 			primary_action: (values) => {
-				// Ensure prefix has no whitespace and is not empty.
+				// Ensure prefix is not empty.
 				const vpn_prefix = (values.vpn_prefix || '').trim();
 				if (!vpn_prefix) {
 					dialog.set_df_property('vpn_prefix', 'description', __('VPN Prefix cannot be empty.'));
