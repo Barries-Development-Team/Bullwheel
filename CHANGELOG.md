@@ -2,6 +2,12 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.1] - July 24, 2026
+
+### Bug Fixes
+
+- Removed multi-product location dialog, restoring full Find Product functionality.
+
 ## [1.1.0] - July 24, 2026
 
 ### Features
