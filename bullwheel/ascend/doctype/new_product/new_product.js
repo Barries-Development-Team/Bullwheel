@@ -31,6 +31,29 @@ function regenerate_description(frm) {
 	});
 }
 
+// Confirms intentional creation before a brand-new product record is saved. Returning a
+// Promise from before_save makes the save wait for the user's answer (see Frappe's
+// validate_and_save, which awaits the before_save trigger before checking
+// frappe.validated); setting frappe.validated = false on "No" stops the save the same way
+// a failed validation would. Only guards creation — saving edits to an existing record
+// does not re-prompt.
+function confirm_new_product_save(frm) {
+	if (!frm.is_new()) {
+		return;
+	}
+
+	return new Promise((resolve) => {
+		frappe.confirm(
+			__("Create this product record?"),
+			() => resolve(),
+			() => {
+				frappe.validated = false;
+				resolve();
+			}
+		);
+	});
+}
+
 // The Ski Details fields show (and Binding Brand and Model becomes required) via
 // depends_on/mandatory_depends_on expressions on the DocType that read the configured prefix
 // from frappe.boot.ski_category_prefix (see bullwheel_core/__init__.py). Those run on the full form and
@@ -39,6 +62,7 @@ const handlers = {
 	description_template(frm) {
 		regenerate_description(frm);
 	},
+	before_save: confirm_new_product_save,
 };
 
 for (const fieldname of DESCRIPTION_SOURCE_FIELDS) {
