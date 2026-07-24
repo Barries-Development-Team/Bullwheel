@@ -105,8 +105,6 @@ class NewProduct(Document):
 		receiving path (which does not run the form's field scripts)."""
 		self._render_description()
 
-		if self._is_ski_hardgood() and not self.binding_brand_and_model:
-			frappe.throw("Binding Brand and Model is required for ski hardgoods.")
 
 	def _render_description(self):
 		"""Re-render the Description from the chosen Description Template (if any) so the saved
