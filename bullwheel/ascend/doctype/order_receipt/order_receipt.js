@@ -248,42 +248,39 @@ async function open_vendor_link_dialog(frm, record) {
 	dialog.show();
 }
 
-// 'not found': nothing in Ascend matches the scanned identifier. Opens the New Product
-// doctype's native Quick Entry modal (it declares quick_entry: 1) rather than a custom
-// dialog — Quick Entry renders only the doctype's required fields, which is a tighter,
-// scan-friendly form than the full New Product record. The scanned value and this receipt's
-// vendor are seeded onto the underlying document before the modal opens (upc isn't rendered
-// unless new_product.json's upc field is given allow_in_quick_entry; vendor is a hidden field
-// never rendered at all) — New Product's own insert hooks (see new_product.py) create the
-// Ascend Product and, since vendor is set, the linked Vendor Product.
-//
-// Caveat: if the user clicks "Edit Full Form", or the insert fails and Quick Entry redirects
-// there, this after-insert callback does not fire (Frappe's full-form save path consumes a
-// different route hook than Quick Entry sets), so the order item isn't auto-added here. The
-// Ascend records are still created once the document is eventually saved though — New
-// Product's insert hooks run the same regardless of which form saved it — so a re-scan
-// afterward now finds it.
-function open_new_product_quick_entry(frm, scanned_value) {
+// 'not found': nothing in Ascend matches the scanned identifier. Opens the full New Product
+// form inside a modal (bullwheel.forms.open_form_dialog) rather than Quick Entry — the real
+// Form runs the doctype's client scripts, so live description regeneration works during
+// receiving, and the after-insert callback fires on save no matter how the user saves (the
+// old Quick Entry path lost the callback if the user clicked "Edit Full Form"). The scanned
+// value and this receipt's vendor are seeded onto the document before the modal opens
+// (vendor is a hidden field, never rendered) — New Product's own insert hooks (see
+// new_product.py) create the Ascend Product and, since vendor is set, the linked
+// Vendor Product.
+function open_new_product_form_dialog(frm, scanned_value) {
 	frappe.model.with_doctype('New Product', () => {
-		const doc = frappe.model.get_new_doc('New Product');
-		doc.upc = scanned_value;
-		doc.vendor = frm.doc.vendor;
+		const seed_document = frappe.model.get_new_doc('New Product');
+		seed_document.upc = scanned_value;
+		seed_document.vendor = frm.doc.vendor;
 
-		frappe.ui.form.make_quick_entry('New Product', (new_product) => {
-			queue_add_or_increment_item(
-				frm,
-				`${new_product.vpn} (${frm.doc.vendor})`, // matches VendorProduct.NAME_EXPRESSION
-				new_product.estimated_cost,
-				new_product.description,
-				new_product.upc
-			);
-		}, null, doc);
+		bullwheel.forms.open_form_dialog('New Product', {
+			seed_document: seed_document,
+			after_insert(new_product) {
+				queue_add_or_increment_item(
+					frm,
+					`${new_product.vpn} (${frm.doc.vendor})`, // matches VendorProduct.NAME_EXPRESSION
+					new_product.estimated_cost,
+					new_product.description,
+					new_product.upc
+				);
+			},
+		});
 	});
 }
 
 // Dispatch a scanned identifier: resolve it via scan_item, then route the result through the
-// serialized queue (add/increment an order item), the vendor-link dialog, or New Product
-// Quick Entry.
+// serialized queue (add/increment an order item), the vendor-link dialog, or the New Product
+// form dialog.
 function handle_scan(frm, scanned_value) {
 	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.scan_item', {
 		id: scanned_value,
@@ -303,7 +300,7 @@ function handle_scan(frm, scanned_value) {
 			// No record of this item anywhere — confirm before creating one from scratch.
 			frappe.confirm(
 				`No product found for "${frappe.utils.escape_html(scanned_value)}". Create a new product record?`,
-				() => open_new_product_quick_entry(frm, scanned_value)
+				() => open_new_product_form_dialog(frm, scanned_value)
 			);
 		}
 	});

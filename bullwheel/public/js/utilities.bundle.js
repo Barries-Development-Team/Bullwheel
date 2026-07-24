@@ -3,4 +3,5 @@
 
 import "./utils/printing";
 import "./utils/warehouse";
-import "./utils/ascend"
+import "./utils/ascend";
+import "./utils/form_dialog";

@@ -48,7 +48,7 @@ fixtures = [
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/bullwheel/css/bullwheel.css"
+app_include_css = ["utilities.bundle.css"]
 app_include_js = ["utilities.bundle.js"]
 
 # include js, css files in header of web template
@@ -67,7 +67,10 @@ app_include_js = ["utilities.bundle.js"]
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
-doctype_list_js = {"Ascend Product" : "ascend/doctype/ascend_product/ascend_product_list.js"}
+doctype_list_js = {
+    "Ascend Product" : "ascend/doctype/ascend_product/ascend_product_list.js",
+    "New Product" : "ascend/doctype/new_product/new_product_list.js"
+}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
