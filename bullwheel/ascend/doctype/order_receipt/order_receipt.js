@@ -207,12 +207,22 @@ function queue_add_or_increment_item(frm, vpn, cost, description, upc) {
 // adds/increments the matching order item. Runs synchronously (not via the queue) so an
 // Ascend insert failure is reported back into this dialog instead of failing silently in a
 // background job.
-function open_vendor_link_dialog(frm, record) {
+async function open_vendor_link_dialog(frm, record) {
+
+	const generated_vpn = await bullwheel.ascend.generate_vpn({
+		vendor_id: frm.doc.cached_vendor_id,
+		vpn_prefix: frm.doc.vpn_prefix,
+		brand: record.brand,
+		model: record.model,
+		size: record.size,
+		color: record.color
+	});
+
 	const dialog = new frappe.ui.Dialog({
 		title: __('Link Vendor Product'),
 		fields: [
 			{fieldname: 'description', label: __('Description'), fieldtype: 'Data', read_only: 1, default: record.description},
-			{fieldname: 'part_number', label: __('Part Number (VPN)'), fieldtype: 'Data', reqd: 1, default: 'TODO'/* Generated VPN*/ },
+			{fieldname: 'part_number', label: __('Part Number (VPN)'), fieldtype: 'Data', reqd: 1, default: generated_vpn },
 			{fieldname: 'cost', label: __('Cost'), fieldtype: 'Currency', reqd: 1, default: record.cost}
 		],
 		primary_action_label: __('Link & Add'),
@@ -277,6 +287,7 @@ function handle_scan(frm, scanned_value) {
 	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.scan_item', {
 		id: scanned_value,
 		vendor: frm.doc.vendor,
+		cached_vendor_id: frm.doc.cached_vendor_id,
 		docname: frm.doc.name
 	}).then((response) => {
 		const [status, record] = response.message || [];
