@@ -40,6 +40,7 @@ CASE_COLUMNS = {"CaseQty", "CaseUPC", "CaseMSRP"}
 ASCEND_PRODUCT_FIELDS = [
 	"description", "price", "estimated_cost", "upc", "manufacturers_part_number",
 	"brand", "color", "size", "style_name", "style_number", "season", "year", "gender",
+	"category"
 ]
 
 # New Product fieldnames copied onto a Ski with Bindings field of the same name. The Store SKU
@@ -110,6 +111,8 @@ class NewProduct(Document):
 		"""Re-render the Description (in case fields changed since autoname) and re-derive the
 		Swap and Online prices, so both hold on the Quick Entry receiving path (which does not
 		run the form's field scripts)."""
+		if len(self.upc) >= 20:
+			frappe.throw('Max length for UPC is 20 characters.')
 		self._render_description()
 		self._compute_pricing()
 

@@ -49,17 +49,18 @@
   "case_msrp",
   "section_break_reim",
   "vpn",
-  "upc",
+  "store_sku",
   "column_break_qcum",
-  "style_number",
+  "upc",
   "manufacturers_part_number",
   "column_break_ipev",
-  "store_sku",
+  "style_number",
   "vpn_prefix"
  ],
  "fields": [
   {
    "allow_in_quick_entry": 1,
+   "description": "Generated on save.",
    "fieldname": "vpn",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -105,7 +106,8 @@
    "fieldname": "style_name",
    "fieldtype": "Data",
    "label": "Style (Model) Name",
-   "placeholder": "Do NOT include product type (e.g., Skis, Snowboard Bindings)."
+   "placeholder": "Do NOT include product type (e.g., Skis, Snowboard Bindings).",
+   "reqd": 1
   },
   {
    "fieldname": "style_number",
@@ -170,7 +172,8 @@
    "allow_in_quick_entry": 1,
    "fieldname": "brand",
    "fieldtype": "Data",
-   "label": "Brand"
+   "label": "Brand",
+   "reqd": 1
   },
   {
    "fieldname": "description_section",
@@ -223,6 +226,7 @@
    "label": "Case MSRP"
   },
   {
+   "description": "Generated on save.",
    "fieldname": "store_sku",
    "fieldtype": "Data",
    "label": "Store SKU",
@@ -234,7 +238,8 @@
    "fieldname": "vendor",
    "fieldtype": "Link",
    "label": "Vendor",
-   "options": "Vendor"
+   "options": "Vendor",
+   "reqd": 1
   },
   {
    "description": "Set by Order Receipt's scan flow before the New Product form dialog opens. Read by before_insert to generate the Vendor Part Number.",
@@ -344,13 +349,15 @@
    "fieldname": "swap_price",
    "fieldtype": "Currency",
    "label": "Swap Price",
-   "non_negative": 1
+   "non_negative": 1,
+   "read_only_depends_on": "eval:doc.product_pricing_rule"
   },
   {
    "fieldname": "online_price",
    "fieldtype": "Currency",
    "label": "Online Price",
-   "non_negative": 1
+   "non_negative": 1,
+   "read_only_depends_on": "eval:doc.product_pricing_rule"
   },
   {
    "fieldname": "product_pricing_rule",
@@ -363,7 +370,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-24 10:37:47.480819",
+ "modified": "2026-07-24 11:31:46.853000",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",

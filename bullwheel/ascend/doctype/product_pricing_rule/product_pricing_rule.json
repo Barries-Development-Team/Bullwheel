@@ -15,7 +15,7 @@
   {
    "fieldname": "pricing_rules__of_msrp_section",
    "fieldtype": "Section Break",
-   "label": "Pricing Rules (% of MSRP)"
+   "label": "Pricing Rules (% discount off MSRP)"
   },
   {
    "fieldname": "swap_percentage",
@@ -35,7 +35,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-24 11:15:47.165623",
+ "modified": "2026-07-24 11:27:38.199161",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Product Pricing Rule",
