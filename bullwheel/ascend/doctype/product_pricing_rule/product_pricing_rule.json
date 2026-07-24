@@ -20,20 +20,22 @@
   {
    "fieldname": "swap_percentage",
    "fieldtype": "Percent",
-   "label": "Swap Price %",
-   "non_negative": 1
+   "label": "Swap Price (Decimal)",
+   "non_negative": 1,
+   "placeholder": "e.g. 0.5"
   },
   {
    "fieldname": "online_percentage",
    "fieldtype": "Percent",
-   "label": "Online Price %",
-   "non_negative": 1
+   "label": "Online Price (Decimal)",
+   "non_negative": 1,
+   "placeholder": "e.g. 0.6"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-24 10:43:18.259911",
+ "modified": "2026-07-24 11:15:47.165623",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Product Pricing Rule",
