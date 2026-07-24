@@ -8,17 +8,31 @@ function required(parameter_name) {
     throw new Error(`bullwheel.ascend.generate_vpn: missing required parameter "${parameter_name}"`);
 }
 
+// Normalize one VPN component: strip anything that isn't alphanumeric or whitespace, collapse
+// remaining whitespace to a single "-", then uppercase. Non-alphanumeric characters are
+// stripped before whitespace is turned into "-" so the separator itself survives the strip.
+function format_vpn_component(value) {
+    return String(value)
+        .trim()
+        .replace(/[^a-zA-Z0-9\s]/g, '')
+        .replace(/\s+/g, '-')
+        .toUpperCase();
+}
+
 bullwheel.ascend.generate_vpn = function({
-    vendor_name = required('vendor_name'),
+    vpn_prefix = required('vpn_prefix'),
     brand = required('brand'),
     model = required('model'),
-    size = required('size'),
-    color = required('color')
+    size,
+    color
 } = {}) {
     // VPN Components
-    // Vendor Acronym - Brand - Model - Size - Color - Counter
+    // Vendor Acronym-Brand-Model-Size-Color-Counter
 
-
+    return [vpn_prefix, brand, model, size, color]
+        .filter((value) => value != null && String(value).trim() !== '')
+        .map(format_vpn_component)
+        .join('-');
 }
 
 // Words dropped when deriving an acronym from a vendor name, so they don't dilute it
