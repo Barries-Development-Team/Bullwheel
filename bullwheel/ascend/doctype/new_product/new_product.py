@@ -52,6 +52,13 @@ SKI_WITH_BINDINGS_FIELDS = [
 STORE_SKU_RANDOM_DIGITS = 8
 MAX_STORE_SKU_ATTEMPTS = 20
 
+# Product Price records to create in after_insert, mapping each Product Price `pricing_type`
+# to the New Product field holding the computed amount. A zero or empty amount is skipped.
+PRODUCT_PRICE_TYPE_TO_FIELD = {
+	"Ski Swap Price": "swap_price",
+	"Online Listing Price": "online_price",
+}
+
 
 def _generate_store_sku(description):
 	"""Build a new Ascend Store SKU: the first 3 letters of `description`, then
@@ -149,6 +156,8 @@ class NewProduct(Document):
 		if self._is_ski_hardgood():
 			self._create_ski_with_bindings()
 
+		self._create_product_prices()
+
 		if self.vendor:
 			product_record = AscendProduct.get_values(self.store_sku, ["id"])
 			create_vendor_product(
@@ -189,6 +198,23 @@ class NewProduct(Document):
 			**{field: self.get(field) for field in SKI_WITH_BINDINGS_FIELDS},
 		})
 		ski.insert()
+
+	def _create_product_prices(self):
+		"""Create a Product Price record for each computed Swap and Online price, linking it to the
+		Ascend Product just created (named by store_sku). A price of 0 or None is skipped, so a
+		product priced only for one channel — or one with no pricing rule at all — gets only the
+		records it has amounts for. Product Price names itself via its own autoname."""
+		for pricing_type, field in PRODUCT_PRICE_TYPE_TO_FIELD.items():
+			price = self.get(field)
+			if not price:
+				continue
+
+			frappe.get_doc({
+				"doctype": "Product Price",
+				"pricing_type": pricing_type,
+				"product": self.store_sku,
+				"price": price,
+			}).insert()
 
 
 @frappe.whitelist()
