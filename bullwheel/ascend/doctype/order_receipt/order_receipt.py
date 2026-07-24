@@ -205,7 +205,7 @@ def queue_add_or_increment_item(docname, vpn, cost=None, description=None, upc=N
 	)
 
 @frappe.whitelist()
-def scan_item(id: str, vendor: str, docname: str):
+def scan_item(id: str, vendor: str):
 	"""Resolve a scanned identifier to an item this order can receive. Checks, in order: a
 	Vendor Product in Ascend for this vendor, then any Product in Ascend. Returns a
 	(status, record) tuple; status is one of 'vpn found', 'product found', or 'not found'."""
@@ -233,11 +233,11 @@ def scan_item(id: str, vendor: str, docname: str):
 			record['vpn'] = vendor_product_name
 			return ('vpn found', record)
 		
-		# Determine if Product exists for the scanned item. ID and MfgrPartNo are included so
-		# the vendor-link dialog can create the missing Vendor Product without re-querying Ascend.
+		# Determine if Product exists for the scanned item. Custom lookup is used instead of virtual doctype methods to avoid reestablishing database connection.
 
 		product_query = ('SELECT ID as product_id, [Store UPC] as store_sku, UPC as upc, '
-			'Description as description, EstCost as cost, MfgrPartNo as mpn '
+			'Description as description, EstCost as cost, MfgrPartNo as mpn, Brand as brand, '
+			'Color as color, StyleName as style_name, Size as size '
 			'FROM Products '
 			'WHERE UPC = %s OR [Store UPC] = %s OR MfgrPartNo = %s'
 		)

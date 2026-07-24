@@ -212,7 +212,7 @@ function open_vendor_link_dialog(frm, record) {
 		title: __('Link Vendor Product'),
 		fields: [
 			{fieldname: 'description', label: __('Description'), fieldtype: 'Data', read_only: 1, default: record.description},
-			{fieldname: 'part_number', label: __('Part Number (VPN)'), fieldtype: 'Data', reqd: 1, default: record.mpn},
+			{fieldname: 'part_number', label: __('Part Number (VPN)'), fieldtype: 'Data', reqd: 1, default: 'TODO'/* Generated VPN*/ },
 			{fieldname: 'cost', label: __('Cost'), fieldtype: 'Currency', reqd: 1, default: record.cost}
 		],
 		primary_action_label: __('Link & Add'),
@@ -332,7 +332,60 @@ function setup_scan_box(frm) {
 	});
 }
 
+// On a new receipt's first save, prompt for the vpn_prefix acronym (used later when
+// generating VPNs for products on this order) instead of silently defaulting it. Suggests
+// an acronym derived from the selected vendor's name but lets the user override it. Returns
+// a Promise so before_save's caller (frappe.run_serially) awaits the dialog before the
+// mandatory-field check and the actual save proceed.
+function prompt_vpn_prefix(frm) {
+	return new Promise((resolve, reject) => {
+		let confirmed = false;
+
+		const dialog = new frappe.ui.Dialog({
+			title: __('Confirm VPN Prefix'),
+			fields: [
+				{
+					fieldname: 'vpn_prefix',
+					label: __('VPN Prefix'),
+					fieldtype: 'Data',
+					reqd: 1,
+					default: bullwheel.ascend.generate_vendor_acronym(frm.doc.vendor)
+				}
+			],
+			primary_action_label: __('Confirm'),
+			primary_action: (values) => {
+				// Ensure prefix has no whitespace and is not empty.
+				const vpn_prefix = (values.vpn_prefix || '').trim();
+				if (!vpn_prefix) {
+					dialog.set_df_property('vpn_prefix', 'description', __('VPN Prefix cannot be empty.'));
+					return;
+				}
+
+				confirmed = true;
+				frm.set_value('vpn_prefix', vpn_prefix);
+				dialog.hide();
+				resolve();
+			},
+			// Closed (Escape / backdrop) without confirming: block the save rather than
+			// silently proceeding with no prefix.
+			onhide: () => {
+				if (!confirmed) {
+					frappe.validated = false;
+					reject();
+				}
+			}
+		});
+
+		dialog.show();
+	});
+}
+
 frappe.ui.form.on("Order Receipt", {
+	before_save(frm) {
+		// Vendor is itself a required field: if it's missing, let the normal mandatory-field
+		// check (which runs right after before_save) report that instead of prompting here.
+		if (frm.is_new() && frm.doc.vendor) return prompt_vpn_prefix(frm);
+	},
  	refresh(frm) {
 		if (!frm.is_new()) {
 			// Regenerates the buttons so that the receiving actions are always before the table actions.

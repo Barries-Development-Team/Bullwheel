@@ -7,8 +7,9 @@
  "engine": "InnoDB",
  "field_order": [
   "details",
-  "po",
   "vendor",
+  "vpn_prefix",
+  "po",
   "column_break_yjnq",
   "order_status",
   "column_break_rlmm",
@@ -122,12 +123,19 @@
   {
    "fieldname": "column_break_sctf",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vpn_prefix",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "VPN Prefix",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-17 16:39:44.162914",
+ "modified": "2026-07-23 18:25:42.509814",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt",
