@@ -18,7 +18,7 @@ class OrderReceipt(Document):
 
 	def validate(self):
 		if not self.cached_vendor_id:
-			self.cached_vendor_id = Vendor.get_values(name = self.vendor, fields = ['vendor_id'])
+			self.cached_vendor_id = Vendor.get_values(name = self.vendor, fields = ['id']).id
 
 	@property
 	def total_order_items(self):
