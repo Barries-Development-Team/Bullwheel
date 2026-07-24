@@ -9,10 +9,33 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 - Overhauled the process of finding products in Warehouse Locations.
     - Replaced the Find Product page with a dialog prompt.
     - Added Find Product buttons to Ascend Products.
+    - Added multi-product location finding support.
+- Added a New Product creation dialog, replacing the previous workflow, with Quick Entry support for key fields including Gender.
+- Added a Vendor Part Number (VPN) generator for New Product, including a configurable VPN prefix, uniqueness checks, and a varchar-limit safety check.
+- New Product now automatically generates Swap and Online Product Pricing on save, with pricing rule validation.
+- Added the Product Pricing Rule DocType.
+- Added a confirmation prompt before saving a New Product.
+- Order Receipt now caches the resolved Vendor ID and supports scanning items with a VPN Prefix.
+- Virtual DocType JOIN-sourced fields (such as Ascend Product category) can now be edited and saved.
 
 ### Bug Fixes
 
 - Fixed UI element updates (such as Workspaces and Desktop Icons) and Roles not being applied on app update.
+- Fixed `NewProduct.validate` crash when the UPC field was blank.
+- Fixed an off-by-one error in UPC length validation that rejected valid 20-character UPCs.
+- Fixed virtual-doctype id resolution wiping the linked foreign key on unrelated saves.
+- Fixed silent, arbitrary category assignment on ambiguous (non-unique) category names; the save is now aborted with a clear error instead.
+- Fixed `OrderReceipt.subtotal`/`total_order_items` crash when a scanned item's cost or quantity was `None`.
+- Guarded `NewProduct.after_insert` VPN lookup so a missing just-created Ascend Product throws a clear error instead of a `TypeError`.
+- Fixed a bug allowing New Product to be saved twice.
+- Fixed Vendor field visibility and display bugs, and a related reload bug, on New Product.
+- Fixed a breadcrumbs display bug.
+- Made Category, Brand, and Style Name mandatory on New Product, and made Ski binding data optional (no longer required) for Ski with Bindings.
+- Temporarily disabled the Add Order Item button.
+
+### Chores
+
+- Regenerated fixtures, including removal of Workspace and Workspace-related DocType fixtures.
 
 ## [1.0.2] - July 20, 2026
 
