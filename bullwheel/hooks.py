@@ -40,8 +40,8 @@ fixtures = [
     {
         "doctype": "Role",
         "filters": [["name", "=", "Warehouse Staff"]]
-    }
-    
+    },
+    "Product Pricing Rule"
 ]
 
 # Includes in <head>
