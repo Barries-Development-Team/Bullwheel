@@ -19,7 +19,10 @@ function format_vpn_component(value) {
         .toUpperCase();
 }
 
-bullwheel.ascend.generate_vpn = function({
+// Async: appending the Counter component requires checking Ascend for an existing VendorProducts
+// row with that exact part number, one candidate at a time, via vendor_product_match_count.
+bullwheel.ascend.generate_vpn = async function({
+    vendor_id = required('vendor_id'),
     vpn_prefix = required('vpn_prefix'),
     brand = required('brand'),
     model = required('model'),
@@ -29,10 +32,22 @@ bullwheel.ascend.generate_vpn = function({
     // VPN Components
     // Vendor Acronym-Brand-Model-Size-Color-Counter
 
-    return [vpn_prefix, brand, model, size, color]
+    const base_vpn = [vpn_prefix, brand, model, size, color]
         .filter((value) => value != null && String(value).trim() !== '')
         .map(format_vpn_component)
         .join('-');
+
+    for (let counter = 1; ; counter++) {
+        const candidate_vpn = `${base_vpn}-${counter}`;
+
+        const response = await frappe.call('bullwheel.ascend.doctype.vendor_product.vendor_product.vendor_product_match_count', {
+            vendor_id: vendor_id,
+            part_number: candidate_vpn,
+            part_number_similarity: 'equals'
+        });
+
+        if (!response.message) return candidate_vpn;
+    }
 }
 
 // Words dropped when deriving an acronym from a vendor name, so they don't dilute it

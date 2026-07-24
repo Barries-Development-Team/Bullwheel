@@ -53,22 +53,44 @@ class VendorProduct(AbstractVirtualDocType):
     }
 	]
 
+@frappe.whitelist()
+def vendor_product_match_count(vendor_id, part_number, part_number_similarity: str = 'equals') -> int:
+	"""Check whether a VendorProducts row already exists for this vendor, matching part_number
+	either exactly or via a wildcard LIKE depending on part_number_similarity. Returns the
+	number of matching rows."""
+
+	match part_number_similarity:
+		case 'equals':
+			query = "SELECT ID FROM VendorProducts WHERE VendorID = %s AND PartNumber = %s"
+			values = [vendor_id, part_number]
+		case 'like':
+			query = "SELECT ID FROM VendorProducts WHERE VendorID = %s AND PartNumber LIKE %s"
+			values = [vendor_id, f'%{part_number}%']
+
+	with MSSQLDatabase(get_default_ascend_database()) as ascend:
+		existing = ascend.sql(
+			query=query,
+			values=values,
+			as_dict=True,
+		)
+	if existing:
+		return len(existing)
+
+	return 0
 
 def create_vendor_product(
 	vendor_id, product_id, part_number, cost, description=None,
 	case_quantity=None, case_upc=None, case_msrp=None,
 ):
-	"""Insert one VendorProducts row into Ascend, linking a Product to a vendor that does not
-	yet carry it (used by Order Receipt's vendor-link flow during receiving, and by New
-	Product's insert for brand-new products). Kept as a raw parameterized INSERT, outside the
-	read-only virtual doctype framework, because VendorProduct's NAME_EXPRESSION (a computed
-	CONCAT of PartNumber and Vendor.Name) is not a real column and therefore cannot be produced
-	by the framework's generic db_insert. Re-checks for an existing row for this vendor + part
-	number inside the same connection, so the check and the insert commit or roll back together
-	(see MSSQLDatabase.__exit__). Returns True when a row was inserted, False when an existing
+	"""Insert one VendorProducts row into Ascend, linking a Product to a vendor that doesn't yet
+	carry it. Used by Order Receipt's vendor-link flow during receiving and by New Product's
+	insert for brand-new products. Returns True when a row was inserted, False when an existing
 	row was found and reused."""
 
+	
 	with MSSQLDatabase(get_default_ascend_database()) as ascend:
+		# This function intentionally does not utilize the vendor_product_exists() method provided 
+		# by this file to avoid multiple database connections.
 		existing = ascend.sql(
 			"SELECT ID FROM VendorProducts WHERE VendorID = %s AND PartNumber = %s",
 			[vendor_id, part_number],
@@ -77,6 +99,9 @@ def create_vendor_product(
 		if existing:
 			return False
 
+		# Raw parameterized INSERT instead of the virtual doctype framework: NAME_EXPRESSION
+		# (PartNumber + Vendor.Name) isn't a real column, so the framework's generic db_insert
+		# can't produce it.
 		ascend.sql(
 			"INSERT INTO VendorProducts "
 			"(ID, VendorID, ProductID, PartNumber, Cost, Description, CaseQty, CaseUPC, CaseMSRP, "
