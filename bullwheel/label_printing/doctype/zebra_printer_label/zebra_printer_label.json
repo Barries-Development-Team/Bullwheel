@@ -52,7 +52,7 @@
   {
    "fieldname": "width",
    "fieldtype": "Float",
-   "label": "Width"
+   "label": "Width (Inches)"
   },
   {
    "fieldname": "section_break_dptq",
@@ -61,7 +61,7 @@
   {
    "fieldname": "height",
    "fieldtype": "Float",
-   "label": "Height"
+   "label": "Height (Inches)"
   },
   {
    "default": "0",
@@ -73,7 +73,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-24 12:12:22.398219",
+ "modified": "2026-07-27 16:07:56.562589",
  "modified_by": "Administrator",
  "module": "Label Printing",
  "name": "Zebra Printer Label",
