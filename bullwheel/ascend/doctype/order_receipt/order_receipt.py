@@ -167,17 +167,18 @@ def queue_update_table(docname, table, job, values=None, row_name=None):
 	)
 
 def add_or_increment_item(docname, vpn, cost=None, description=None, upc=None):
-	"""Add an order item for the given Vendor Product, or bump its quantity if a row for the
-	same vpn already exists. Used by the scan flow; runs under the row lock so concurrent
-	scans serialize instead of racing. description/upc are supplied by the caller (scan_item
-	or the vendor-link/new-product flows already have them), so the snapshot needs no extra
-	Ascend query."""
+	"""Add an order item for the given Vendor Product, or bump its quantity if an unreceived row
+	for the same vpn already exists. Rows already marked received are treated as read-only
+	history from a prior batch and are never matched, so a new row is appended instead. Used
+	by the scan flow; runs under the row lock so concurrent scans serialize instead of racing.
+	description/upc are supplied by the caller (scan_item or the vendor-link/new-product flows
+	already have them), so the snapshot needs no extra Ascend query."""
 
 	lock_row(docname)
 
 	doc = frappe.get_doc("Order Receipt", docname)
 
-	existing = next((row for row in doc.order_items if row.vpn == vpn), None)
+	existing = next((row for row in doc.order_items if row.vpn == vpn and not row.received), None)
 	if existing:
 		existing.quantity += 1
 	else:
