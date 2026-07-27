@@ -225,7 +225,7 @@ async function open_vendor_link_dialog(frm, record) {
 		fields: [
 			{fieldname: 'description', label: __('Description'), fieldtype: 'Data', read_only: 1, default: record.description},
 			{fieldname: 'part_number', label: __('Part Number (VPN)'), fieldtype: 'Data', reqd: 1, default: generated_vpn },
-			{fieldname: 'cost', label: __('Cost'), fieldtype: 'Currency', reqd: 1, default: record.cost}
+			{fieldname: 'cost', label: __('Cost'), fieldtype: 'Currency', reqd: 1}
 		],
 		primary_action_label: __('Link & Add'),
 		primary_action: (values) => {
