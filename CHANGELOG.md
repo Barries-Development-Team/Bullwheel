@@ -2,6 +2,14 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.2] - July 27, 2026
+
+### Changes
+
+- Removed Cost autofill on linked Vendor Prodcut.
+- Made the Vendor Product link on the Edit Order Item dialog read-only.
+- Scanning an item into an order no longer increments received rows.
+
 ## [1.1.1] - July 24, 2026
 
 ### Bug Fixes
