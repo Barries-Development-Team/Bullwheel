@@ -130,6 +130,8 @@ A couple of Desk-level settings are expected in development and production sites
 - **System Settings > Password**: disable Password Policy
 - **System Settings > Display**: disable Hide Empty Read-Only Fields
 
+**IMPORTANT** When pulling changes, ALWAYS run `bench --site <site> migrate` before making any edits to **fixtures.** Otherwise, your local copy of fixtures records in the development container's database may overwrite the updates fixtures.
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
