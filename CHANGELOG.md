@@ -2,6 +2,16 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.3] - Unreleased
+
+### Changes
+
+- Reworked Ascend Tag
+
+### Bugfixes
+
+- Fixed "cm" being included on Snowboard Binding Description Templates.
+
 ## [1.1.2] - July 27, 2026
 
 ### Changes
