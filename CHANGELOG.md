@@ -7,6 +7,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 ### Bug Fixes
 
 - Removed multi-product location dialog, restoring full Find Product functionality.
+- Fixed default Ascend Tag description truncation.
 
 ## [1.1.0] - July 24, 2026
 
