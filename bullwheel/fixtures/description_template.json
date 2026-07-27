@@ -2,9 +2,9 @@
  {
   "docstatus": 0,
   "doctype": "Description Template",
-  "modified": "2026-07-23 22:47:31.359617",
+  "modified": "2026-07-27 17:09:58.189791",
   "name": "Snowboard Binding",
-  "template": "{{ doc.brand }} \n{%- if doc.year %} {{ doc.year }}{% endif %}\n{%- if doc.gender %} {{ doc.gender }}{% endif %}\n{{ doc.style_name }}\n{%- if doc.size %} {{ doc.size }}cm{% endif %}\n Snowboard Binding - \n{%- if doc.color %} {{ doc.color }}{% endif %}",
+  "template": "{{ doc.brand }} \n{%- if doc.year %} {{ doc.year }}{% endif %}\n{%- if doc.gender %} {{ doc.gender }}{% endif %}\n{{ doc.style_name }}\n{%- if doc.size %} {{ doc.size }}{% endif %}\n Snowboard Binding - \n{%- if doc.color %} {{ doc.color }}{% endif %}",
   "template_name": "Snowboard Binding"
  },
  {
