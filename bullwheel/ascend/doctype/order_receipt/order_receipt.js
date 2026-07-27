@@ -10,9 +10,10 @@ const TABLE_CONFIGS = {
 		noun: 'Order Item',
 		// Scope the vpn Link to this receipt's vendor. Vendor Product records carry a
 		// `vendor` link (Vendor.Name) and are named "<part number> (<vendor>)".
-		customize_field: (frm, field) => {
+		customize_field: (frm, field, job) => {
 			if (field.fieldname === 'vpn') {
 				field.get_query = () => ({filters: {vendor: frm.doc.vendor}});
+				if (job === 'edit') field.read_only = 1;
 			}
 		}
 	}
@@ -48,7 +49,7 @@ function queue_update(frm, config, job, doc, row_name = null) {
 // Build the Add/Edit dialog field list from the child DocType so the form stays driven by
 // the DocType definition rather than a hardcoded list. Per-table customize_field hooks can
 // adjust individual fields (e.g. the vpn vendor filter for order items).
-function dialog_fields(frm, config) {
+function dialog_fields(frm, config, job) {
 	return frappe.get_meta(config.child_doctype).fields
 		.filter(is_editable_field)
 		.map((df) => {
@@ -63,7 +64,7 @@ function dialog_fields(frm, config) {
 				mandatory_depends_on: df.mandatory_depends_on,
 				description: df.description
 			};
-			if (config.customize_field) config.customize_field(frm, field);
+			if (config.customize_field) config.customize_field(frm, field, job);
 			return field;
 		});
 }
@@ -76,7 +77,7 @@ function open_dialog(frm, config, {job, row = null, prefill = null, on_submit = 
 	frappe.model.with_doctype(config.child_doctype, () => {
 		const dialog = new frappe.ui.Dialog({
 			title: job === 'add' ? __('Add {0}', [config.noun]) : __('Edit {0}', [config.noun]),
-			fields: dialog_fields(frm, config),
+			fields: dialog_fields(frm, config, job),
 			primary_action_label: job === 'add' ? __('Add') : __('Save'),
 			primary_action: (values) => {
 				// get_values() returns null when a required field is missing; it has
