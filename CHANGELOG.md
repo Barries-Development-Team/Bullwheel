@@ -10,7 +10,8 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ### Changes
 
-- Reworked Ascend Tag
+- Reworked the Ascend Tag.
+- Vendor Product now displays UPC.
 
 ### Bugfixes
 
