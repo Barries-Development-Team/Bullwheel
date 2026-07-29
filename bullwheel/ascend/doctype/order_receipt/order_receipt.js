@@ -441,6 +441,20 @@ frappe.ui.form.on("Order Receipt", {
 				});
 			},__("Receiving"));
 
+			frm.add_custom_button(__('Open Product'), () => {
+				const rows = frm.fields_dict.order_items.grid.get_selected_children();
+				if (rows.length !== 1) {
+					frappe.msgprint(__('Select exactly one item to open.'));
+					return;
+				}
+
+				vpn = rows[0].vpn
+				frappe.show_alert('Loading Product...', 5)
+				frappe.db.get_value('Vendor Product', vpn, 'product').then(response => {
+					window.open(`/desk/ascend-product/${response.message.product}`,'_blank');
+ 				})	
+			})
+
 			add_product_print_buttons(frm);
 			show_table_buttons(frm, TABLE_CONFIGS.order_items);
 			setup_scan_box(frm);
