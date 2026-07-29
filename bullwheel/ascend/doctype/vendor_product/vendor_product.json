@@ -2,7 +2,6 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "prompt",
  "creation": "2026-07-03 11:07:07.541319",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -137,11 +136,11 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-17 16:06:44.294353",
+ "modified": "2026-07-29 12:41:54.113138",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Vendor Product",
- "naming_rule": "Set by user",
+ "naming_rule": "By script",
  "owner": "Administrator",
  "permissions": [
   {
