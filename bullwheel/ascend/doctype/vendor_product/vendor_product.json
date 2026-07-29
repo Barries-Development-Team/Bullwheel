@@ -7,10 +7,12 @@
  "engine": "InnoDB",
  "field_order": [
   "description",
-  "product",
-  "column_break_inpz",
   "vendor",
+  "column_break_inpz",
+  "product",
   "part_number",
+  "column_break_klhj",
+  "upc",
   "vendor_product_details_section",
   "cost",
   "column_break_pdzz",
@@ -130,13 +132,23 @@
   {
    "fieldname": "column_break_zjwp",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "upc",
+   "fieldtype": "Data",
+   "label": "UPC",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_klhj",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-07-29 12:41:54.113138",
+ "modified": "2026-07-29 16:01:36.803070",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Vendor Product",

@@ -71,7 +71,7 @@
    "fieldname": "upc",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "UPC",
+   "label": "Barcode",
    "read_only": 1
   },
   {
@@ -83,7 +83,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-17 16:40:37.721171",
+ "modified": "2026-07-29 14:32:10.892318",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Order Receipt Item",
