@@ -4,6 +4,10 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ## [1.1.3] - Unreleased
 
+### Features
+
+- Added a "Find Product" button to the Order Receipt form view. 
+
 ### Changes
 
 - Reworked Ascend Tag
