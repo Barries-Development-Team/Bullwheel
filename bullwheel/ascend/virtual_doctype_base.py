@@ -12,6 +12,7 @@ from frappe.utils import get_datetime, getdate
 
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning
+from bullwheel.ascend.schema_config import normalize_schema_config
 
 # ─── Static Helper Functions ───────────────────────────────────────
 
@@ -79,32 +80,91 @@ class AbstractVirtualDocType(Document):
 	TABLE_NAME: str = None       		# Ascend SQL table name, e.g. "Products"
 	ALLOW_WRITE: bool = False			# If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
 	JOIN_CONFIG: list = None     		# List of JOIN descriptors — see _build_join_clause for the dict shape
-	SCHEMA_CONFIG: dict = None    		# Fieldname -> SQL Column. Must include a "name" entry whose sql_column is the primary key.
+	SCHEMA_CONFIG: dict = None    		# Fieldname -> dict of per-field options. Must include a "name" entry naming the
+	                             		# primary key column (or set NAME_EXPRESSION instead). Every option is documented
+	                             		# in schema_config.py, which also owns normalization and the valid key set.
 	NAME_EXPRESSION: str = None    		# Optional raw SQL expression for the primary key. When set, overrides
 	                             		# SCHEMA_CONFIG['name'] as the SQL for `name` in SELECT, WHERE, filters, and
-	                             		# ORDER BY (and makes the SCHEMA_CONFIG 'name' entry optional).
+	                             		# ORDER BY (and makes the SCHEMA_CONFIG 'name' entry optional). A field config
+	                             		# cannot hold an expression itself, since column names are always bracket-quoted.
 	SHOW_FIELD_WARNINGS: bool = True	# Display a warning in the console if an expected field has no mapping in SCHEMA_CONFIG
-	ALT_NAME_RESOLUTION_FIELDS: list = None	# Optional list of additional SCHEMA_CONFIG fieldnames a record can also be
-	                             		# identified by, in addition to 'name' (e.g. ['upc'] lets a Store-SKU-keyed
-	                             		# doctype also be looked up by UPC).
-	LINKED_ID_FIELDS: dict = None		# Maps an editable, JOIN-sourced display field to the writable id field on
-	                             		# TABLE_NAME that stores its foreign key, plus the linked virtual DocType used
-	                             		# to resolve the display value to that id on save. See _resolve_linked_id_fields.
-	                             		# Shape: { 'category': {'id_field': 'category_id',
-	                             		#                       'link_doctype': 'Product Category',
-	                             		#                       'link_id_field': 'database_id'} }
+
+	# Normalized SCHEMA_CONFIGs, keyed by controller class. Deliberately a dict on the base
+	# class rather than a plain class attribute: a subclass would otherwise read (and
+	# overwrite) the base's value, leaking one controller's config into every other.
+	_normalized_schema_configs = {}
+
+
+	# ─── Field Config Accessors  ──────────────────────────────────────────────
+
+	@classmethod
+	def _normalized_schema(cls) -> dict:
+		"""Return this controller's SCHEMA_CONFIG in its canonical internal form, normalizing
+		it once per class. See schema_config.py for the field config contract."""
+		normalized = AbstractVirtualDocType._normalized_schema_configs.get(cls)
+		if normalized is None:
+			normalized = normalize_schema_config(cls)
+			AbstractVirtualDocType._normalized_schema_configs[cls] = normalized
+		return normalized
+
+	@classmethod
+	def _clear_normalized_schema_cache(cls) -> None:
+		"""Discard the memoized normalized config for this controller, so a SCHEMA_CONFIG
+		reassigned after the first query (only tests do this) is picked up."""
+		AbstractVirtualDocType._normalized_schema_configs.pop(cls, None)
+
+	@classmethod
+	def _field_config(cls, field: str) -> dict | None:
+		"""Return the normalized field config for a fieldname, or None when the field has no
+		SCHEMA_CONFIG entry."""
+		return cls._normalized_schema().get(field)
+
+	@classmethod
+	def alternate_name_fields(cls) -> list:
+		"""Fieldnames a record can be identified by in addition to 'name', declared with the
+		field config's 'alternate_name' flag (e.g. UPC as well as Store SKU for Ascend
+		Product). Declaration order is preserved, since _echo_matched_identifier reports the
+		first of these fields that matches a searched value."""
+		return [
+			fieldname for fieldname, field_config in cls._normalized_schema().items()
+			if field_config['alternate_name']
+		]
+
+	@classmethod
+	def linked_id_fields(cls) -> dict:
+		"""Maps each editable, JOIN-sourced display field to the writable id field on
+		TABLE_NAME holding its foreign key, plus the linked virtual DocType used to resolve
+		the display value to that id on save. Declared with the field config's 'linked_id'
+		key. See _resolve_linked_id_fields."""
+		return {
+			fieldname: field_config['linked_id']
+			for fieldname, field_config in cls._normalized_schema().items()
+			if field_config['linked_id']
+		}
+
+	@classmethod
+	def static_fields(cls) -> list:
+		"""Fieldnames whose value never changes for a given record (identity columns, creation
+		timestamps), declared with the field config's 'static' flag. Nothing consumes this
+		yet — it is declared so a future caching layer has the information it needs."""
+		return [
+			fieldname for fieldname, field_config in cls._normalized_schema().items()
+			if field_config['static']
+		]
 
 
 	# ─── Helper Methods  ──────────────────────────────────────────────────────
 
 	@classmethod
 	def _column_for(cls, field: str) -> str | None:
-		"""Resolve a fieldname to the SQL it maps to. The primary key ('name') resolves to
-		NAME_EXPRESSION when that attribute is set; every other field (and 'name' when
+		"""Resolve a fieldname to the SQL it maps to — the table-qualified, bracket-quoted
+		column reference pre-computed during normalization. The primary key ('name') resolves
+		to NAME_EXPRESSION when that attribute is set; every other field (and 'name' when
 		NAME_EXPRESSION is unset) resolves straight from SCHEMA_CONFIG."""
 		if field == 'name' and cls.NAME_EXPRESSION:
 			return cls.NAME_EXPRESSION
-		return cls.SCHEMA_CONFIG.get(field)
+		field_config = cls._field_config(field)
+		return field_config['sql'] if field_config else None
 
 	@classmethod
 	def _required_column_for(cls, field: str) -> str | None:
@@ -166,7 +226,7 @@ class AbstractVirtualDocType(Document):
 		Unmapped fields are skipped with a console warning, or raise a ValueError when strict is set;
 		either way, resolving zero fields raises rather than emitting invalid SQL."""
 		if len(fields) <= 0:
-			fields = list(cls.SCHEMA_CONFIG.keys())
+			fields = list(cls._normalized_schema().keys())
 			if 'name' not in fields:
 				fields.insert(0, 'name')
 
@@ -232,37 +292,37 @@ class AbstractVirtualDocType(Document):
 	def _condition_sql(cls, field: str, operator: str, value, values: list) -> str | None:
 		"""Build a single SQL condition fragment for one filter condition, appending its bound
 		value(s) to `values`. A condition on 'name' is widened to an OR across 'name' plus every
-		field in ALT_NAME_RESOLUTION_FIELDS, so a record can be identified by those fields too.
-		Returns None (condition dropped) for unmapped standard Frappe fields; raises for any
-		other unmapped field."""
+		alternate-name field, so a record can be identified by those fields too. Returns None
+		(condition dropped) for unmapped standard Frappe fields; raises for any other unmapped
+		field."""
 		sql_column = cls._required_column_for(field)
 		if sql_column is None:
 			return None
 
-		if field == 'name' and cls.ALT_NAME_RESOLUTION_FIELDS:
+		alternate_name_fields = cls.alternate_name_fields()
+		if field == 'name' and alternate_name_fields:
 			sub_conditions = []
-			for alt_field in ('name', *cls.ALT_NAME_RESOLUTION_FIELDS):
-				sub_conditions.append(cls._format_condition(cls._column_for(alt_field), operator, value, values))
+			for alternate_field in ('name', *alternate_name_fields):
+				sub_conditions.append(cls._format_condition(cls._column_for(alternate_field), operator, value, values))
 			return '(' + ' OR '.join(sub_conditions) + ')'
 
 		return cls._format_condition(sql_column, operator, value, values)
 
 	@classmethod
-	def _column_belongs_to_table(cls, sql_column: str) -> bool:
-		"""Returns True when sql_column has no table qualifier (the common case for a
-		SCHEMA_CONFIG with no JOIN_CONFIG) or when its qualifier (the segment before the
-		first dot, stripped of bracket/backtick quoting) matches TABLE_NAME. db_update can
-		only SET columns on TABLE_NAME itself — JOIN_CONFIG tables are read-only."""
-		if '.' not in sql_column:
-			return True
-		table_qualifier = sql_column.split('.')[0].strip('[]`')
-		return table_qualifier.lower() == cls.TABLE_NAME.lower()
+	def _column_belongs_to_table(cls, field: str) -> bool:
+		"""Returns True when the field's column lives on TABLE_NAME itself rather than on a
+		JOIN_CONFIG table. db_insert/db_update can only write columns on TABLE_NAME — joined
+		tables are read-only. An unmapped field belongs to no table, so it returns False."""
+		field_config = cls._field_config(field)
+		if field_config is None or field_config['table'] is None:
+			return False
+		return field_config['table'].lower() == cls.TABLE_NAME.lower()
 
 	@classmethod
 	def _build_where_clause(cls, values: list, filters=None, or_filters=None) -> str:
 		"""Build the WHERE clause from Frappe filters (list or dict format). Filter values are
-		appended to the passed values list. Conditions on 'name' are automatically widened per
-		ALT_NAME_RESOLUTION_FIELDS; conditions on unmapped standard Frappe fields are dropped."""
+		appended to the passed values list. Conditions on 'name' are automatically widened across
+		the alternate-name fields; conditions on unmapped standard Frappe fields are dropped."""
 		where_statements = []
 
 		and_statements = [
@@ -331,9 +391,9 @@ class AbstractVirtualDocType(Document):
 
 
 	def load_from_db(self) -> None:
-		"""Load this document by primary key. When ALT_NAME_RESOLUTION_FIELDS is set, self.name is
-		also matched against those additional columns (e.g. UPC as well as Store SKU for Ascend
-		Product), so a Link field can be populated with either identifier."""
+		"""Load this document by primary key. When alternate-name fields are declared, self.name
+		is also matched against those additional columns (e.g. UPC as well as Store SKU for
+		Ascend Product), so a Link field can be populated with either identifier."""
 		query_clauses = []
 		values = []
 
@@ -402,13 +462,13 @@ class AbstractVirtualDocType(Document):
 
 	@classmethod
 	def _echo_matched_identifier(cls, records: list, search_values: set) -> list:
-		"""Rewrite each record's 'name' to whichever of (name, *ALT_NAME_RESOLUTION_FIELDS) actually
+		"""Rewrite each record's 'name' to whichever of (name, *alternate name fields) actually
 		equals one of the searched values, instead of always the canonical primary key. Frappe's
 		batched Link-existence check (Column.validate_values) compares returned names against the
-		raw input strings via set membership, so a record found only via an alt field (e.g. UPC)
-		must echo that value back as 'name' or it is reported as missing even though a match was
-		found."""
-		candidate_fields = ['name', *cls.ALT_NAME_RESOLUTION_FIELDS]
+		raw input strings via set membership, so a record found only via an alternate field (e.g.
+		UPC) must echo that value back as 'name' or it is reported as missing even though a match
+		was found."""
+		candidate_fields = ['name', *cls.alternate_name_fields()]
 		echoed = []
 		for record in records:
 			record = dict(record)
@@ -435,10 +495,11 @@ class AbstractVirtualDocType(Document):
 		cls._validate_and_clean_fields(fields)
 		removed_field_count = original_field_count - len(fields)
 
-		search_values = cls._search_values_for_name_condition(filters, or_filters) if cls.ALT_NAME_RESOLUTION_FIELDS else None
+		alternate_name_fields = cls.alternate_name_fields()
+		search_values = cls._search_values_for_name_condition(filters, or_filters) if alternate_name_fields else None
 		select_fields = fields
 		if search_values:
-			select_fields = list(dict.fromkeys([*fields, 'name', *cls.ALT_NAME_RESOLUTION_FIELDS]))
+			select_fields = list(dict.fromkeys([*fields, 'name', *alternate_name_fields]))
 
 		query_clauses = []
 		values = []
@@ -513,8 +574,8 @@ class AbstractVirtualDocType(Document):
 
 	@classmethod
 	def _record_exists(cls, name) -> bool:
-		"""True when a record already matches `name` (or any ALT_NAME_RESOLUTION_FIELDS, via
-		the same widening _build_where_clause already applies to name filters). Guards db_insert
+		"""True when a record already matches `name` (or any alternate-name field, via the
+		same widening _build_where_clause already applies to name filters). Guards db_insert
 		against silently duplicating a record, since Frappe's virtual-doctype insert flow performs
 		no uniqueness check of its own before calling db_insert."""
 		return cls.get_count(
@@ -564,23 +625,26 @@ class AbstractVirtualDocType(Document):
 				):
 					continue
 
-			sql_column = self.SCHEMA_CONFIG.get(field)
-			if sql_column is None:
+			# Resolved through _field_config rather than _column_for so that NAME_EXPRESSION can
+			# never reach a write: a computed expression is not a column and must not appear in
+			# an INSERT/UPDATE column list. Do not "simplify" this to _column_for.
+			field_config = self._field_config(field)
+			if field_config is None or field_config['sql'] is None:
 				continue
-			if not self._column_belongs_to_table(sql_column):
+			if not self._column_belongs_to_table(field):
 				if self.SHOW_FIELD_WARNINGS:
 					print_console_warning(
 						f"Ascend Virtual Doc Warning: Skipping '{field}' for {self.doctype} — "
-						f"column '{sql_column}' does not belong to {self.TABLE_NAME}."
+						f"column '{field_config['sql']}' does not belong to {self.TABLE_NAME}."
 					)
 				continue
-			writable_fields.append((sql_column, self._normalize_write_value(field, value)))
+			writable_fields.append((field_config['sql'], self._normalize_write_value(field, value)))
 		return writable_fields
 
 	def _resolve_linked_id_fields(self) -> None:
-		"""Resolve every LINKED_ID_FIELDS display field to the id it references and write that id
-		onto the paired id field, so the writable foreign-key column on TABLE_NAME reflects the
-		user's edit to the (read-only, JOIN-sourced) display field.
+		"""Resolve every 'linked_id' display field to the id it references and write that id onto
+		the paired id field, so the writable foreign-key column on TABLE_NAME reflects the user's
+		edit to the (read-only, JOIN-sourced) display field.
 
 		A display field maps to a joined column that cannot be written directly (e.g. 'category'
 		-> 'cat.Topic'); its foreign key lives on TABLE_NAME as a paired id field (e.g. 'category_id'
@@ -599,12 +663,13 @@ class AbstractVirtualDocType(Document):
 		value aborts the save with frappe.throw when it resolves to no linked record (the user picked a
 		value the framework cannot resolve an id for — silently writing a stale or NULL id would
 		corrupt the record) or to more than one (an ambiguous name yields no single id to write)."""
-		if not self.LINKED_ID_FIELDS:
+		linked_id_fields = self.linked_id_fields()
+		if not linked_id_fields:
 			return
 
 		previous = None if self.is_new() else self.get_latest()
 
-		for display_field, config in self.LINKED_ID_FIELDS.items():
+		for display_field, config in linked_id_fields.items():
 			display_value = self.get(display_field)
 			if previous is not None and previous.get(display_field) == display_value:
 				continue
@@ -711,7 +776,8 @@ class AbstractVirtualDocType(Document):
 				frappe.throw(
 					f"Refusing to update {self.doctype} '{self.name}': the WHERE clause matched "
 					f"{updated_row_count} records instead of exactly one. This likely indicates a "
-					f"SCHEMA_CONFIG/ALT_NAME_RESOLUTION_FIELDS misconfiguration."
+					f"SCHEMA_CONFIG misconfiguration (most likely an 'alternate_name' field that is "
+					f"not actually unique in Ascend)."
 				)
 
 	def delete(self, *args, **kwargs):

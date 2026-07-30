@@ -4,13 +4,14 @@
 """Ascend Product virtual DocType — reference implementation of the framework.
 
 This controller demonstrates the Virtual DocType framework: it declares only
-TABLE_NAME and SCHEMA_CONFIG, and inherits all query logic
-(load_from_db, get_list, get_count, ordering, read-only guards) from
-AbstractVirtualDocType. SCHEMA_CONFIG is the single source of truth — the
-FIELD_TO_COLUMN map, SELECT clause, search columns, and Link autocomplete hook
-are all derived from it.
+TABLE_NAME, JOIN_CONFIG and SCHEMA_CONFIG, and inherits all query logic
+(load_from_db, get_list, get_count, get_values, ordering, write guards) from
+AbstractVirtualDocType. SCHEMA_CONFIG is the single source of truth — the SELECT
+projection, WHERE/ORDER BY column resolution, the alternate-name widening, and the
+linked-id pairing used on save are all derived from it.
 
-See bullwheel/ascend/VIRTUAL_DOCTYPE_DEVELOPMENT.md for the full workflow.
+See documentation/VIRTUAL_DOCTYPE_DEVELOPMENT.md for the full workflow, and
+bullwheel/ascend/schema_config.py for every field config option.
 """
 
 import json
@@ -24,71 +25,68 @@ class AscendProduct(AbstractVirtualDocType):
 
 	TABLE_NAME = "Products"
 	ALLOW_WRITE = True
-	ALT_NAME_RESOLUTION_FIELDS = ['upc']
-
-	SCHEMA_CONFIG = {
-		'name': 'Products.[Store UPC]',
-		'id': 'Products.ID',
-		'category': 'cat.Topic',
-		'category_id':'Products.TopicID',
-		'description': 'Products.Description',
-		'price': 'Products.Price',
-		'estimated_cost': 'Products.EstCost',
-		'quantity': 'Products.Quantity',
-		'reorder_level': 'Products.ReorderLevel',
-		'maximum': 'Products.Maximum',
-		'commission': 'Products.Commission',
-		'upc': 'Products.UPC',
-		'manufacturers_part_number': 'Products.MfgrPartNo',
-		'reconciled': 'Products.Reconciled',
-		'store_sku': 'Products.[Store UPC]',
-		'keyword': 'Products.Keyword',
-		'location': 'Products.Location',
-		'brand': 'Products.Brand',
-		'color': 'Products.Color',
-		'size': 'Products.Size',
-		'other': 'Products.Other',
-		'division': 'Products.Division',
-		'e_commerce': 'Products.eCommerce',
-		'min2': 'Products.Min2',
-		'max2': 'Products.Max2',
-		'no_label': 'Products.NoLabel',
-		'non_inventory': 'Products.NonInventory',
-		'appt_length': 'Products.ApptLength',
-		'creator_id': 'Products.CreatorID',
-		'modified_by': 'modifier.Initials',
-		'date_created': 'Products.DateCreated',
-		'modified': 'Products.DateModified',
-		'hide': 'Products.Hide',
-		'loc_from_id': 'Products.LocFromID',
-		'dol_com': 'Products.DolCom',
-		'average_cost': 'Products.AvgCost',
-		'comments': 'Products.Comments',
-		'date_qty_chng': 'Products.DateQtyChng',
-		'print_labels_by_division': 'Products.PrintLabelsByDivision',
-		'row_version': 'Products.Row_Version',
-		'date_reconciled': 'Products.DateReconciled',
-		'modifier_location_id': 'Products.ModifierLocationID',
-		'last_cost': 'Products.LastCost',
-		'concurrency_token': 'Products.ConcurrencyToken',
-		'has_pending_delta': 'Products.HasPendingDelta',
-		'style_name': 'Products.StyleName',
-		'style_number': 'Products.StyleNumber',
-		'season': 'Products.Season',
-		'year': 'Products.Year',
-		'gender': 'Products.Gender'
-	}
 
 	# 'category' displays the joined column cat.Topic, which can't be written directly. Its
 	# foreign key lives on Products as TopicID (mapped to 'category_id'). On save the framework
 	# resolves the chosen category (a Product Category name) to its Categories.ID via the linked
 	# DocType's database_id field and writes it to category_id -> Products.TopicID.
-	LINKED_ID_FIELDS = {
-		'category': {
-			'id_field': 'category_id',
-			'link_doctype': 'Product Category',
-			'link_id_field': 'database_id',
-		},
+	#
+	# 'upc' is marked alternate_name, so a product can be loaded and Link-resolved by UPC in
+	# addition to its Store SKU primary key.
+	SCHEMA_CONFIG = {
+		'name':                      {'column': 'Store UPC', 'static': True},
+		'id':                        {'column': 'ID', 'static': True},
+		'category':                  {'table': 'cat', 'column': 'Topic',
+		                              'linked_id': {'id_field': 'category_id',
+		                                            'link_doctype': 'Product Category',
+		                                            'link_id_field': 'database_id'}},
+		'category_id':               {'column': 'TopicID'},
+		'description':               {'column': 'Description'},
+		'price':                     {'column': 'Price'},
+		'estimated_cost':            {'column': 'EstCost'},
+		'quantity':                  {'column': 'Quantity'},
+		'reorder_level':             {'column': 'ReorderLevel'},
+		'maximum':                   {'column': 'Maximum'},
+		'commission':                {'column': 'Commission'},
+		'upc':                       {'column': 'UPC', 'alternate_name': True},
+		'manufacturers_part_number': {'column': 'MfgrPartNo'},
+		'reconciled':                {'column': 'Reconciled'},
+		'store_sku':                 {'column': 'Store UPC'},
+		'keyword':                   {'column': 'Keyword'},
+		'location':                  {'column': 'Location'},
+		'brand':                     {'column': 'Brand'},
+		'color':                     {'column': 'Color'},
+		'size':                      {'column': 'Size'},
+		'other':                     {'column': 'Other'},
+		'division':                  {'column': 'Division'},
+		'e_commerce':                {'column': 'eCommerce'},
+		'min2':                      {'column': 'Min2'},
+		'max2':                      {'column': 'Max2'},
+		'no_label':                  {'column': 'NoLabel'},
+		'non_inventory':             {'column': 'NonInventory'},
+		'appt_length':               {'column': 'ApptLength'},
+		'creator_id':                {'column': 'CreatorID', 'static': True},
+		'modified_by':               {'table': 'modifier', 'column': 'Initials'},
+		'date_created':              {'column': 'DateCreated', 'static': True},
+		'modified':                  {'column': 'DateModified'},
+		'hide':                      {'column': 'Hide'},
+		'loc_from_id':               {'column': 'LocFromID'},
+		'dol_com':                   {'column': 'DolCom'},
+		'average_cost':              {'column': 'AvgCost'},
+		'comments':                  {'column': 'Comments'},
+		'date_qty_chng':             {'column': 'DateQtyChng'},
+		'print_labels_by_division':  {'column': 'PrintLabelsByDivision'},
+		'row_version':               {'column': 'Row_Version'},
+		'date_reconciled':           {'column': 'DateReconciled'},
+		'modifier_location_id':      {'column': 'ModifierLocationID'},
+		'last_cost':                 {'column': 'LastCost'},
+		'concurrency_token':         {'column': 'ConcurrencyToken'},
+		'has_pending_delta':         {'column': 'HasPendingDelta'},
+		'style_name':                {'column': 'StyleName'},
+		'style_number':              {'column': 'StyleNumber'},
+		'season':                    {'column': 'Season'},
+		'year':                      {'column': 'Year'},
+		'gender':                    {'column': 'Gender'},
 	}
 
 	JOIN_CONFIG = [

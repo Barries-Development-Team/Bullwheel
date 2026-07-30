@@ -13,32 +13,32 @@ from bullwheel.database.SQLServer import MSSQLDatabase
 class VendorProduct(AbstractVirtualDocType):
 	LABEL_RESOLUTION_FIELD = 'product'  # Link → Ascend Product; label prints resolve through it (see label_printing/resolution.py)
 	TABLE_NAME = "VendorProducts"     # Ascend SQL table name
-	JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b          
-	SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console if frappe tries to lookup an unmapped field.
 	NAME_EXPRESSION = "CONCAT(VendorProducts.PartNumber, ' (', Vendor.Name, ')')"  # Optional SQL expression to generate the 'name' field for the virtual doctype.
+	# No 'name' entry — NAME_EXPRESSION supplies the primary key. Fields sourced from the two
+	# joined tables name their alias; everything else defaults to TABLE_NAME.
 	SCHEMA_CONFIG = {
-        'id': 'VendorProducts.ID',
-        'vendor_id': 'VendorProducts.VendorID',
-		'vendor': 'Vendor.Name',
-        'product_id': 'VendorProducts.ProductID',
-		'product': 'Product.[Store UPC]',
-		'upc': 'Product.UPC',
-        'description': 'VendorProducts.Description',
-        'part_number': 'VendorProducts.PartNumber',
-        'cost': 'VendorProducts.Cost',
-        'creator_id': 'VendorProducts.CreatorID',
-        'modifier_id': 'VendorProducts.ModifierID',
-        'date_created': 'VendorProducts.DateCreated',
-        'date_modified': 'VendorProducts.DateModified',
-        'hide': 'VendorProducts.Hide',
-        'loc_from_id': 'VendorProducts.LocFromID',
-        'row_version': 'VendorProducts.Row_Version',
-        'case_quantity': 'VendorProducts.CaseQty',
-        'case_upc': 'VendorProducts.CaseUPC',
-        'case_msrp': 'VendorProducts.CaseMSRP',
-        'modifier_location_id': 'VendorProducts.ModifierLocationID',
-        'concurrency_token': 'VendorProducts.ConcurrencyToken',
-        'has_pending_delta': 'VendorProducts.HasPendingDelta'
+		'id':                   {'column': 'ID', 'static': True},
+		'vendor_id':            {'column': 'VendorID'},
+		'vendor':               {'table': 'Vendor', 'column': 'Name'},
+		'product_id':           {'column': 'ProductID'},
+		'product':              {'table': 'Product', 'column': 'Store UPC'},
+		'upc':                  {'table': 'Product', 'column': 'UPC'},
+		'description':          {'column': 'Description'},
+		'part_number':          {'column': 'PartNumber'},
+		'cost':                 {'column': 'Cost'},
+		'creator_id':           {'column': 'CreatorID', 'static': True},
+		'modifier_id':          {'column': 'ModifierID'},
+		'date_created':         {'column': 'DateCreated', 'static': True},
+		'date_modified':        {'column': 'DateModified'},
+		'hide':                 {'column': 'Hide'},
+		'loc_from_id':          {'column': 'LocFromID'},
+		'row_version':          {'column': 'Row_Version'},
+		'case_quantity':        {'column': 'CaseQty'},
+		'case_upc':             {'column': 'CaseUPC'},
+		'case_msrp':            {'column': 'CaseMSRP'},
+		'modifier_location_id': {'column': 'ModifierLocationID'},
+		'concurrency_token':    {'column': 'ConcurrencyToken'},
+		'has_pending_delta':    {'column': 'HasPendingDelta'},
 	}
 	JOIN_CONFIG = [
     {

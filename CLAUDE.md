@@ -146,9 +146,9 @@ bullwheel/
 **`MSSQLDatabase` (`database/SQLServer.py`)**
 The connection and execution primitive. Owns: connection lifecycle (`connect`, `close`, `__enter__`/`__exit__`), raw query execution (`sql`), transaction management (`commit`, `rollback`, `begin`), and health check (`test_connection`). The Virtual DocType Framework uses it directly for all Ascend queries — controllers write no SQL and do not interact with `MSSQLDatabase` directly.
 
-**Virtual DocType controllers** (e.g. `ascend_product.py`) inherit from `AbstractVirtualDocType` and declare only a `SCHEMA_CONFIG` dict plus `TABLE_NAME` (and optionally `JOIN_CONFIG`, `NAME_EXPRESSION`, `ALT_NAME_RESOLUTION_FIELDS`). The base class derives the `SELECT` clause and field→column resolution from `SCHEMA_CONFIG` and owns all query logic (`get_list`, `get_count`, `load_from_db`, `get_values`).
+**Virtual DocType controllers** (e.g. `ascend_product.py`) inherit from `AbstractVirtualDocType` and declare only a `SCHEMA_CONFIG` dict plus `TABLE_NAME` (and optionally `JOIN_CONFIG`, `NAME_EXPRESSION`, `ALLOW_WRITE`, `SHOW_FIELD_WARNINGS`). The base class derives the `SELECT` clause and field→column resolution from `SCHEMA_CONFIG` and owns all query logic (`get_list`, `get_count`, `load_from_db`, `get_values`).
 
-**`_build_where_clause`** (in `virtual_doctype_base.py`) handles both dict-format and list-format Frappe filters, operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `NOT LIKE`, `IN`, `NOT IN`, and appends OR LIKE search across `search_columns` when text is present.
+**`_build_where_clause`** (in `virtual_doctype_base.py`) handles both dict-format and list-format Frappe filters and the operators in `OPERATOR_MAP` (`=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `NOT LIKE`, `IN`, `NOT IN`, plus `is set`/`not set` → `IS [NOT] NULL`). A condition on `name` is widened to an OR across `name` plus every field flagged `alternate_name`.
 
 ### Design Note
 
@@ -261,27 +261,34 @@ A reusable framework for building read-only virtual DocTypes over Ascend SQL Ser
 | File | Role |
 |---|---|
 | `ascend/virtual_doctype_base.py` | `AbstractVirtualDocType` — inherit this. Derives everything from `SCHEMA_CONFIG`, inherits `load_from_db`/`get_list`/`get_count`/`get_values`, wires `order_by` through to SQL, enforces the fieldname/operator policy (below), and provides read-only guards. |
+| `ascend/schema_config.py` | The `SCHEMA_CONFIG` field config contract: the valid option keys and `normalize_schema_config`, which expands each authored entry into its canonical internal form and rejects unknown/wrongly-typed keys. Imported by both the runtime base class and validation, so there is one definition of a valid config. |
 | `ascend/validate_virtual_doctypes.py` | `validate_schema_config(doctype_class, ...)` (structural + optional live column checks) and `validate_all_virtual_doctype_schemas` — wired to the `before_migrate` hook so a misconfigured controller blocks `bench migrate` with the exact problem named. |
 | `ascend/schema_introspection.py` | `introspect_table_schema` / `introspect_join_schemas` (query `INFORMATION_SCHEMA.COLUMNS` via `MSSQLDatabase`), `suggest_schema_config`, `format_schema_table`. |
 | `commands.py` | Bench CLI: `bench --site <site> introspect-schema --table <Table> [--join-table <T>] [--suggest] [--primary-key <Col>]`. |
 
-**`SCHEMA_CONFIG`** — single source of truth, one flat `fieldname -> sql_column` entry per field:
+**`SCHEMA_CONFIG`** — single source of truth. One entry per field, each a dict of per-field options (consolidated 2026-07 from the former flat `fieldname -> "Table.Column"` string plus the separate `ALT_NAME_RESOLUTION_FIELDS` / `LINKED_ID_FIELDS` class attributes):
 
 ```python
 SCHEMA_CONFIG = {
-    "name":        "Products.[Store UPC]",  # required (or set NAME_EXPRESSION) — the primary key
-    "description": "Products.Description",  # bracket-quote column names with spaces
+    'name':        {'column': 'Store UPC', 'static': True},   # required (or set NAME_EXPRESSION)
+    'description': {'column': 'Description'},
+    'upc':         {'column': 'UPC', 'alternate_name': True}, # also identifies a record
+    'category':    {'table': 'cat', 'column': 'Topic'},       # from a JOIN_CONFIG table
 }
 ```
 
+Options: `column` (required, **bare** — the framework adds the table qualifier and bracket-quotes it), `table` (defaults to `TABLE_NAME`), `alternate_name`, `static` (declarative only — nothing caches yet), `linked_id`. An entry may be `None` to declare a field deliberately unmapped. **An unknown option key raises** on `bench migrate` naming the field, as does a bare-string entry or a `column` that still carries a `Table.` qualifier. A field config **cannot** hold raw SQL (quoting is unconditional); a computed primary key uses `NAME_EXPRESSION`, which remains a separate class attribute for that reason.
+
+Per-field data is read through accessors — `_column_for(field)` (the one resolution primitive), `_field_config(field)`, `alternate_name_fields()`, `linked_id_fields()`, `static_fields()` — over a per-class memoized normalized config (`_normalized_schema()`). The memo is a dict keyed by class on the base class, deliberately not a plain class attribute, which would leak one controller's config into every other.
+
 **Unmapped-fieldname policy** (the recurring invalid-SQL bug class, fixed 2026-07): SELECT fields with no mapping are skipped with a console warning (zero resolvable fields raises); WHERE filters on unmapped fields `frappe.throw` a clear error, except Frappe standard fields (`_user_tags`, `_assign`, `owner`, `docstatus`, … — `IGNORED_STANDARD_FIELDS`), which are silently dropped so desk features keep working; `order_by` falls back to `(SELECT NULL)`; `get_values` is strict and raises `ValueError` on any unmapped requested field. Filter operators are whitelisted via `OPERATOR_MAP` (plus `is set`/`not set` → `IS [NOT] NULL`).
 
-**Editing JOIN-sourced fields (`LINKED_ID_FIELDS`):** A field mapped to a `JOIN_CONFIG` column (e.g. `category` → `cat.Topic`) can't be written directly — only `TABLE_NAME` columns are writable, so an unpaired joined edit silently vanishes on save. Declare `LINKED_ID_FIELDS` to pair such a display field with a writable id field that maps to the FK column on `TABLE_NAME` (e.g. `category_id` → `Products.TopicID`) plus the linked DocType used to resolve it. On save the framework resolves the display value to its id via the linked DocType's `get_values` and writes the id (`Products.TopicID`); an unresolvable value **rejects the save**. Keep the id field `hidden` but not `read_only`. Validation blocks `bench migrate` when a write-enabled DocType has an editable joined field with no pairing. See `VIRTUAL_DOCTYPE_DEVELOPMENT.md` § *Editing a JOIN-sourced field*.
+**Editing JOIN-sourced fields (`linked_id`):** A field mapped to a `JOIN_CONFIG` column (e.g. `category` → `cat.Topic`) can't be written directly — only `TABLE_NAME` columns are writable, so an unpaired joined edit silently vanishes on save. Give the display field a `linked_id` option pairing it with a writable id field that maps to the FK column on `TABLE_NAME` (e.g. `category_id` → `Products.TopicID`) plus the linked DocType used to resolve it. On save the framework resolves the display value to its id via the linked DocType's `get_values` and writes the id (`Products.TopicID`); an unresolvable value **rejects the save**. Keep the id field `hidden` but not `read_only`. Validation blocks `bench migrate` when a write-enabled DocType has an editable joined field with no pairing. See `VIRTUAL_DOCTYPE_DEVELOPMENT.md` § *Editing a JOIN-sourced field*.
 
-**GUID primary keys:** SQL Server `uniqueidentifier` columns come back from pymssql as `uuid.UUID` objects. The base class runs every record through `normalize_record`, stringifying UUIDs so `name`, Link values, and filters work. Without this, a UUID-keyed virtual DocType raises `Unsupported filters type: UUID`.
+**GUID primary keys:** SQL Server `uniqueidentifier` columns come back from pymssql as `uuid.UUID` objects. The base class runs every record through `to_document_dict`, stringifying UUIDs so `name`, Link values, and filters work. Without this, a UUID-keyed virtual DocType raises `Unsupported filters type: UUID`.
 
 **"Show Title in Link Fields" is supported on virtual DocTypes.** It used to crash: Frappe resolves link titles via `frappe.db.get_value`/`get_values`, which query a non-existent `tab<DocType>` table. Bullwheel now patches `Database.get_value`/`get_values` (`bullwheel/monkey_patches/virtual_link_title.py`, applied once from `bullwheel/__init__.py`) so that name-based lookups on a virtual DocType resolve through the controller's `load_from_db` instead of the database. One choke point covers every path (form load, the `get_link_title` endpoint, version diff, print). Enable `show_title_field_in_link` + `title_field` normally. See `VIRTUAL_DOCTYPE_DEVELOPMENT.md` § Gotchas, and `documentation/MONKEY_PATCH.md` for a full walkthrough of the patch.
 
-**Sorting fix:** `AbstractVirtualDocType.get_list` parses Frappe's `order_by` (backtick-aware, so DocType names with spaces like `` `tabAscend Product` `` work), maps the fieldname to its SQL column via `field_to_column()`, and injects it directly into the SQL query. Unmapped fields (e.g. the default `creation`) fall back to ordering by `primary_key_field()`.
+**Sorting fix:** `AbstractVirtualDocType.get_list` parses Frappe's `order_by` (backtick-aware, so DocType names with spaces like `` `tabAscend Product` `` work), resolves the fieldname via `_column_for()`, and orders by the field's `SELECT` alias. An unmapped field (e.g. the default `creation`) falls back to `(SELECT NULL)`, which sorts harmlessly.
 
-**Tests:** `ascend/test_schema_config_builder.py` (11 builder tests) and `ascend/test_virtual_doctype_base.py` (6 order-by/derivation tests). Both are fast `UnitTestCase`s with no DB dependency. Run: `bench --site <site> run-tests --app bullwheel`.
+**Tests:** `ascend/test_virtual_doctype_base.py` covers config normalization, the query builders, validation, and the write paths. All fast `UnitTestCase`s with no DB dependency (`MSSQLDatabase` is mocked where a query is needed). Run: `bench --site <site> run-tests --app bullwheel` — 162 tests app-wide as of 2026-07-30.
