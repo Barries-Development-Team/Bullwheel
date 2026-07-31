@@ -8,6 +8,13 @@ Order Receipt receiving flow, and everything they call into (`MSSQLDatabase`,
 
 ---
 
+## Cache Implementations
+
+- [x] `get_default_ascend_database()`
+  - Average before caching: 4.25ms
+  - Average after caching: 1.19ms
+- [ ] `MSSQLDatabase.__init__`
+
 ## 0. Executive summary
 
 Every read of Ascend data in Bullwheel is a fresh round trip: a MariaDB lookup for the
