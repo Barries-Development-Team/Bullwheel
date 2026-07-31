@@ -15,6 +15,19 @@ const TABLE_CONFIGS = {
 				field.get_query = () => ({filters: {vendor: frm.doc.vendor}});
 				if (job === 'edit') field.read_only = 1;
 			}
+			if (field.fieldname === 'received' && job === 'add') {
+				field.hidden = 1;
+			}
+		},
+		// The Add dialog offers a shortcut into the same vendor-link flow the scan box uses,
+		// for when the desired vpn isn't in the Link field's options yet (no Vendor Product on
+		// file, or no Ascend Product at all).
+		customize_dialog: (frm, dialog, job) => {
+			if (job !== 'add') return;
+			dialog.add_custom_action(__('Add Vendor Product'), () => {
+				dialog.hide();
+				open_link_product_dialog(frm);
+			});
 		}
 	}
 };
@@ -92,6 +105,8 @@ function open_dialog(frm, config, {job, row = null, prefill = null, on_submit = 
 			}
 		});
 
+		if (config.customize_dialog) config.customize_dialog(frm, dialog, job);
+
 		const seed = row
 			? Object.fromEntries(editable_fieldnames(config.child_doctype).map((field) => [field, row[field]]))
 			: (prefill || {});
@@ -124,8 +139,8 @@ function show_table_buttons(frm, config) {
 	make_grid_selectable_only(frm, config);
 
 	if (frm.fields_dict.order_status.value == "Received") { return }
-	// Temporarily disabled until I add similar workflow to scan dialog.
-	//frm.add_custom_button(__(`Add ${config.noun}`), () => open_dialog(frm, config, {job: 'add'}));
+	
+	frm.add_custom_button(__(`Add ${config.noun}`), () => open_dialog(frm, config, {job: 'add'}), __('Order Item Actions'));
 	frm.add_custom_button(__(`Edit ${config.noun}`), () => {
 		const rows = frm.fields_dict[config.table].grid.get_selected_children();
 		if (rows.length !== 1) {
@@ -133,7 +148,7 @@ function show_table_buttons(frm, config) {
 			return;
 		}
 		open_dialog(frm, config, {job: 'edit', row: rows[0]});
-	});
+	}, __('Order Item Actions'));
 	frm.add_custom_button(__(`Remove ${config.noun}`), () => {
 		const rows = frm.fields_dict[config.table].grid.get_selected_children();
 		if (!rows.length) {
@@ -143,7 +158,7 @@ function show_table_buttons(frm, config) {
 		frappe.confirm(__('Remove {0} selected {1}(s)?', [rows.length, config.noun.toLowerCase()]), () => {
 			rows.forEach((row) => queue_update(frm, config, 'remove', {}, row.name));
 		});
-	});
+	}, __('Order Item Actions'));
 }
 
 // ── Label printing ─────────────────────────────────────────────────────────────
@@ -202,6 +217,34 @@ function queue_add_or_increment_item(frm, vpn, cost, description, upc) {
 	}));
 }
 
+// Entry point for the Add Order Item dialog's "Add Vendor Product" action: unlike the scan
+// flow, no Ascend Product has been resolved yet, so this collects one via a Link field before
+// handing off to open_vendor_link_dialog. Also offers "Create New Product" for when the
+// desired product isn't in Ascend at all yet.
+function open_link_product_dialog(frm) {
+	const dialog = new frappe.ui.Dialog({
+		title: __('Select Product to Link'),
+		fields: [
+			{fieldname: 'product', label: __('Product'), fieldtype: 'Link', options: 'Ascend Product', reqd: 1}
+		],
+		primary_action_label: __('Next'),
+		primary_action: async (values) => {
+			if (!values) return;
+			const response = await frappe.db.get_value('Ascend Product', values.product,
+				['id', 'description', 'upc', 'brand', 'style_name', 'size', 'color']);
+			dialog.hide();
+			open_vendor_link_dialog(frm, {...response.message, product_id: response.message.id});
+		}
+	});
+
+	dialog.add_custom_action(__('Create New Product'), () => {
+		dialog.hide();
+		open_new_product_form_dialog(frm);
+	});
+
+	dialog.show();
+}
+
 // 'product found': Ascend already has this product, but the receipt's vendor has no Vendor
 // Product on file for it yet. A minimal dialog collects just the part number (VPN) and cost
 // needed to create that Vendor Product; the server inserts it into Ascend and, on success,
@@ -254,17 +297,18 @@ async function open_vendor_link_dialog(frm, record) {
 // Form runs the doctype's client scripts, so live description regeneration works during
 // receiving, and the after-insert callback fires on save no matter how the user saves (the
 // old Quick Entry path lost the callback if the user clicked "Edit Full Form"). The scanned
-// value, this receipt's vendor, and this receipt's vpn_prefix are seeded onto the document
+// value (when called from a scan; omitted when called from the "Create New Product" dialog
+// action), this receipt's vendor, and this receipt's vpn_prefix are seeded onto the document
 // before the modal opens (vpn_prefix is a hidden field, never rendered) — New Product's own
 // insert hooks (see new_product.py) generate the Vendor Part Number, create the Ascend
 // Product, and, since vendor is set, the linked Vendor Product. Vendor is visible by default
 // on New Product, but this flow sets it automatically from the receipt, so
 // __created_via_order_receipt (a client-only property, never persisted — see new_product.json's
 // vendor field) hides it specifically for this flow rather than for manual vendor entry.
-function open_new_product_form_dialog(frm, scanned_value) {
+function open_new_product_form_dialog(frm, scanned_value = null) {
 	frappe.model.with_doctype('New Product', () => {
 		const seed_document = frappe.model.get_new_doc('New Product');
-		seed_document.upc = scanned_value;
+		if (scanned_value) seed_document.upc = scanned_value;
 		seed_document.vendor = frm.doc.vendor;
 		seed_document.vpn_prefix = frm.doc.vpn_prefix;
 		seed_document.__created_via_order_receipt = 1;
