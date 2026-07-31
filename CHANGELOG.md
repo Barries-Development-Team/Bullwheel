@@ -6,16 +6,23 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ### Features
 
-- Added a "Find Product" button to the Order Receipt form view. 
+- Added a "Open Product" button to the Order Receipt form view. 
 
 ### Changes
 
-- Reworked the Ascend Tag.
 - Vendor Product now displays UPC.
+- Made Vendor Product searchable by UPC and Store SKU.
+- Order Receipt Item actions are now grouped.
 
 ### Bugfixes
 
 - Fixed "cm" being included on Snowboard Binding Description Templates.
+- Fixed Ascend Tag descriptions printing over barcodes.
+- Fixed Ascent Tag element alignment.
+
+### Known Issues
+
+- Description and UPC columns in Order Receipt Item table don't update when the corresponding value is changed.
 
 ## [1.1.2] - July 27, 2026
 
