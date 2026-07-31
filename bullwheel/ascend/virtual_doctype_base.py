@@ -17,14 +17,14 @@ from bullwheel.ascend.schema_config import normalize_schema_config
 # ─── Static Helper Functions ───────────────────────────────────────
 
 def has_duplicates(dict_list):
-    seen = set()
-    for d in dict_list:
-        # Sort items to handle differing key orderings for identical data
-        dict_tuple = tuple(sorted(d.items()))
-        if dict_tuple in seen:
-            return True
-        seen.add(dict_tuple)
-    return False
+	seen = set()
+	for d in dict_list:
+		# Sort items to handle differing key orderings for identical data
+		dict_tuple = tuple(sorted(d.items()))
+		if dict_tuple in seen:
+			return True
+		seen.add(dict_tuple)
+	return False
 
 def to_document_dict(record):
 	"""Returns a proper frappe dict with every `uuid.UUID` value converted to its string form"""
@@ -81,18 +81,21 @@ class AbstractVirtualDocType(Document):
 	ALLOW_WRITE: bool = False			# If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
 	JOIN_CONFIG: list = None     		# List of JOIN descriptors — see _build_join_clause for the dict shape
 	SCHEMA_CONFIG: dict = None    		# Fieldname -> dict of per-field options. Must include a "name" entry naming the
-	                             		# primary key column (or set NAME_EXPRESSION instead). Every option is documented
-	                             		# in schema_config.py, which also owns normalization and the valid key set.
+								 		# primary key column (or set NAME_EXPRESSION instead). Every option is documented
+								 		# in schema_config.py, which also owns normalization and the valid key set.
 	NAME_EXPRESSION: str = None    		# Optional raw SQL expression for the primary key. When set, overrides
-	                             		# SCHEMA_CONFIG['name'] as the SQL for `name` in SELECT, WHERE, filters, and
-	                             		# ORDER BY (and makes the SCHEMA_CONFIG 'name' entry optional). A field config
-	                             		# cannot hold an expression itself, since column names are always bracket-quoted.
+								 		# SCHEMA_CONFIG['name'] as the SQL for `name` in SELECT, WHERE, filters, and
+								 		# ORDER BY (and makes the SCHEMA_CONFIG 'name' entry optional). A field config
+								 		# cannot hold an expression itself, since column names are always bracket-quoted.
 	SHOW_FIELD_WARNINGS: bool = True	# Display a warning in the console if an expected field has no mapping in SCHEMA_CONFIG
 
 	# Normalized SCHEMA_CONFIGs, keyed by controller class. Deliberately a dict on the base
 	# class rather than a plain class attribute: a subclass would otherwise read (and
 	# overwrite) the base's value, leaking one controller's config into every other.
 	_normalized_schema_configs = {}
+
+	# Memoized cache_fields() results, keyed by controller class, for the same reason.
+	_cache_fields_by_class = {}
 
 
 	# ─── Field Config Accessors  ──────────────────────────────────────────────
@@ -109,9 +112,11 @@ class AbstractVirtualDocType(Document):
 
 	@classmethod
 	def _clear_normalized_schema_cache(cls) -> None:
-		"""Discard the memoized normalized config for this controller, so a SCHEMA_CONFIG
-		reassigned after the first query (only tests do this) is picked up."""
+		"""Discard the memoized normalized config and derived cache_fields() list for this
+		controller, so a SCHEMA_CONFIG reassigned after the first query (only tests do this) is
+		picked up."""
 		AbstractVirtualDocType._normalized_schema_configs.pop(cls, None)
+		AbstractVirtualDocType._cache_fields_by_class.pop(cls, None)
 
 	@classmethod
 	def _field_config(cls, field: str) -> dict | None:
@@ -143,14 +148,19 @@ class AbstractVirtualDocType(Document):
 		}
 
 	@classmethod
-	def static_fields(cls) -> list:
+	def cache_fields(cls) -> list:
 		"""Fieldnames whose value never changes for a given record (identity columns, creation
-		timestamps), declared with the field config's 'static' flag. Nothing consumes this
-		yet — it is declared so a future caching layer has the information it needs."""
-		return [
-			fieldname for fieldname, field_config in cls._normalized_schema().items()
-			if field_config['static']
-		]
+		timestamps), declared with the field config's 'cache' flag. get_cached_value checks
+		membership in this list on every lookup, so — like _normalized_schema — it is computed
+		once per class and memoized rather than rebuilt on every call."""
+		fields = AbstractVirtualDocType._cache_fields_by_class.get(cls)
+		if fields is None:
+			fields = [
+				fieldname for fieldname, field_config in cls._normalized_schema().items()
+				if field_config['cache']
+			]
+			AbstractVirtualDocType._cache_fields_by_class[cls] = fields
+		return fields
 
 
 	# ─── Helper Methods  ──────────────────────────────────────────────────────
@@ -444,6 +454,21 @@ class AbstractVirtualDocType(Document):
 			)
 
 		return to_document_dict(records[0]) if records else None
+
+	@classmethod
+	def get_cached_value(cls, name: str, field: str):
+
+		if field not in cls.cache_fields():
+			raise ValueError(f'Field "{field}" is not configured as cachable in DocType SCHEMA_CONFIG.')
+
+		key = f'{cls.TABLE_NAME}-{name}-{field}'
+
+		if cached_value := frappe.cache.get_value(key): # Check if cached value exists
+			return cached_value
+
+		value = cls.get_values(name=name, fields=[field]).get(field)
+		frappe.cache.set_value(key, value)
+		return value
 
 	@classmethod
 	def _search_values_for_name_condition(cls, filters, or_filters) -> set | None:

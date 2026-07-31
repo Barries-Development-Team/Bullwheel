@@ -83,21 +83,21 @@ def suggest_schema_config(schema, table_name, primary_key_column=None):
 	the framework already projects 'name' from it. Declare a separate mirrored id field by hand
 	if the primary key should also appear on the form.
 
-	Columns whose value cannot change for a given record are suggested as 'static' for the
+	Columns whose value cannot change for a given record are suggested as 'cache' for the
 	developer to confirm — nothing reads that flag yet, but it is easier to review here than
 	to add later.
 	"""
 	config = {}
 
 	if primary_key_column:
-		config["name"] = {"column": _strip_quoting(primary_key_column), "static": True}
+		config["name"] = {"column": _strip_quoting(primary_key_column), "cache": True}
 
 	for column_name, info in schema.items():
 		if primary_key_column and column_name.lower() == primary_key_column.strip().strip("[]").lower():
 			continue
 		field_config = {"column": column_name}
-		if _is_probably_static(column_name):
-			field_config["static"] = True
+		if _is_probably_cacheable(column_name):
+			field_config["cache"] = True
 		config[_columnname_to_fieldname(column_name)] = field_config
 
 	return config
@@ -109,15 +109,15 @@ def _strip_quoting(column_name):
 
 
 """Columns whose value is fixed once a record is created, so the suggested config marks them
-'static' for the developer to confirm. Deliberately an exact-match list rather than an '*ID'
+'cache' for the developer to confirm. Deliberately an exact-match list rather than an '*ID'
 suffix rule: a foreign key like TopicID or ModifierID is an id but changes freely."""
-STATIC_COLUMN_NAMES = ("id", "datecreated", "creatorid")
+CACHEABLE_COLUMN_NAMES = ("id", "datecreated", "creatorid")
 
 
-def _is_probably_static(column_name):
+def _is_probably_cacheable(column_name):
 	"""Guess whether a column's value is fixed for the life of a record — its own identity
 	column and creation stamps. A suggestion only; the developer confirms it."""
-	return column_name.lower() in STATIC_COLUMN_NAMES
+	return column_name.lower() in CACHEABLE_COLUMN_NAMES
 
 
 def introspect_join_schemas(server_document, join_config):

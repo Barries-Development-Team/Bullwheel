@@ -17,7 +17,7 @@ class VendorProduct(AbstractVirtualDocType):
 	# No 'name' entry — NAME_EXPRESSION supplies the primary key. Fields sourced from the two
 	# joined tables name their alias; everything else defaults to TABLE_NAME.
 	SCHEMA_CONFIG = {
-		'id':                   {'column': 'ID', 'static': True},
+		'id':                   {'column': 'ID', 'cache': True},
 		'vendor_id':            {'column': 'VendorID'},
 		'vendor':               {'table': 'Vendor', 'column': 'Name'},
 		'product_id':           {'column': 'ProductID'},
@@ -26,9 +26,9 @@ class VendorProduct(AbstractVirtualDocType):
 		'description':          {'column': 'Description'},
 		'part_number':          {'column': 'PartNumber'},
 		'cost':                 {'column': 'Cost'},
-		'creator_id':           {'column': 'CreatorID', 'static': True},
+		'creator_id':           {'column': 'CreatorID', 'cache': True},
 		'modifier_id':          {'column': 'ModifierID'},
-		'date_created':         {'column': 'DateCreated', 'static': True},
+		'date_created':         {'column': 'DateCreated', 'cache': True},
 		'date_modified':        {'column': 'DateModified'},
 		'hide':                 {'column': 'Hide'},
 		'loc_from_id':          {'column': 'LocFromID'},

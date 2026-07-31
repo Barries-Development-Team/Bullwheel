@@ -34,8 +34,8 @@ class AscendProduct(AbstractVirtualDocType):
 	# 'upc' is marked alternate_name, so a product can be loaded and Link-resolved by UPC in
 	# addition to its Store SKU primary key.
 	SCHEMA_CONFIG = {
-		'name':                      {'column': 'Store UPC', 'static': False},
-		'id':                        {'column': 'ID', 'static': True},
+		'name':                      {'column': 'Store UPC', 'cache': False},
+		'id':                        {'column': 'ID', 'cache': True},
 		'category':                  {'table': 'cat', 'column': 'Topic',
 		                              'linked_id': {'id_field': 'category_id',
 		                                            'link_doctype': 'Product Category',
@@ -65,9 +65,9 @@ class AscendProduct(AbstractVirtualDocType):
 		'no_label':                  {'column': 'NoLabel'},
 		'non_inventory':             {'column': 'NonInventory'},
 		'appt_length':               {'column': 'ApptLength'},
-		'creator_id':                {'column': 'CreatorID', 'static': True},
+		'creator_id':                {'column': 'CreatorID', 'cache': True},
 		'modified_by':               {'table': 'modifier', 'column': 'Initials'},
-		'date_created':              {'column': 'DateCreated', 'static': True},
+		'date_created':              {'column': 'DateCreated', 'cache': True},
 		'modified':                  {'column': 'DateModified'},
 		'hide':                      {'column': 'Hide'},
 		'loc_from_id':               {'column': 'LocFromID'},

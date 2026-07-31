@@ -75,7 +75,7 @@ def introspect_schema(context, table_name, server_name=None, suggest=False, prim
 				click.echo(
 					"# NOTE: No --primary-key given. Add a 'name' entry manually pointing to\n"
 					"# the primary key column before using this config, e.g.:\n"
-					"#   'name': {'column': 'ID', 'static': True},\n"
+					"#   'name': {'column': 'ID', 'cache': True},\n"
 					"# Columns from a joined table also need a 'table' key naming the JOIN_CONFIG\n"
 					"# alias; everything else defaults to TABLE_NAME. See ascend/schema_config.py.\n"
 				)

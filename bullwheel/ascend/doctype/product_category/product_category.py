@@ -9,7 +9,7 @@ class ProductCategory(AbstractVirtualDocType):
 	TABLE_NAME = "Categories"
 	SCHEMA_CONFIG = {
 		'name':              {'column': 'Topic'},
-		'database_id':       {'column': 'ID', 'static': True},
+		'database_id':       {'column': 'ID', 'cache': True},
 		'parent_category':   {'table': 'parent', 'column': 'Topic'},
 		'other_id':          {'column': 'OtherID'},
 		'category_name':     {'column': 'Topic'},
@@ -20,9 +20,9 @@ class ProductCategory(AbstractVirtualDocType):
 		'code':              {'column': 'Code'},
 		'serialized':        {'column': 'Serialized'},
 		'allow_schedule':    {'column': 'AllowSchedule'},
-		'creator_id':        {'column': 'CreatorID', 'static': True},
+		'creator_id':        {'column': 'CreatorID', 'cache': True},
 		'modifier_id':       {'column': 'ModifierID'},
-		'date_created':      {'column': 'DateCreated', 'static': True},
+		'date_created':      {'column': 'DateCreated', 'cache': True},
 		'date_modified':     {'column': 'DateModified'},
 		'hide':              {'column': 'Hide'},
 		'loc_from_id':       {'column': 'LocFromID'},

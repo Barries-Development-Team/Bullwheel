@@ -1114,7 +1114,7 @@ class _LinkedCategoryDocType(AbstractVirtualDocType):
 	SHOW_FIELD_WARNINGS = False
 	SCHEMA_CONFIG = {
 		'name':        {'column': 'Topic'},
-		'database_id': {'column': 'ID', 'static': True},
+		'database_id': {'column': 'ID', 'cache': True},
 	}
 
 
@@ -1368,7 +1368,7 @@ class UnitTestNormalizeSchemaConfig(UnitTestCase):
 	def test_flags_default_to_false(self):
 		normalized = self._normalize({'description': {'column': 'Description'}})
 		self.assertFalse(normalized['description']['alternate_name'])
-		self.assertFalse(normalized['description']['static'])
+		self.assertFalse(normalized['description']['cache'])
 		self.assertIsNone(normalized['description']['linked_id'])
 
 	def test_none_entry_declares_an_unmapped_field(self):
@@ -1406,7 +1406,7 @@ class UnitTestNormalizeSchemaConfig(UnitTestCase):
 		self.assertIn('table', str(context.exception))
 
 	def test_non_boolean_flag_raises(self):
-		for key in ('alternate_name', 'static'):
+		for key in ('alternate_name', 'cache'):
 			with self.subTest(key=key):
 				with self.assertRaises(ValueError):
 					self._normalize({'description': {'column': 'Description', key: 'yes'}})
@@ -1448,8 +1448,8 @@ class UnitTestNormalizedSchemaMemoization(UnitTestCase):
 		self.assertEqual(
 			_LinkedIdVirtualDocType.linked_id_fields()['category']['id_field'], 'category_id'
 		)
-		self.assertEqual(_LinkedCategoryDocType.static_fields(), ['database_id'])
-		self.assertEqual(_SimpleVirtualDocType.static_fields(), [])
+		self.assertEqual(_LinkedCategoryDocType.cache_fields(), ['database_id'])
+		self.assertEqual(_SimpleVirtualDocType.cache_fields(), [])
 
 	def test_column_belongs_to_table_uses_the_structural_table(self):
 		self.assertTrue(_AliasedJoinVirtualDocType._column_belongs_to_table('description'))

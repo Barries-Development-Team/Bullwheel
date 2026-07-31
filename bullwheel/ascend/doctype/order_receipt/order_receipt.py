@@ -18,7 +18,7 @@ class OrderReceipt(Document):
 
 	def validate(self):
 		if not self.cached_vendor_id:
-			vendor_record = Vendor.get_values(name=self.vendor, fields=['id'])
+			vendor_record = Vendor.get_cached_value(name=self.vendor, fields=['id'])
 			if not vendor_record:
 				frappe.throw(f'Vendor "{self.vendor}" was not found in Ascend.')
 			self.cached_vendor_id = vendor_record.id

@@ -270,16 +270,16 @@ A reusable framework for building read-only virtual DocTypes over Ascend SQL Ser
 
 ```python
 SCHEMA_CONFIG = {
-    'name':        {'column': 'Store UPC', 'static': True},   # required (or set NAME_EXPRESSION)
+    'name':        {'column': 'Store UPC', 'cache': True},   # required (or set NAME_EXPRESSION)
     'description': {'column': 'Description'},
     'upc':         {'column': 'UPC', 'alternate_name': True}, # also identifies a record
     'category':    {'table': 'cat', 'column': 'Topic'},       # from a JOIN_CONFIG table
 }
 ```
 
-Options: `column` (required, **bare** — the framework adds the table qualifier and bracket-quotes it), `table` (defaults to `TABLE_NAME`), `alternate_name`, `static` (declarative only — nothing caches yet), `linked_id`. An entry may be `None` to declare a field deliberately unmapped. **An unknown option key raises** on `bench migrate` naming the field, as does a bare-string entry or a `column` that still carries a `Table.` qualifier. A field config **cannot** hold raw SQL (quoting is unconditional); a computed primary key uses `NAME_EXPRESSION`, which remains a separate class attribute for that reason.
+Options: `column` (required, **bare** — the framework adds the table qualifier and bracket-quotes it), `table` (defaults to `TABLE_NAME`), `alternate_name`, `cache` (declarative only — nothing caches yet), `linked_id`. An entry may be `None` to declare a field deliberately unmapped. **An unknown option key raises** on `bench migrate` naming the field, as does a bare-string entry or a `column` that still carries a `Table.` qualifier. A field config **cannot** hold raw SQL (quoting is unconditional); a computed primary key uses `NAME_EXPRESSION`, which remains a separate class attribute for that reason.
 
-Per-field data is read through accessors — `_column_for(field)` (the one resolution primitive), `_field_config(field)`, `alternate_name_fields()`, `linked_id_fields()`, `static_fields()` — over a per-class memoized normalized config (`_normalized_schema()`). The memo is a dict keyed by class on the base class, deliberately not a plain class attribute, which would leak one controller's config into every other.
+Per-field data is read through accessors — `_column_for(field)` (the one resolution primitive), `_field_config(field)`, `alternate_name_fields()`, `linked_id_fields()`, `cache_fields()` — over a per-class memoized normalized config (`_normalized_schema()`). The memo is a dict keyed by class on the base class, deliberately not a plain class attribute, which would leak one controller's config into every other.
 
 **Unmapped-fieldname policy** (the recurring invalid-SQL bug class, fixed 2026-07): SELECT fields with no mapping are skipped with a console warning (zero resolvable fields raises); WHERE filters on unmapped fields `frappe.throw` a clear error, except Frappe standard fields (`_user_tags`, `_assign`, `owner`, `docstatus`, … — `IGNORED_STANDARD_FIELDS`), which are silently dropped so desk features keep working; `order_by` falls back to `(SELECT NULL)`; `get_values` is strict and raises `ValueError` on any unmapped requested field. Filter operators are whitelisted via `OPERATOR_MAP` (plus `is set`/`not set` → `IS [NOT] NULL`).
 

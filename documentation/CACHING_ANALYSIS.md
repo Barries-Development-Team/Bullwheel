@@ -22,8 +22,8 @@ Order Receipt receiving flow, and everything they call into (`MSSQLDatabase`,
 Every read of Ascend data in Bullwheel is a fresh round trip: a MariaDB lookup for the
 `SQL Server` credentials, a `get_decrypted_password` call, a TCP connect/TLS handshake to
 SQL Server, one query, then a disconnect. Nothing at any layer is reused between calls.
-The framework already *declares* cacheability (`SCHEMA_CONFIG`'s `static` flag,
-`static_fields()`) but nothing consumes it, and `MSSQLDatabase.value_cache` is allocated,
+The framework already *declares* cacheability (`SCHEMA_CONFIG`'s `cache` flag,
+`cache_fields()`) but nothing consumes it, and `MSSQLDatabase.value_cache` is allocated,
 cleared on commit/rollback, and never read or written.
 
 The highest-value work, in order:
@@ -38,7 +38,7 @@ The highest-value work, in order:
 
 **The constraint that shapes every recommendation:** Ascend RMS writes its own database
 outside Bullwheel. There is no change feed, no trigger, no event. Any cached Ascend value
-can go stale silently. So caching must be limited to (a) values declared `static`,
+can go stale silently. So caching must be limited to (a) values declared `cache`,
 (b) short TTLs where a few seconds of staleness is harmless, and (c) values Bullwheel
 itself owns the writes for, invalidated at the framework's own write choke points
 (`db_insert`/`db_update`/`create_vendor_product`).
@@ -100,7 +100,7 @@ full credentials fetch + new connection.
 `order_receipt.py:21` (`OrderReceipt.validate`) and `new_product.py:187`
 (`NewProduct._resolve_vendor_id`).
 
-`Vendor.SCHEMA_CONFIG['id']` is already declared `{'column': 'ID', 'static': True}` — an
+`Vendor.SCHEMA_CONFIG['id']` is already declared `{'column': 'ID', 'cache': True}` — an
 Ascend identity column that never changes for a given vendor. Barrie's has on the order of
 hundreds of vendors, keyed by a name that is itself the Frappe docname.
 
@@ -165,11 +165,11 @@ issues 40 SQL Server round trips (each with its own connect and its own credenti
 see A1) to render its child grid.
 
 `description`, `upc`, `brand`, `style_name`, `size`, `gender`, `year` for a given product are
-near-immutable in practice, and `name`/`id` are declared `static`. A Redis cache keyed
+near-immutable in practice, and `name`/`id` are declared `cache`. A Redis cache keyed
 `(doctype, name)` holding the mirrored field dict, with a TTL of minutes, turns the grid
 render into one Ascend query for cold rows and zero for warm ones.
 
-This is also the natural first consumer of `static_fields()` (`virtual_doctype_base.py:146`),
+This is also the natural first consumer of `cache_fields()` (`virtual_doctype_base.py:146`),
 which currently exists purely as a declaration with the docstring "Nothing consumes this yet
 — it is declared so a future caching layer has the information it needs."
 
@@ -379,16 +379,16 @@ Two client-side reads worth a mention, both of which become free once A5/A6 land
 Product" — one SQL Server query per click, through the monkey patch) and
 `ascend_product.js:75` (`Product Price` lookup per form load).
 
-### B10. `static: True` — a cacheability contract with no consumer
+### B10. `cache: True` — a cacheability contract with no consumer
 
 `schema_config.py:41`, `virtual_doctype_base.py:146`,
-`VIRTUAL_DOCTYPE_DEVELOPMENT.md:80` all describe `static` as "safe to cache", and all three
+`VIRTUAL_DOCTYPE_DEVELOPMENT.md:80` all describe `cache` as "safe to cache", and all three
 say nothing reads it. It is currently declared on `Vendor.id`, `Vendor.creator_id`,
 `Vendor.date_created`, `AscendProduct.name`/`id`/`creator_id`/`date_created`,
 `ProductCategory.database_id`/`creator_id`/`date_created`, `VendorProduct.id`/`creator_id`/
 `date_created`.
 
-That is the right set for an indefinite-TTL cache, and `static_fields()` is the hook a
+That is the right set for an indefinite-TTL cache, and `cache_fields()` is the hook a
 caching layer would build on. Worth noting that `AscendProduct` declares `name` (`Store UPC`)
 static while `store_sku` maps to the same column without the flag, and `Vendor.name`/
 `vendor_name` (both `Vendors.Name`) carry no flag — so the declarations need an audit pass
@@ -406,7 +406,7 @@ controllers:
   `frappe.cache.hset`/`hget`, so `delete_key` can drop one DocType's entire namespace on a
   write without touching the rest.
 - **Three TTL tiers**, matched to what Ascend can change underneath us:
-  *static* (`static_fields()`, hours/indefinite) · *reference* (Categories, Vendors, ~15–60
+  *cache* (`cache_fields()`, hours/indefinite) · *reference* (Categories, Vendors, ~15–60
   min) · *volatile* (list/count results, 30–60 s).
 - **Write-side invalidation** in `db_insert`/`db_update` (`virtual_doctype_base.py:706, 743`)
   and `create_vendor_product` (`vendor_product.py:131`) — the three places Bullwheel writes

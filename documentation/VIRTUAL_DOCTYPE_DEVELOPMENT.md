@@ -56,8 +56,8 @@ to populate Frappe's document identifier:
 
 ```python
 SCHEMA_CONFIG = {
-        'name':           {'column': 'Store UPC', 'static': True},
-        'id':             {'column': 'ID', 'static': True},
+        'name':           {'column': 'Store UPC', 'cache': True},
+        'id':             {'column': 'ID', 'cache': True},
         'category':       {'table': 'cat', 'column': 'Topic'},
         'description':    {'column': 'Description'},
         'price':          {'column': 'Price'},
@@ -77,7 +77,7 @@ SCHEMA_CONFIG = {
 | `column` | **yes** | — | The bare SQL column name. Unqualified and unquoted — the framework adds the table qualifier and the brackets. |
 | `table` | no | `TABLE_NAME` | The table name or `JOIN_CONFIG` alias the column belongs to. Only joined fields need it. |
 | `alternate_name` | no | `False` | This field can also identify a record, alongside `name`. See *Step 3c*. |
-| `static` | no | `False` | The value never changes for a given record (an identity column, a creation stamp), so it is safe to cache. Declarative only — no caching layer reads it yet. |
+| `cache` | no | `False` | The value never changes for a given record (an identity column, a creation stamp), so it is safe to cache. Declarative only — no caching layer reads it yet. |
 | `linked_id` | no | `None` | Pairs an editable JOIN-sourced field with the writable foreign-key field that stores its id. See *Step 3d*. |
 
 The full contract lives in `bullwheel/ascend/schema_config.py`, which also owns

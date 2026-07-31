@@ -9,7 +9,7 @@ it surfaces. Each entry is a dict of per-field options, so everything the framew
 knows about a field lives in one place:
 
 	SCHEMA_CONFIG = {
-		'name':        {'column': 'Store UPC', 'static': True},
+		'name':        {'column': 'Store UPC', 'cache': True},
 		'upc':         {'column': 'UPC', 'alternate_name': True},
 		'description': {'column': 'Description'},
 		'category':    {'table': 'cat', 'column': 'Topic',
@@ -37,7 +37,7 @@ Field config keys:
 	                identified by, alongside 'name' (e.g. UPC as well as Store SKU).
 	                Every filter on 'name' widens to an OR across these fields, so
 	                they must be unique in the Ascend database.
-	static          Optional bool. The value never changes for a given record (an
+	cache           Optional bool. The value never changes for a given record (an
 	                identity column, a creation timestamp), so it is safe to cache.
 	                Declarative only for now — no caching layer reads it yet.
 	linked_id       Optional dict. Pairs an editable field whose column lives on a
@@ -52,9 +52,9 @@ unconditional, and `[CONCAT(...)]` is not valid SQL. A computed primary key is
 declared with the controller's NAME_EXPRESSION attribute instead.
 """
 
-FIELD_CONFIG_KEYS = frozenset({'column', 'table', 'alternate_name', 'static', 'linked_id'})
+FIELD_CONFIG_KEYS = frozenset({'column', 'table', 'alternate_name', 'cache', 'linked_id'})
 
-BOOLEAN_FIELD_CONFIG_KEYS = ('alternate_name', 'static')
+BOOLEAN_FIELD_CONFIG_KEYS = ('alternate_name', 'cache')
 
 LINKED_ID_KEYS = frozenset({'id_field', 'link_doctype', 'link_id_field'})
 
@@ -86,7 +86,7 @@ def normalize_field_config(class_name: str, fieldname: str, field_config, table_
 	if field_config is None:
 		return {
 			'column': None, 'table': None, 'sql': None,
-			'alternate_name': False, 'static': False, 'linked_id': None,
+			'alternate_name': False, 'cache': False, 'linked_id': None,
 		}
 
 	if not isinstance(field_config, dict):
