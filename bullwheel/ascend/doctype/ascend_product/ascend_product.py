@@ -34,7 +34,7 @@ class AscendProduct(AbstractVirtualDocType):
 	# 'upc' is marked alternate_name, so a product can be loaded and Link-resolved by UPC in
 	# addition to its Store SKU primary key.
 	SCHEMA_CONFIG = {
-		'name':                      {'column': 'Store UPC', 'static': True},
+		'name':                      {'column': 'Store UPC', 'static': False},
 		'id':                        {'column': 'ID', 'static': True},
 		'category':                  {'table': 'cat', 'column': 'Topic',
 		                              'linked_id': {'id_field': 'category_id',
