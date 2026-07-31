@@ -15,6 +15,9 @@ const TABLE_CONFIGS = {
 				field.get_query = () => ({filters: {vendor: frm.doc.vendor}});
 				if (job === 'edit') field.read_only = 1;
 			}
+			if (field.fieldname === 'received' && job === 'add') {
+				field.hidden = 1;
+			}
 		}
 	}
 };
@@ -124,8 +127,8 @@ function show_table_buttons(frm, config) {
 	make_grid_selectable_only(frm, config);
 
 	if (frm.fields_dict.order_status.value == "Received") { return }
-	// Temporarily disabled until I add similar workflow to scan dialog.
-	//frm.add_custom_button(__(`Add ${config.noun}`), () => open_dialog(frm, config, {job: 'add'}));
+	
+	frm.add_custom_button(__(`Add ${config.noun}`), () => open_dialog(frm, config, {job: 'add'}));
 	frm.add_custom_button(__(`Edit ${config.noun}`), () => {
 		const rows = frm.fields_dict[config.table].grid.get_selected_children();
 		if (rows.length !== 1) {
