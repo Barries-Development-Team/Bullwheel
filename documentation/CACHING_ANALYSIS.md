@@ -11,9 +11,11 @@ Order Receipt receiving flow, and everything they call into (`MSSQLDatabase`,
 ## Cache Implementations
 
 - [x] `get_default_ascend_database()`
-  - Average before caching: 4.25ms
-  - Average after caching: 1.19ms
-- [ ] `MSSQLDatabase.__init__`
+  - Average before caching: 4.25 ms
+  - Average after caching: 1.19 ms
+- [ ] ~~`MSSQLDatabase.__init__` Password Decryption~~ Not viable.
+  - get_decrypted_password loads the source document via query. Consider just decrypting the encrypted value passed to __init__.
+  - Average before cahcing: 4.63 ms
 
 ## 0. Executive summary
 
