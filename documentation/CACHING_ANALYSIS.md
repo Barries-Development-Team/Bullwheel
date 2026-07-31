@@ -289,7 +289,13 @@ dict on the base class rather than a class attribute is correct and worth keepin
 This is the pattern documented in `VIRTUAL_DOCTYPE_DEVELOPMENT.md` § "virtual fields on a
 child table", so any change here should update that doc too.
 
-### B4. `Order Receipt.cached_vendor_id` — a persisted cache with no invalidation  ⚠️
+### B4. `Order Receipt.cached_vendor_id` — a persisted cache with no invalidation  ✅ Resolved 2026-07-31
+
+The `cached_vendor_id` field, its `validate()` population, and all read sites (`scan_item`,
+`link_vendor_product`, the vendor-link dialog's `generate_vpn` call) were removed and replaced
+with direct `Vendor.get_cached_value(name=vendor, field='id')` calls — the Redis-backed cache
+this section called for, per A2/B10. The analysis below is kept for the reasoning; it no longer
+describes the current code.
 
 `order_receipt.py:19-24`, field `cached_vendor_id` (Data, read-only) on
 `order_receipt.json`.

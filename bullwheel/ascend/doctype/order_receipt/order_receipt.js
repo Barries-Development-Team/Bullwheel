@@ -253,8 +253,12 @@ function open_link_product_dialog(frm) {
 // background job.
 async function open_vendor_link_dialog(frm, record) {
 
+	const vendor_id_response = await frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.get_vendor_id', {
+		vendor: frm.doc.vendor
+	});
+
 	const generated_vpn_response = await frappe.call('bullwheel.ascend.doctype.vendor_product.vendor_product.generate_vpn', {
-		vendor_id: frm.doc.cached_vendor_id,
+		vendor_id: vendor_id_response.message,
 		vpn_prefix: frm.doc.vpn_prefix,
 		brand: record.brand,
 		model: record.style_name,
@@ -335,7 +339,6 @@ function handle_scan(frm, scanned_value) {
 	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.scan_item', {
 		id: scanned_value,
 		vendor: frm.doc.vendor,
-		cached_vendor_id: frm.doc.cached_vendor_id,
 		docname: frm.doc.name
 	}).then((response) => {
 		const [status, record] = response.message || [];
