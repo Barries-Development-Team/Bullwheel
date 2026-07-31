@@ -12,12 +12,13 @@ def print_console_warning(message: str):
 
 
 def get_default_ascend_database():
+		default_database_key = 'default_ascend_database'
 		try:
-			if cached_default_database := frappe.cache.get_value('default_ascend_database'):
+			if cached_default_database := frappe.cache.get_value(default_database_key):
 				default_database = cached_default_database
 			else:
-				default_database = frappe.db.get_value('Bullwheel Settings', 'default_database')
-				frappe.cache.set_value('default_ascend_database', default_database, expires_in_sec=30) # Ensures that default database changes are applied quickly.
+				default_database = frappe.db.get_value('Bullwheel Settings', default_database_key)
+				frappe.cache.set_value(default_database_key, default_database, expires_in_sec=30) # Ensures that default database changes are applied quickly.
 
 			return frappe.get_cached_doc("SQL Server", default_database)
 		except:
