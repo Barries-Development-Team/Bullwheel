@@ -444,7 +444,7 @@ frappe.ui.form.on("Order Receipt", {
 	before_save(frm) {
 		// Vendor is itself a required field: if it's missing, let the normal mandatory-field
 		// check (which runs right after before_save) report that instead of prompting here.
-		if (frm.is_new() && frm.doc.vendor) return prompt_vpn_prefix(frm);
+		if (!frm.doc.vpn_prefix) return prompt_vpn_prefix(frm);
 	},
  	refresh(frm) {
 		if (!frm.is_new()) {
