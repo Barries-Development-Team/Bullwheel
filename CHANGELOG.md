@@ -6,7 +6,8 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ### Features
 
-- Added a "Open Product" button to the Order Receipt form view. 
+- Added a "Open Product" button to the Order Receipt form view.
+- Implemented an improved Add Order Item flow.
 
 ### Changes
 
@@ -16,7 +17,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ### Bugfixes
 
-- Fixed "cm" being included on Snowboard Binding Description Templates.
+- Fixed "cm" being included on improper Description Templates.
 - Fixed Ascend Tag descriptions printing over barcodes.
 - Fixed Ascent Tag element alignment.
 
