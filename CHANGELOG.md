@@ -2,6 +2,17 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.4] - Unreleased
+
+### Performance Improvements
+
+- Implemented Redis caching of static and long-lived Ascend SQL Server data.
+- Cached SQL Server configuration information for faster sequential database connections.
+
+### Bug Fixes
+
+- Fixed Order Receipt Item Description and Barcode fields not refreshing by, you guessed it, better caching.
+
 ## [1.1.3] - July 31, 2026
 
 ### Features
