@@ -88,6 +88,11 @@ class AbstractVirtualDocType(Document):
 								 		# ORDER BY (and makes the SCHEMA_CONFIG 'name' entry optional). A field config
 								 		# cannot hold an expression itself, since column names are always bracket-quoted.
 	SHOW_FIELD_WARNINGS: bool = True	# Display a warning in the console if an expected field has no mapping in SCHEMA_CONFIG
+	MAX_BATCH_INSERT_SIZE: int = 1000	# T-SQL's per-statement row cap for a multi-row INSERT...VALUES — get_bulk_values
+										# chunks its temp-table INSERT at this size.
+	SHORT_CACHE_TTL_SECONDS: int = 300	# Default TTL for get_bulk_short_cached_values — genuinely mutable Ascend values
+										# that are safe to serve slightly stale. Override per-controller if a field needs
+										# a different balance of freshness vs. Ascend round trips.
 
 	# Normalized SCHEMA_CONFIGs, keyed by controller class. Deliberately a dict on the base
 	# class rather than a plain class attribute: a subclass would otherwise read (and
@@ -456,6 +461,62 @@ class AbstractVirtualDocType(Document):
 		return to_document_dict(records[0]) if records else None
 
 	@classmethod
+	def get_bulk_values(cls, names: list, fields: list) -> dict:
+		"""Fetch a subset of mapped fields for many records by primary key, in one query — the
+		batch counterpart to get_values. Filters via a local SQL Server temp table joined against
+		TABLE_NAME rather than a WHERE name IN (...) clause: an IN clause needs one bound
+		parameter per name, competing against SQL Server's ~2100-parameters-per-query limit
+		alongside the SELECT/JOIN's own parameters, while a temp table's constraint (T-SQL's
+		1000-rows-per-multi-row-INSERT limit, chunked via MAX_BATCH_INSERT_SIZE) is independent of
+		the lookup query's own parameter count. Local (#-prefixed) temp tables live in tempdb,
+		which grants CREATE TABLE to the public role by default, so this needs no permission
+		beyond what the login already has for ordinary SELECT/INSERT work.
+
+		Filters/joins on _column_for('name') rather than assuming a raw column, so this also works
+		for a NAME_EXPRESSION-backed primary key (e.g. VendorProduct's computed CONCAT(...)).
+		Returns a dict keyed by name; a name with no matching Ascend record is simply absent, not a
+		None entry — mirrors get_values' single-record contract. The field list is
+		developer-authored, so it is strict: an unmapped or empty request raises a ValueError."""
+		if not isinstance(fields, (list, tuple)) or len(fields) == 0:
+			raise ValueError(f"{cls.__name__}.get_bulk_values requires a non-empty list of fieldnames, got {fields!r}.")
+
+		name_column = cls._column_for('name')
+		if name_column is None:
+			raise ValueError(f"{cls.__name__}: 'name' has no SQL mapping; get_bulk_values cannot filter by name.")
+
+		unique_names = list(dict.fromkeys(str(name) for name in names if name))
+		if not unique_names:
+			return {}
+
+		select_clause = cls._build_select_clause(list(dict.fromkeys(['name', *fields])), strict=True)
+		results = {}
+
+		with MSSQLDatabase(get_default_ascend_database()) as db:
+			db.sql(query="CREATE TABLE #lookup_names (lookup_name NVARCHAR(MAX) NOT NULL)", as_dict=False)
+
+			for start in range(0, len(unique_names), cls.MAX_BATCH_INSERT_SIZE):
+				chunk = unique_names[start:start + cls.MAX_BATCH_INSERT_SIZE]
+				placeholders = ', '.join(['(%s)'] * len(chunk))
+				db.sql(
+					query=f"INSERT INTO #lookup_names (lookup_name) VALUES {placeholders}",
+					values=chunk,
+					as_dict=False
+				)
+
+			query_clauses = [select_clause, f'FROM {cls.TABLE_NAME}']
+			if cls.JOIN_CONFIG is not None:
+				query_clauses.append(cls._build_join_clause())
+			query_clauses.append(f'INNER JOIN #lookup_names ON {name_column} = #lookup_names.lookup_name')
+
+			records = db.sql(query=' '.join(query_clauses), as_dict=True)
+
+		for raw_record in records:
+			record = to_document_dict(raw_record)
+			results[record['name']] = frappe._dict({field: record.get(field) for field in fields})
+
+		return results
+
+	@classmethod
 	def get_cached_value(cls, name: str, field: str):
 
 		if field not in cls.cache_fields():
@@ -469,6 +530,49 @@ class AbstractVirtualDocType(Document):
 		value = cls.get_values(name=name, fields=[field]).get(field)
 		frappe.cache.set_value(key, value)
 		return value
+
+	@classmethod
+	def _short_cache_key(cls, name: str, field: str) -> str:
+		"""Redis key for one short-TTL-cached (name, field) pair. Distinct suffix from
+		get_cached_value's key scheme (f'{TABLE_NAME}-{name}-{field}') so an indefinite cache
+		entry and a short-TTL entry for the same field can never collide."""
+		return f'{cls.TABLE_NAME}-{name}-{field}-ttl'
+
+	@classmethod
+	def get_bulk_short_cached_values(cls, names: list, fields: list, ttl: int = None) -> dict:
+		"""Batch, short-TTL-cached read of several fields across many records — for fields that
+		genuinely can change in Ascend (no cache_fields() gate; any SCHEMA_CONFIG-mapped field is
+		eligible). Checks Redis for every (name, field) pair across all `names` in one pass,
+		fetches every requested field for the whole miss set with one get_bulk_values call, and
+		repopulates Redis for each resolved value with expires_in_sec=ttl (cls.SHORT_CACHE_TTL_SECONDS
+		by default). Returns a dict keyed by name; a name with no cache hit and no Ascend match is
+		absent from the result — a negative lookup is never cached, so a record created moments ago
+		is never masked by a stale "not found"."""
+		ttl = cls.SHORT_CACHE_TTL_SECONDS if ttl is None else ttl
+		unique_names = list(dict.fromkeys(str(name) for name in names if name))
+		if not unique_names:
+			return {}
+
+		values_by_name, names_needing_fetch = {}, []
+		for name in unique_names:
+			row_values = {}
+			for field in fields:
+				cached = frappe.cache.get_value(cls._short_cache_key(name, field), expires=True)
+				if cached is not None:
+					row_values[field] = cached
+			values_by_name[name] = row_values
+			if len(row_values) < len(fields):
+				names_needing_fetch.append(name)
+
+		if names_needing_fetch:
+			fresh_records = cls.get_bulk_values(names_needing_fetch, fields)
+			for name, fresh in fresh_records.items():
+				for field in fields:
+					resolved = fresh.get(field)
+					frappe.cache.set_value(cls._short_cache_key(name, field), resolved, expires_in_sec=ttl)
+					values_by_name[name][field] = resolved
+
+		return {name: frappe._dict(row) for name, row in values_by_name.items() if row}
 
 	@classmethod
 	def _search_values_for_name_condition(cls, filters, or_filters) -> set | None:

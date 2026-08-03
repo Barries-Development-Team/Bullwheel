@@ -202,15 +202,12 @@ function add_product_print_buttons(frm) {
 
 // Add or increment an order item. The server-side upsert (match on vpn) keeps
 // rapid/concurrent scans correct regardless of the form's on-screen state. description/upc
-// come from the caller (scan_item, or a just-created Vendor Product/New Product) so the
-// server snapshots them without a re-query.
-function queue_add_or_increment_item(frm, vpn, cost, description, upc) {
+// are computed (is_virtual, see order_receipt_item.py), not passed in.
+function queue_add_or_increment_item(frm, vpn, cost) {
 	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.queue_add_or_increment_item', {
 		docname: frm.doc.name,
 		vpn: vpn,
-		cost: cost,
-		description: description,
-		upc: upc
+		cost: cost
 	}).then(() => frappe.show_alert({
 		message: __('Added: {0}', [frappe.utils.escape_html(vpn)]),
 		indicator: 'green'
@@ -281,8 +278,7 @@ async function open_vendor_link_dialog(frm, record) {
 				product_id: record.product_id,
 				part_number: values.part_number,
 				cost: values.cost,
-				description: record.description,
-				upc: record.upc
+				description: record.description
 			}).then((response) => {
 				dialog.hide();
 				frappe.show_alert({
@@ -323,9 +319,7 @@ function open_new_product_form_dialog(frm, scanned_value = null) {
 				queue_add_or_increment_item(
 					frm,
 					`${new_product.vpn} (${frm.doc.vendor})`, // matches VendorProduct.NAME_EXPRESSION
-					new_product.estimated_cost,
-					new_product.description,
-					new_product.upc
+					new_product.estimated_cost
 				);
 			},
 		});
@@ -345,7 +339,7 @@ function handle_scan(frm, scanned_value) {
 
 		if (status === 'vpn found') {
 			// record.vpn is the Vendor Product's docname, e.g. "12345 (Specialized)".
-			queue_add_or_increment_item(frm, record.vpn, record.cost, record.description, record.upc);
+			queue_add_or_increment_item(frm, record.vpn, record.cost);
 		} else if (status === 'product found') {
 			// Ascend has this product, but this vendor has no Vendor Product on file yet.
 			open_vendor_link_dialog(frm, record);

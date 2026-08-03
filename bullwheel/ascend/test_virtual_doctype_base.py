@@ -631,6 +631,188 @@ class UnitTestGetValues(UnitTestCase):
 		self.assertIn('upc', str(context.exception))
 
 
+# ─── get_bulk_values ──────────────────────────────────────────────────────────
+
+
+class _SmallBatchVirtualDocType(_SimpleVirtualDocType):
+	"""Small MAX_BATCH_INSERT_SIZE so chunking is exercised without 1000 fixture names."""
+	MAX_BATCH_INSERT_SIZE = 2
+
+
+class UnitTestGetBulkValues(UnitTestCase):
+
+	def test_empty_fields_raises(self):
+		with self.assertRaises(ValueError):
+			_SimpleVirtualDocType.get_bulk_values(['SKU-1'], [])
+
+	def test_non_list_fields_raises(self):
+		with self.assertRaises(ValueError):
+			_SimpleVirtualDocType.get_bulk_values(['SKU-1'], 'description')
+
+	def test_empty_names_returns_empty_dict_without_querying(self):
+		with patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase') as fake_database_class:
+			result = _SimpleVirtualDocType.get_bulk_values([], ['description'])
+
+		self.assertEqual(result, {})
+		fake_database_class.assert_not_called()
+
+	def test_creates_temp_table_inserts_names_and_joins_on_it(self):
+		"""The batch lookup goes through a #lookup_names temp table joined against TABLE_NAME,
+		not a WHERE name IN (...) clause — _format_condition's 'in' handling appends the whole
+		list as a single bound value rather than expanding it into one placeholder per name,
+		which does not render correctly against pymssql."""
+		queries = []
+
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			queries.append((query, values))
+			if query.strip().startswith('SELECT'):
+				return [{'name': 'SKU-1', 'description': 'Red Ski'}]
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			result = _SimpleVirtualDocType.get_bulk_values(['SKU-1', 'SKU-2'], ['description'])
+
+		create_query, insert_query, select_query = (query for query, _ in queries)
+		self.assertIn('CREATE TABLE #lookup_names', create_query)
+		self.assertIn('INSERT INTO #lookup_names', insert_query)
+		self.assertEqual(queries[1][1], ['SKU-1', 'SKU-2'])
+		self.assertIn('INNER JOIN #lookup_names ON Products.[ID] = #lookup_names.lookup_name', select_query)
+		self.assertEqual(result, {'SKU-1': {'description': 'Red Ski'}})
+
+	def test_missing_name_absent_from_result(self):
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.sql.side_effect = lambda query=None, values=None, as_dict=True: (
+			[{'name': 'SKU-1', 'description': 'Red Ski'}] if query.strip().startswith('SELECT') else []
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			result = _SimpleVirtualDocType.get_bulk_values(['SKU-1', 'SKU-404'], ['description'])
+
+		self.assertEqual(list(result), ['SKU-1'])
+
+	def test_name_expression_used_as_join_column(self):
+		"""A NAME_EXPRESSION-backed primary key (a computed SQL expression, not a raw column)
+		must be used as the join predicate, matching _column_for('name')."""
+		captured = {}
+
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			if query.strip().startswith('SELECT'):
+				captured['select'] = query
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			_NameExpressionVirtualDocType.get_bulk_values(['A-1'], ['description'])
+
+		self.assertIn(
+			"INNER JOIN #lookup_names ON CONCAT(StyleNumber, '-', Size) = #lookup_names.lookup_name",
+			captured['select'],
+		)
+
+	def test_chunks_insert_at_max_batch_insert_size(self):
+		insert_values = []
+
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			if query.strip().startswith('INSERT'):
+				insert_values.append(values)
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			_SmallBatchVirtualDocType.get_bulk_values(['A', 'B', 'C'], ['description'])
+
+		self.assertEqual(insert_values, [['A', 'B'], ['C']])
+
+
+# ─── get_bulk_short_cached_values ─────────────────────────────────────────────
+
+
+class UnitTestGetBulkShortCachedValues(UnitTestCase):
+
+	def test_cold_cache_queries_once_and_caches_each_field(self):
+		set_calls = []
+
+		with (
+			patch('frappe.cache.get_value', return_value=None),
+			patch('frappe.cache.set_value', side_effect=lambda key, value, expires_in_sec=None: set_calls.append((key, value, expires_in_sec))),
+			patch.object(
+				_SimpleVirtualDocType, 'get_bulk_values',
+				return_value={'SKU-1': frappe._dict({'description': 'Red Ski', 'quantity': 3})},
+			) as fake_get_bulk_values,
+		):
+			result = _SimpleVirtualDocType.get_bulk_short_cached_values(['SKU-1'], ['description', 'quantity'])
+
+		fake_get_bulk_values.assert_called_once_with(['SKU-1'], ['description', 'quantity'])
+		self.assertEqual(result, {'SKU-1': {'description': 'Red Ski', 'quantity': 3}})
+		self.assertEqual(len(set_calls), 2)
+		for _key, _value, ttl in set_calls:
+			self.assertEqual(ttl, _SimpleVirtualDocType.SHORT_CACHE_TTL_SECONDS)
+
+	def test_warm_cache_never_queries(self):
+		with (
+			patch('frappe.cache.get_value', return_value='cached-value'),
+			patch.object(_SimpleVirtualDocType, 'get_bulk_values') as fake_get_bulk_values,
+		):
+			result = _SimpleVirtualDocType.get_bulk_short_cached_values(['SKU-1'], ['description'])
+
+		fake_get_bulk_values.assert_not_called()
+		self.assertEqual(result, {'SKU-1': {'description': 'cached-value'}})
+
+	def test_mixed_hot_and_cold_only_fetches_misses(self):
+		def fake_get_value(key, expires=False):
+			return 'Warm Ski' if 'SKU-1' in key else None
+
+		with (
+			patch('frappe.cache.get_value', side_effect=fake_get_value),
+			patch('frappe.cache.set_value'),
+			patch.object(
+				_SimpleVirtualDocType, 'get_bulk_values',
+				return_value={'SKU-2': frappe._dict({'description': 'Cold Ski'})},
+			) as fake_get_bulk_values,
+		):
+			result = _SimpleVirtualDocType.get_bulk_short_cached_values(['SKU-1', 'SKU-2'], ['description'])
+
+		fake_get_bulk_values.assert_called_once_with(['SKU-2'], ['description'])
+		self.assertEqual(result, {'SKU-1': {'description': 'Warm Ski'}, 'SKU-2': {'description': 'Cold Ski'}})
+
+	def test_name_with_no_ascend_match_is_absent_and_never_cached(self):
+		with (
+			patch('frappe.cache.get_value', return_value=None),
+			patch('frappe.cache.set_value') as fake_set_value,
+			patch.object(_SimpleVirtualDocType, 'get_bulk_values', return_value={}),
+		):
+			result = _SimpleVirtualDocType.get_bulk_short_cached_values(['SKU-404'], ['description'])
+
+		self.assertEqual(result, {})
+		fake_set_value.assert_not_called()
+
+
 # ─── get_count ────────────────────────────────────────────────────────────────
 
 

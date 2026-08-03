@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-31
 **Scope:** `bullwheel/ascend/virtual_doctype_base.py`, `bullwheel/ascend/doctype/order_receipt_item/`, `bullwheel/ascend/doctype/order_receipt/`
-**Status:** Approved implementation plan, not yet implemented.
+**Status:** Implemented 2026-07-31. `bench migrate` run on `barriesdev.localhost`; `drop_order_item_snapshot_columns` ran successfully and `description`/`upc` are confirmed dropped from `tabOrder Receipt Item`. Full `bullwheel` unit test suite (173 tests, including the new `UnitTestGetBulkValues`/`UnitTestGetBulkShortCachedValues`) passes. Live Ascend connectivity (the actual SQL Server at 192.168.10.43) was not reachable from this environment, so the real-query path and the Desk UI `onload` flow are unverified end-to-end — see Verification section below for the manual checks still needed against a real Ascend connection.
 
 ## Context
 
@@ -35,7 +35,7 @@ Decisions already settled with the user (do not revisit):
 
 ### 1. Two new primitives on `AbstractVirtualDocType` (`bullwheel/ascend/virtual_doctype_base.py`)
 
-**`get_values_many(cls, names: list, fields: list) -> dict`** — placed after `get_values`
+**`get_bulk_values(cls, names: list, fields: list) -> dict`** — placed after `get_values`
 (~line 456). Batch version of `get_values`, via a local SQL Server temp table joined against
 `TABLE_NAME`, not a `WHERE name IN (...)` clause:
 
@@ -89,11 +89,11 @@ IN clause would have paid against it). Selects with
 prepended explicitly here). Returns `{name: frappe._dict({field: value, ...})}`; a name with no
 Ascend match is simply absent — mirrors `get_values`' single-record contract.
 
-**`get_short_cached_values_many(cls, names: list, fields: list, ttl: int = None) -> dict`** —
+**`get_bulk_short_cached_values(cls, names: list, fields: list, ttl: int = None) -> dict`** —
 placed after `get_cached_value` (~line 471). For fields that genuinely can change in Ascend
 (no `cache_fields()` gate — any SCHEMA_CONFIG-mapped field is eligible): checks Redis for every
 `(name, field)` pair across all `names` in one pass, collects the names with at least one
-miss, fetches every requested field for the whole miss set with **one** `get_values_many` call,
+miss, fetches every requested field for the whole miss set with **one** `get_bulk_values` call,
 repopulates Redis for each resolved value with `expires_in_sec=ttl`, returns
 `{name: frappe._dict({field: value, ...})}`. A name with no cache hit and no Ascend match is
 absent from the result (negative lookups are never cached, matching this app's existing policy
@@ -135,7 +135,7 @@ class OrderReceiptItem(Document):
     def _ascend_fields(self):
         if not hasattr(self, "_ascend_field_cache"):
             self._ascend_field_cache = (
-                VendorProduct.get_short_cached_values_many([self.vpn], ["description", "upc"]).get(self.vpn)
+                VendorProduct.get_bulk_short_cached_values([self.vpn], ["description", "upc"]).get(self.vpn)
                 if self.vpn else None
             )
         return self._ascend_field_cache
@@ -170,7 +170,7 @@ Frappe serializes the child table:
 def onload(self):
     vpns = [item.vpn for item in self.order_items if item.vpn]
     if vpns:
-        VendorProduct.get_short_cached_values_many(vpns, ["description", "upc"])
+        VendorProduct.get_bulk_short_cached_values(vpns, ["description", "upc"])
 ```
 
 Note on mechanism (confirmed against `frappe/desk/form/load.py` vs `frappe/model/document.py`):
@@ -223,18 +223,18 @@ Dropping the columns turns that into a loud, immediate SQL error instead.
 
 ## Verification
 
-- New unit tests in `test_virtual_doctype_base.py`: `get_values_many` — temp table created and
+- New unit tests in `test_virtual_doctype_base.py`: `get_bulk_values` — temp table created and
   populated with one row per name (flattened `values` on the `INSERT`, chunked at
   `MAX_BATCH_INSERT_SIZE`), the final `SELECT` joins on `_column_for('name')` (not necessarily a
   raw column — regression-test against a `NAME_EXPRESSION`-shaped fixture), dict keyed by name,
-  missing name absent. `get_short_cached_values_many` — cold cache issues exactly
+  missing name absent. `get_bulk_short_cached_values` — cold cache issues exactly
   one `MSSQLDatabase` call and one `set_value(..., expires_in_sec=...)` per resolved field; warm
   cache issues zero DB calls; mixed hot/cold across several names batches only the misses; a
   name with no Ascend match is absent and never cached. Mock `frappe.cache.get_value`/
   `set_value` alongside the existing `MSSQLDatabase` mock pattern already used in this file.
 - `bench --site <site> migrate` on a site with existing Order Receipt data: confirm the new patch
   runs and `SHOW COLUMNS FROM \`tabOrder Receipt Item\`` no longer lists `description`/`upc`.
-- Manual, via `bench --site <site> console`: `VendorProduct.get_short_cached_values_many([vpn], ["description","upc"])`, confirm `frappe.cache.get_value(f'{VendorProduct.TABLE_NAME}-{vpn}-description-ttl', expires=True)` round-trips and actually expires (`redis-cli TTL <key>`).
+- Manual, via `bench --site <site> console`: `VendorProduct.get_bulk_short_cached_values([vpn], ["description","upc"])`, confirm `frappe.cache.get_value(f'{VendorProduct.TABLE_NAME}-{vpn}-description-ttl', expires=True)` round-trips and actually expires (`redis-cli TTL <key>`).
 - Manual, via Desk: open a receipt with several items, confirm Description/Barcode render
   correctly and instantly on a same-window reload (warm path); edit the underlying Ascend value
   directly (or expire/delete the Redis key), reload, confirm the new value appears — this is the
@@ -244,7 +244,7 @@ Dropping the columns turns that into a loud, immediate SQL error instead.
 
 ## Critical files
 
-- `bullwheel/ascend/virtual_doctype_base.py` — `get_values_many`, `get_short_cached_values_many`, `SHORT_CACHE_TTL_SECONDS`, `MAX_BATCH_INSERT_SIZE`
+- `bullwheel/ascend/virtual_doctype_base.py` — `get_bulk_values`, `get_bulk_short_cached_values`, `SHORT_CACHE_TTL_SECONDS`, `MAX_BATCH_INSERT_SIZE`
 - `bullwheel/ascend/doctype/order_receipt_item/order_receipt_item.py` and `.json`
 - `bullwheel/ascend/doctype/order_receipt/order_receipt.py` and `.js`
 - `bullwheel/ascend/test_virtual_doctype_base.py`
