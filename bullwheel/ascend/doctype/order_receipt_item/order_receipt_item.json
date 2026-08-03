@@ -53,7 +53,7 @@
    "fieldname": "description",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "in_standard_filter": 1,
+   "is_virtual": 1,
    "label": "Description",
    "read_only": 1
   },
@@ -71,6 +71,7 @@
    "fieldname": "upc",
    "fieldtype": "Data",
    "in_list_view": 1,
+   "is_virtual": 1,
    "label": "Barcode",
    "read_only": 1
   },

@@ -20,15 +20,15 @@ from frappe.model import no_value_fields
 from frappe.model.base_document import get_controller
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
+from bullwheel.ascend.schema_config import strip_column_quoting
 from bullwheel.ascend.schema_introspection import introspect_table_schema, introspect_join_schemas
 from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning
 
 
 def bare_column(sql_column: str) -> str:
-	"""Extract the bare, lowercase column name from a SQL column reference for comparison.
-	Handles table-qualified references ('Products.ID', 'cat.Topic') and bracket-quoted
-	names ('[Store UPC]', '[Year]'). 'Products.[Store UPC]' -> 'store upc'."""
-	return sql_column.split('.')[-1].strip('[]').lower()
+	"""Normalize a SQL column name to its bare, lowercase form for comparison against an
+	introspected schema. '[Store UPC]' -> 'store upc'."""
+	return strip_column_quoting(sql_column).lower()
 
 
 def _known_table_qualifiers(doctype_class) -> set:
@@ -46,68 +46,67 @@ def _known_table_qualifiers(doctype_class) -> set:
 def validate_schema_config(doctype_class, discovered_columns=None, additional_discovered_columns=None) -> bool:
 	"""Validate a virtual DocType class's SCHEMA_CONFIG for structural correctness.
 
-	Always checks that SCHEMA_CONFIG is not empty, that the primary key is defined
-	(either a non-null 'name' entry or a NAME_EXPRESSION), that all values are strings
-	or None, and that every ALT_NAME_RESOLUTION_FIELDS entry has a non-null mapping.
-	When NAME_EXPRESSION is set, its table/alias qualifiers are checked against
-	TABLE_NAME + JOIN_CONFIG so an undeclared join surfaces here instead of as an
-	opaque SQL bind error at query time.
+	Normalizing the config (see schema_config.py) is itself the primary structural gate: it
+	rejects an entry that is not a dict, names an unknown option key, omits its 'column',
+	carries a table-qualified column, or gives a non-boolean flag or a malformed 'linked_id'.
+	On top of that this function checks that SCHEMA_CONFIG is not empty, that the primary key
+	is defined (either a 'name' entry or a NAME_EXPRESSION), that no field claims to be an
+	alternate name for 'name' itself, and that every field's table is the primary table or
+	declared in JOIN_CONFIG. When NAME_EXPRESSION is set, its table/alias qualifiers are
+	checked the same way — by regex, since it is a raw SQL string rather than a structured
+	table/column pair — so an undeclared join surfaces here instead of as an opaque SQL bind
+	error at query time.
 
 	When discovered_columns is provided (an iterable of SQL column names from the primary
-	table, e.g. from introspect_table_schema), confirms that unqualified column references
+	table, e.g. from introspect_table_schema), confirms that columns on the primary table
 	exist in that set. When additional_discovered_columns is provided (column names from
-	joined tables), confirms that table-qualified references (containing '.') resolve to a
-	known column. Qualified columns are skipped when additional_discovered_columns is not
-	provided. The 'name' entry is skipped from column-existence checks when NAME_EXPRESSION
-	is set, since an expression is not a plain column.
+	joined tables), confirms the same for columns on a JOIN_CONFIG table. Joined columns are
+	skipped when additional_discovered_columns is not provided. The 'name' entry is skipped
+	from column-existence checks when NAME_EXPRESSION is set, since an expression is not a
+	plain column.
 
 	Returns True on success; raises ValueError describing the first problem found.
 	"""
 	class_name = doctype_class.__name__
-	schema_config = doctype_class.SCHEMA_CONFIG
 	name_expression = doctype_class.NAME_EXPRESSION
 
-	if not schema_config:
+	if not doctype_class.SCHEMA_CONFIG:
 		raise ValueError(f"{class_name}: SCHEMA_CONFIG is empty or None.")
 
-	# The primary key must be defined either as a NAME_EXPRESSION or a non-null 'name' entry.
-	if not name_expression and not schema_config.get('name'):
+	# Normalize through the controller so the memoized config the query builders will use is
+	# exactly the config validated here.
+	doctype_class._clear_normalized_schema_cache()
+	schema_config = doctype_class._normalized_schema()
+
+	# The primary key must be defined either as a NAME_EXPRESSION or a 'name' entry.
+	if not name_expression and (schema_config.get('name') or {}).get('sql') is None:
 		raise ValueError(
-			f"{class_name}: define the primary key via a non-null SCHEMA_CONFIG 'name' entry "
-			f"or by setting NAME_EXPRESSION."
+			f"{class_name}: define the primary key via a SCHEMA_CONFIG 'name' entry naming the "
+			f"primary key column, or by setting NAME_EXPRESSION."
 		)
 	if name_expression is not None and not isinstance(name_expression, str):
 		raise ValueError(
 			f"{class_name}: NAME_EXPRESSION must be a string SQL expression, got {name_expression!r}."
 		)
 
-	for fieldname, sql_column in schema_config.items():
-		if sql_column is not None and not isinstance(sql_column, str):
-			raise ValueError(
-				f"{class_name}: Field '{fieldname}' has an invalid value {sql_column!r}. "
-				f"Expected a string SQL column name or None."
-			)
+	# 'name' is the identifier the alternate-name fields are alternatives *to*; marking it as
+	# one of its own alternatives would widen a name filter into a meaningless self-OR.
+	if (schema_config.get('name') or {}).get('alternate_name'):
+		raise ValueError(
+			f"{class_name}: the 'name' field cannot set 'alternate_name' — that flag marks the "
+			f"other fields a record can be identified by in addition to 'name'."
+		)
 
-	# Every alternative name-resolution field must resolve to a real mapping, since
-	# _condition_sql widens 'name' filters across them without re-checking.
-	for alt_field in (doctype_class.ALT_NAME_RESOLUTION_FIELDS or []):
-		if not schema_config.get(alt_field):
-			raise ValueError(
-				f"{class_name}: ALT_NAME_RESOLUTION_FIELDS entry '{alt_field}' has no "
-				f"SCHEMA_CONFIG mapping."
-			)
-
-	# Guardrail: every table/alias a qualified sql_column references must be the primary table
-	# or declared in JOIN_CONFIG, otherwise the query fails at runtime with an unknown-name error.
+	# Guardrail: every table/alias a field references must be the primary table or declared in
+	# JOIN_CONFIG, otherwise the query fails at runtime with an unknown-name error.
 	known_qualifiers = _known_table_qualifiers(doctype_class)
-	for fieldname, sql_column in schema_config.items():
-		if sql_column and '.' in sql_column:
-			qualifier = sql_column.split('.')[0]
-			if qualifier not in known_qualifiers:
-				raise ValueError(
-					f"{class_name}: Field '{fieldname}' maps to '{sql_column}', but qualifier "
-					f"'{qualifier}' is neither TABLE_NAME nor a table/alias declared in JOIN_CONFIG."
-				)
+	for fieldname, field_config in schema_config.items():
+		table = field_config['table']
+		if table is not None and table not in known_qualifiers:
+			raise ValueError(
+				f"{class_name}: Field '{fieldname}' maps to table/alias '{table}', which is "
+				f"neither TABLE_NAME nor a table/alias declared in JOIN_CONFIG."
+			)
 
 	# Guardrail: every table/alias a NAME_EXPRESSION qualifies with must be declared, otherwise the
 	# query throws a bind error at runtime. Strip bracket-quoted names and string literals first so
@@ -127,27 +126,27 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 		primary_columns = {bare_column(col) for col in discovered_columns} if discovered_columns else None
 		joined_columns = {bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
 
-		for fieldname, sql_column in schema_config.items():
-			if not sql_column:
+		for fieldname, field_config in schema_config.items():
+			if field_config['column'] is None:
 				continue
 			if fieldname == 'name' and name_expression:
 				continue  # An expression-backed primary key is not a plain column.
-			# Route by qualifier: a column qualified with the primary table (or unqualified)
-			# is checked against the primary schema; a column qualified with a JOIN table or
-			# alias is checked against the joined-table schema.
-			qualifier = sql_column.split('.')[0] if '.' in sql_column else None
-			bare = bare_column(sql_column)
-			if qualifier is not None and qualifier != doctype_class.TABLE_NAME:
+			# Route by table: a column on the primary table is checked against the primary
+			# schema; a column on a JOIN table or alias against the joined-table schema.
+			bare = bare_column(field_config['column'])
+			if field_config['table'] != doctype_class.TABLE_NAME:
 				if joined_columns is not None and bare not in joined_columns:
 					raise ValueError(
-						f"{class_name}: Field '{fieldname}' maps to joined column '{sql_column}', "
-						f"which was not found in the introspected joined-table schema."
+						f"{class_name}: Field '{fieldname}' maps to joined column "
+						f"'{field_config['sql']}', which was not found in the introspected "
+						f"joined-table schema."
 					)
 			else:
 				if primary_columns is not None and bare not in primary_columns:
 					raise ValueError(
-						f"{class_name}: Field '{fieldname}' maps to SQL column '{sql_column}', "
-						f"which was not found in the introspected primary table schema."
+						f"{class_name}: Field '{fieldname}' maps to SQL column "
+						f"'{field_config['sql']}', which was not found in the introspected "
+						f"primary table schema."
 					)
 
 	return True
@@ -174,7 +173,7 @@ def autoname_mismatch_reason(controller, autoname: str) -> str | None:
 		return None
 
 	fieldname = autoname.partition('field:')[2]
-	schema_config = controller.SCHEMA_CONFIG or {}
+	schema_config = controller._normalized_schema()
 
 	if controller.NAME_EXPRESSION:
 		return (
@@ -183,9 +182,9 @@ def autoname_mismatch_reason(controller, autoname: str) -> str | None:
 			f"it will overwrite '{fieldname}' with the computed primary key value on every save."
 		)
 
-	name_column = schema_config.get('name')
-	field_column = schema_config.get(fieldname)
-	if not field_column or not name_column or bare_column(field_column) != bare_column(name_column):
+	name_column = (schema_config.get('name') or {}).get('sql')
+	field_column = (schema_config.get(fieldname) or {}).get('sql')
+	if not field_column or not name_column or field_column != name_column:
 		return (
 			f"autoname is 'field:{fieldname}', but SCHEMA_CONFIG['{fieldname}'] ({field_column!r}) "
 			f"does not map to the same column as SCHEMA_CONFIG['name'] ({name_column!r}) — "
@@ -218,7 +217,7 @@ def _warn_unmapped_json_fields(doctype_name: str, controller) -> None:
 	for field in meta.fields:
 		if field.fieldtype in no_value_fields or field.get('is_virtual'):
 			continue
-		if controller.SCHEMA_CONFIG.get(field.fieldname) is None:
+		if controller._field_config(field.fieldname) is None:
 			print_console_warning(
 				f"Virtual DocType Validation: field '{field.fieldname}' is declared on "
 				f"{doctype_name} but has no SCHEMA_CONFIG mapping in {controller.__name__} — "
@@ -254,35 +253,29 @@ def _check_autoname_safety(doctype_name: str, controller) -> None:
 
 
 def _linked_id_field_structural_problems(controller) -> list:
-	"""Collect the SCHEMA_CONFIG-only violations of the LINKED_ID_FIELDS convention — the checks
-	that need no DocType meta. Each entry must name the required keys, its display field and id_field
-	must both be in SCHEMA_CONFIG, the id_field must map to a column on TABLE_NAME (a JOIN column
-	can't be written), and link_doctype/link_id_field must resolve to a real linked virtual DocType
-	controller and one of its mapped fields. Returns a list of problem strings (empty when sound)."""
+	"""Collect the SCHEMA_CONFIG-only violations of the 'linked_id' convention — the checks that
+	need no DocType meta. Each pairing's id_field must be in SCHEMA_CONFIG and map to a column on
+	TABLE_NAME (a JOIN column can't be written), and link_doctype/link_id_field must resolve to a
+	real linked virtual DocType controller and one of its mapped fields. (A pairing's own key set
+	is enforced during normalization, and its display field is by construction a mapped field.)
+	Returns a list of problem strings (empty when sound)."""
 	problems = []
-	schema_config = controller.SCHEMA_CONFIG or {}
-	linked_id_fields = controller.LINKED_ID_FIELDS or {}
+	schema_config = controller._normalized_schema()
 
-	for display_field, config in linked_id_fields.items():
-		if not isinstance(config, dict) or not all(key in config for key in ('id_field', 'link_doctype', 'link_id_field')):
-			problems.append(
-				f"LINKED_ID_FIELDS['{display_field}'] must be a dict with 'id_field', "
-				f"'link_doctype', and 'link_id_field' keys."
-			)
-			continue
-
+	for display_field, config in controller.linked_id_fields().items():
 		id_field = config['id_field']
 		link_doctype = config['link_doctype']
 		link_id_field = config['link_id_field']
 
-		if display_field not in schema_config:
-			problems.append(f"LINKED_ID_FIELDS display field '{display_field}' has no SCHEMA_CONFIG mapping.")
 		if id_field not in schema_config:
-			problems.append(f"LINKED_ID_FIELDS['{display_field}'].id_field '{id_field}' has no SCHEMA_CONFIG mapping.")
-		elif not controller._column_belongs_to_table(schema_config[id_field]):
 			problems.append(
-				f"LINKED_ID_FIELDS['{display_field}'].id_field '{id_field}' maps to "
-				f"'{schema_config[id_field]}', which is not a column on TABLE_NAME "
+				f"SCHEMA_CONFIG['{display_field}'].linked_id.id_field '{id_field}' has no "
+				f"SCHEMA_CONFIG mapping."
+			)
+		elif not controller._column_belongs_to_table(id_field):
+			problems.append(
+				f"SCHEMA_CONFIG['{display_field}'].linked_id.id_field '{id_field}' maps to "
+				f"'{schema_config[id_field]['sql']}', which is not a column on TABLE_NAME "
 				f"'{controller.TABLE_NAME}' and so cannot be written."
 			)
 
@@ -292,12 +285,12 @@ def _linked_id_field_structural_problems(controller) -> list:
 			linked_controller = None
 		if not (isinstance(linked_controller, type) and issubclass(linked_controller, AbstractVirtualDocType)):
 			problems.append(
-				f"LINKED_ID_FIELDS['{display_field}'].link_doctype '{link_doctype}' does not resolve "
-				f"to a virtual DocType controller."
+				f"SCHEMA_CONFIG['{display_field}'].linked_id.link_doctype '{link_doctype}' does not "
+				f"resolve to a virtual DocType controller."
 			)
-		elif link_id_field not in (linked_controller.SCHEMA_CONFIG or {}):
+		elif linked_controller._field_config(link_id_field) is None:
 			problems.append(
-				f"LINKED_ID_FIELDS['{display_field}'].link_id_field '{link_id_field}' has no "
+				f"SCHEMA_CONFIG['{display_field}'].linked_id.link_id_field '{link_id_field}' has no "
 				f"SCHEMA_CONFIG mapping on {link_doctype}."
 			)
 
@@ -305,52 +298,49 @@ def _linked_id_field_structural_problems(controller) -> list:
 
 
 def _linked_id_field_meta_problems(doctype_name: str, controller) -> list:
-	"""Collect the meta-dependent violations of the LINKED_ID_FIELDS convention. Each pairing's
+	"""Collect the meta-dependent violations of the 'linked_id' convention. Each pairing's
 	id_field must be a declared, non-read-only DocType field (a read-only or undeclared id field
 	would never be written, re-introducing the silent data loss this convention closes). And for
 	coverage: every editable DocType field (declared, not read-only, not virtual, not a no-value
-	fieldtype) whose SCHEMA_CONFIG column lives on a JOIN table rather than TABLE_NAME must be paired
-	via LINKED_ID_FIELDS — otherwise a user's edit to it silently vanishes on save."""
+	fieldtype) whose SCHEMA_CONFIG column lives on a JOIN table rather than TABLE_NAME must declare
+	a 'linked_id' pairing — otherwise a user's edit to it silently vanishes on save."""
 	problems = []
-	schema_config = controller.SCHEMA_CONFIG or {}
-	linked_id_fields = controller.LINKED_ID_FIELDS or {}
+	linked_id_fields = controller.linked_id_fields()
 	meta = frappe.get_meta(doctype_name)
 
 	for display_field, config in linked_id_fields.items():
-		if not isinstance(config, dict) or 'id_field' not in config:
-			continue  # Malformed entries are reported by the structural pass.
 		id_field = config['id_field']
 		id_meta_field = meta.get_field(id_field)
 		if not id_meta_field:
 			problems.append(
-				f"LINKED_ID_FIELDS['{display_field}'].id_field '{id_field}' is not a declared "
+				f"SCHEMA_CONFIG['{display_field}'].linked_id.id_field '{id_field}' is not a declared "
 				f"field on {doctype_name}, so its resolved id would never be written."
 			)
 		elif id_meta_field.read_only:
 			problems.append(
-				f"LINKED_ID_FIELDS['{display_field}'].id_field '{id_field}' is read_only on "
+				f"SCHEMA_CONFIG['{display_field}'].linked_id.id_field '{id_field}' is read_only on "
 				f"{doctype_name}; a read-only id field is never written. Make it hidden but not read_only."
 			)
 
 	for field in meta.fields:
 		if field.fieldtype in no_value_fields or field.get('is_virtual') or field.read_only:
 			continue
-		sql_column = schema_config.get(field.fieldname)
-		if sql_column is None:
+		field_config = controller._field_config(field.fieldname)
+		if field_config is None:
 			continue  # Unmapped fields are reported by _warn_unmapped_json_fields.
-		if not controller._column_belongs_to_table(sql_column) and field.fieldname not in linked_id_fields:
+		if not controller._column_belongs_to_table(field.fieldname) and field.fieldname not in linked_id_fields:
 			problems.append(
-				f"Field '{field.fieldname}' is editable and maps to JOIN column '{sql_column}' "
-				f"(not on TABLE_NAME '{controller.TABLE_NAME}'), but has no LINKED_ID_FIELDS pairing. "
-				f"Edits to it would silently vanish on save. Pair it with a writable id field via "
-				f"LINKED_ID_FIELDS, or mark it read_only."
+				f"Field '{field.fieldname}' is editable and maps to JOIN column "
+				f"'{field_config['sql']}' (not on TABLE_NAME '{controller.TABLE_NAME}'), but declares "
+				f"no 'linked_id' pairing. Edits to it would silently vanish on save. Pair it with a "
+				f"writable id field via the field config's 'linked_id' key, or mark it read_only."
 			)
 
 	return problems
 
 
 def _check_linked_id_fields(doctype_name: str, controller) -> None:
-	"""Enforce the LINKED_ID_FIELDS convention. On a write-enabled DocType (ALLOW_WRITE=True) any
+	"""Enforce the 'linked_id' field config convention. On a write-enabled DocType (ALLOW_WRITE=True) any
 	violation blocks the migration, since the next save would either silently drop a joined-field
 	edit or fail to write a resolved id. A read-only DocType only gets a console warning — no data
 	is at risk yet, but the same misconfiguration bites the moment ALLOW_WRITE is enabled. Mirrors
@@ -364,10 +354,10 @@ def _check_linked_id_fields(doctype_name: str, controller) -> None:
 
 	joined = '\n  - '.join(problems)
 	if controller.ALLOW_WRITE:
-		raise ValueError(f"{doctype_name}: LINKED_ID_FIELDS convention violated:\n  - {joined}")
+		raise ValueError(f"{doctype_name}: 'linked_id' convention violated:\n  - {joined}")
 
 	print_console_warning(
-		f"Virtual DocType Validation: {doctype_name} — LINKED_ID_FIELDS convention violated (this "
+		f"Virtual DocType Validation: {doctype_name} — 'linked_id' convention violated (this "
 		f"DocType is currently read-only, so no data is at risk yet, but this will corrupt data the "
 		f"moment ALLOW_WRITE is enabled):\n  - {joined}"
 	)

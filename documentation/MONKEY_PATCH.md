@@ -298,28 +298,27 @@ def get_link_field_values(cls, name, fieldnames) -> dict | None:
     ...  # return {fieldname: value, ...} for the record, or None if absent
 ```
 
-`_read_fields` prefers it when present. Bullwheel's framework base class,
-`AbstractVirtualDocType` (`bullwheel/ascend/virtual_doctype_base.py`), provides a default
-implementation, so **every** Ascend virtual DocType gets it automatically:
+`_read_fields` prefers it when present. **No controller currently implements it**, including
+`AbstractVirtualDocType` — every virtual DocType takes the `load_from_db` fallback path instead,
+which is correct, just less lean (it fetches the whole record rather than the requested columns).
+The hook is an optimization slot, not a requirement.
+
+Should it ever be worth implementing, `AbstractVirtualDocType.get_values(name, fields)`
+(`bullwheel/ascend/virtual_doctype_base.py`) already does exactly this work — a single query
+selecting only the requested fields, resolved through `SCHEMA_CONFIG` — so the implementation is
+a thin adapter over it rather than new SQL:
 
 ```python
 @classmethod
 def get_link_field_values(cls, name, fieldnames):
-    field_to_column = cls.field_to_column()
-    select_expressions = ", ".join(
-        f"{field_to_column.get(f) or 'NULL'} AS {f}" for f in fieldnames
-    )
-    ...
-    query = f"SELECT {select_expressions} FROM {cls.TABLE_NAME}{join} WHERE {name_column} = %s"
-    with MSSQLDatabase(get_default_ascend_database()) as ascend:
-        result = ascend.sql(query=query, values=(name,), as_dict=True)
-    return normalize_record(result[0]) if result else None
+    """Optional fast path for the link-title patch: fetch just the requested fields."""
+    return cls.get_values(name, list(fieldnames))
 ```
 
-It selects **only the requested columns** (aliased to their Frappe fieldnames), targets the primary
-key, reuses the framework's existing `field_to_column()` / `join_clause()` plumbing, and runs the row
-through `normalize_record` so GUID (`uuid.UUID`) values become strings. Fields with no SQL column
-(NULL placeholders, or unknown names) come back as `None`.
+One caveat if you add it: `get_values` is **strict** and raises `ValueError` on a fieldname with
+no `SCHEMA_CONFIG` mapping, whereas the patch's fallback path tolerates unknown names (they come
+back as `None`). An adapter would need to filter `fieldnames` through `cls._field_config()` first
+to preserve that tolerance.
 
 Virtual DocTypes that do **not** subclass the framework simply fall back to the `get_cached_doc`
 path — nothing is required of them.

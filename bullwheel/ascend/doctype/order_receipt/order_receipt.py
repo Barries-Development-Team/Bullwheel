@@ -16,12 +16,22 @@ from bullwheel.ascend.import_sheets import build_import_sheet, serve_file_downlo
 
 class OrderReceipt(Document):
 
+	def onload(self):
+		"""Batch-warm the short-TTL Vendor Product cache for every order item's vpn in one Ascend
+		query, before Frappe serializes the child rows (each row's description/upc is_virtual
+		property reads this same cache — see order_receipt_item.py). Runs once per client-side
+		form load/reload (frappe.desk.form.load.getdoc calls onload before appending the doc to
+		the response), which is also what fires after update_table/add_or_increment_item's
+		enqueued jobs: their doc.save() publishes a doc_update realtime event, and the client's
+		non-dirty-form listener reload_doc()'s the form, which round-trips through getdoc again."""
+		vpns = [item.vpn for item in self.order_items if item.vpn]
+		if vpns:
+			VendorProduct.get_bulk_short_cached_values(vpns, ["description", "upc"])
+
 	def validate(self):
-		if not self.cached_vendor_id:
-			vendor_record = Vendor.get_values(name=self.vendor, fields=['id'])
-			if not vendor_record:
-				frappe.throw(f'Vendor "{self.vendor}" was not found in Ascend.')
-			self.cached_vendor_id = vendor_record.id
+		"""Confirm the seeded vendor resolves in Ascend, warming Vendor.get_cached_value's cache
+		for the receiving flow's later scan_item/link_vendor_product lookups."""
+		_resolve_vendor_id(self.vendor)
 
 	@property
 	def total_order_items(self):
@@ -43,22 +53,14 @@ class OrderReceipt(Document):
 			return self.subtotal
 		return self.subtotal + self.shipping_charges
 
-def populate_item_snapshot(row):
-	"""Snapshot the linked Vendor Product's description/upc onto an order item at add/edit
-	time, so they are stored (not re-derived from Ascend on every load). Skips the lookup
-	when description/upc are already set (e.g. supplied by the scan flow). During the
-	receiving flow's vendor-link/new-product window, an item may briefly reference a Vendor
-	Product that does not exist in Ascend yet; get_values returns None then and this is a
-	no-op, leaving the caller-supplied snapshot values in place."""
-
-	if not row.vpn or (row.description and row.upc):
-		return
-
-	values = VendorProduct.get_values(row.vpn, ["description", "upc"])
-
-	if values:
-		row.description = values.get("description")
-		row.upc = values.get("upc")
+def _resolve_vendor_id(vendor):
+	"""Look up a Vendor's Ascend ID through Vendor.get_cached_value, throwing if the vendor
+	doesn't resolve in Ascend. Shared by validate, scan_item, get_vendor_id, and
+	link_vendor_product — every place this receipt needs the vendor's Ascend id."""
+	vendor_id = Vendor.get_cached_value(name=vendor, field='id')
+	if not vendor_id:
+		frappe.throw(f'Vendor "{vendor}" was not found in Ascend.')
+	return vendor_id
 
 def child_doctype_for_table(table):
 	"""Return the child DocType of the given Order Receipt table field, throwing if `table`
@@ -133,11 +135,6 @@ def update_table(docname, table, job, values=None, row_name=None):
 			doc.remove(find_row(doc, table, row_name))
 			row = None
 
-	# Snapshot the product's description/upc once, here, so loads never re-query Ascend.
-	if row is not None and table == 'order_items':
-		row.description = row.upc = None  # force a fresh snapshot in case vpn changed
-		populate_item_snapshot(row)
-
 	# Links are validated upstream (dialog Dynamic Link / scan_item); skip the per-row
 	# Ascend round-trips that _validate_links would otherwise make on every save.
 	doc.flags.ignore_links = True
@@ -166,13 +163,13 @@ def queue_update_table(docname, table, job, values=None, row_name=None):
 		**kwargs
 	)
 
-def add_or_increment_item(docname, vpn, cost=None, description=None, upc=None):
+def add_or_increment_item(docname, vpn, cost=None):
 	"""Add an order item for the given Vendor Product, or bump its quantity if an unreceived row
 	for the same vpn already exists. Rows already marked received are treated as read-only
 	history from a prior batch and are never matched, so a new row is appended instead. Used
 	by the scan flow; runs under the row lock so concurrent scans serialize instead of racing.
-	description/upc are supplied by the caller (scan_item or the vendor-link/new-product flows
-	already have them), so the snapshot needs no extra Ascend query."""
+	description/upc are computed (is_virtual, see order_receipt_item.py), not passed in — see
+	OrderReceipt.onload for how they get warmed for display."""
 
 	lock_row(docname)
 
@@ -182,21 +179,18 @@ def add_or_increment_item(docname, vpn, cost=None, description=None, upc=None):
 	if existing:
 		existing.quantity += 1
 	else:
-		row = doc.append("order_items", {
+		doc.append("order_items", {
 			"vpn": vpn,
 			"quantity": 1,
 			"cost": cost,
-			"description": description,
-			"upc": upc,
 		})
-		populate_item_snapshot(row)  # no-op when the caller already supplied description/upc
 
 	doc.flags.ignore_links = True
 	doc.save()
 	frappe.db.commit()
 
 @frappe.whitelist()
-def queue_add_or_increment_item(docname, vpn, cost=None, description=None, upc=None):
+def queue_add_or_increment_item(docname, vpn, cost=None):
 	"""Enqueue a serialized add-or-increment of an order item (scan flow)."""
 
 	frappe.enqueue(
@@ -209,18 +203,15 @@ def queue_add_or_increment_item(docname, vpn, cost=None, description=None, upc=N
 		docname=docname,
 		vpn=vpn,
 		cost=cost,
-		description=description,
-		upc=upc,
 	)
 
 @frappe.whitelist()
-def scan_item(id: str, vendor: str, cached_vendor_id: str):
+def scan_item(id: str, vendor: str):
 	"""Resolve a scanned identifier to an item this order can receive. Checks, in order: a
 	Vendor Product in Ascend for this vendor, then any Product in Ascend. Returns a
 	(status, record) tuple; status is one of 'vpn found', 'product found', or 'not found'."""
 
-	if not cached_vendor_id:
-		frappe.throw('Order Receipt has no cached vendor ID. Re-save the document to populate it.')
+	vendor_id = _resolve_vendor_id(vendor)
 
 	# Determine if Vendor Product exists for the scanned item.
 
@@ -230,7 +221,7 @@ def scan_item(id: str, vendor: str, cached_vendor_id: str):
 			'WHERE VP.VendorID = %s AND (P.UPC = %s OR P.[Store UPC] = %s OR P.MfgrPartNo = %s)'
 	)
 
-	values = [cached_vendor_id, id, id, id]
+	values = [vendor_id, id, id, id]
 
 	with MSSQLDatabase(get_default_ascend_database()) as ascend:
 		result = ascend.sql(
@@ -269,23 +260,28 @@ def scan_item(id: str, vendor: str, cached_vendor_id: str):
 
 
 @frappe.whitelist()
-def link_vendor_product(docname, product_id, part_number, cost, description=None, upc=None):
+def get_vendor_id(vendor: str) -> str:
+	"""Resolve a Vendor's Ascend ID through Vendor.get_cached_value, for client-side flows (the
+	vendor-link dialog's VPN generation) that need it without a full Order Receipt round trip."""
+	return _resolve_vendor_id(vendor)
+
+
+@frappe.whitelist()
+def link_vendor_product(docname, product_id, part_number, cost, description=None):
 	"""Create the missing Ascend Vendor Product linking this receipt's vendor to an existing
 	Ascend Product, then add or increment the matching order item. Runs synchronously (not
 	enqueued), unlike the other mutation entry points, so a failed Ascend insert surfaces
 	directly in the caller's vendor-link dialog instead of failing silently in a background
 	job; the receipt mutation itself still goes through add_or_increment_item's row lock."""
 
-	receipt = frappe.db.get_value("Order Receipt", docname, ["vendor", "cached_vendor_id"], as_dict=True)
-	if not receipt or not receipt.vendor:
+	vendor = frappe.db.get_value("Order Receipt", docname, "vendor")
+	if not vendor:
 		frappe.throw(f'Order Receipt "{docname}" has no vendor set.')
-	if not receipt.cached_vendor_id:
-		frappe.throw(f'Order Receipt "{docname}" has no cached vendor ID. Re-save the document to populate it.')
 
-	vendor = receipt.vendor
+	vendor_id = _resolve_vendor_id(vendor)
 
 	create_vendor_product(
-		vendor_id=receipt.cached_vendor_id,
+		vendor_id=vendor_id,
 		product_id=product_id,
 		part_number=part_number,
 		cost=cost,
@@ -293,7 +289,7 @@ def link_vendor_product(docname, product_id, part_number, cost, description=None
 	)
 
 	vendor_product_name = f"{part_number} ({vendor})"  # matches VendorProduct.NAME_EXPRESSION
-	add_or_increment_item(docname, vendor_product_name, cost=cost, description=description, upc=upc)
+	add_or_increment_item(docname, vendor_product_name, cost=cost)
 	return vendor_product_name
 
 

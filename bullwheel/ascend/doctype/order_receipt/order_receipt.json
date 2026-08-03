@@ -9,7 +9,6 @@
   "details",
   "vendor",
   "vpn_prefix",
-  "cached_vendor_id",
   "po",
   "column_break_yjnq",
   "order_status",
@@ -130,14 +129,6 @@
    "fieldtype": "Data",
    "hidden": 1,
    "label": "VPN Prefix",
-   "read_only": 1
-  },
-  {
-   "description": "Populated on document validation, if empty.",
-   "fieldname": "cached_vendor_id",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Cached Vendor ID",
    "read_only": 1
   }
  ],

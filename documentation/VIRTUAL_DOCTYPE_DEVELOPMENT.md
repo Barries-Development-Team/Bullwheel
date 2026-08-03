@@ -17,13 +17,16 @@ bullwheel/ascend/
 │   └── example_doc/
 │       └── example_doc.py           Python controller file — inherits Abstract Doctype Controller
 ├── virtual_doctype_base.py          AbstractVirtualDocType — inherit this
+├── schema_config.py                 the SCHEMA_CONFIG field config contract + normalization
 ├── validate_virtual_doctypes.py     SCHEMA_CONFIG validation (runs automatically on bench migrate)
 └── schema_introspection.py          discover SQL Server columns + suggest a config
 ```
 
-One `SCHEMA_CONFIG` dict on your controller is the single source of truth. The
-base class derives everything else from it: the field→column map, the aliased
-`SELECT` clause, the searchable columns, list ordering, and the search hook.
+One `SCHEMA_CONFIG` dict on your controller is the single source of truth. Each entry
+is a dict of per-field options, so everything the framework knows about a field lives
+in one place. The base class derives the rest from it: the aliased `SELECT` clause,
+`WHERE`/`ORDER BY` column resolution, which fields can also identify a record, which
+fields are writable, and the linked-id pairing applied on save.
 
 ---
 
@@ -47,29 +50,57 @@ entry and the command will print a reminder with an example to add it manually.
 
 ## Step 2 — Declare `SCHEMA_CONFIG`
 
-Each entry maps a Frappe fieldname to its SQL mapping and UI intent. A `"name"`
-entry is **required** — it declares the primary key SQL column and is what the
-framework uses to populate Frappe's document identifier:
+Each entry maps a Frappe fieldname to a dict of field options. A `"name"` entry is
+**required** — it declares the primary key SQL column and is what the framework uses
+to populate Frappe's document identifier:
 
 ```python
 SCHEMA_CONFIG = {
-        'name': 'Products.[Store UPC]',
-        'id': 'Products.ID',
-        'category': 'cat.Topic',
-        'description': 'Products.Description',
-        'price': 'Products.Price',
-        'estimated_cost': 'Products.EstCost',
-        'quantity': 'Products.Quantity',
-        'reorder_level': 'Products.ReorderLevel',
-        'maximum': 'Products.Maximum',
-        'commission': 'Products.Commission',
-        'upc': 'Products.UPC',
-        'mfgr_part_no': 'Products.MfgrPartNo',
-        'reconciled': 'Products.Reconciled',
-        'store_sku': 'Products.[Store UPC]',
+        'name':           {'column': 'Store UPC', 'cache': True},
+        'id':             {'column': 'ID', 'cache': True},
+        'category':       {'table': 'cat', 'column': 'Topic'},
+        'description':    {'column': 'Description'},
+        'price':          {'column': 'Price'},
+        'estimated_cost': {'column': 'EstCost'},
+        'quantity':       {'column': 'Quantity'},
+        'upc':            {'column': 'UPC', 'alternate_name': True},
+        'store_sku':      {'column': 'Store UPC'},
+        'year':           {'column': 'Year'},
         # ... one entry per field you want to surface
 }
 ```
+
+### The field config options
+
+| Key | Required | Default | Purpose |
+|---|---|---|---|
+| `column` | **yes** | — | The bare SQL column name. Unqualified and unquoted — the framework adds the table qualifier and the brackets. |
+| `table` | no | `TABLE_NAME` | The table name or `JOIN_CONFIG` alias the column belongs to. Only joined fields need it. |
+| `alternate_name` | no | `False` | This field can also identify a record, alongside `name`. See *Step 3c*. |
+| `cache` | no | `False` | The value never changes for a given record (an identity column, a creation stamp), so it is safe to cache. Declarative only — no caching layer reads it yet. |
+| `linked_id` | no | `None` | Pairs an editable JOIN-sourced field with the writable foreign-key field that stores its id. See *Step 3d*. |
+
+The full contract lives in `bullwheel/ascend/schema_config.py`, which also owns
+normalization — the single place these options are expanded and checked.
+
+**Two things the framework does for you:**
+
+- **Bracket-quoting.** Write `'Store UPC'` and `'Year'`; the framework emits
+  `Products.[Store UPC]` and `Products.[Year]`. Column names with spaces and reserved
+  words stop being something to remember. If you bracket a name anyway, the brackets
+  are stripped before re-quoting, so `'[Store UPC]'` and `'Store UPC'` are identical.
+- **Table qualification.** Omit `table` and the column resolves against `TABLE_NAME`.
+  A DocType with no JOINs never mentions a table at all.
+
+**An unknown key is an error.** `{'colum': 'Description'}` raises on `bench migrate`
+naming the field, rather than silently leaving it unmapped and surfacing much later as
+a confusing "no mapping exists" failure. A bare string value (the older flat
+`'field': 'Table.Column'` format) is rejected the same way, as is a `column` that still
+carries a `Table.` qualifier.
+
+**A field config cannot hold a raw SQL expression** — quoting is unconditional, and
+`[CONCAT(...)]` is not valid SQL. A computed primary key uses `NAME_EXPRESSION`
+(*Step 2b*) instead. An entry may be `None` to declare a field as deliberately unmapped.
 
 **System Fields** There are some field names that Frappe expects that are not generated by default for virtual Doctypes. Not all are needed.
 |Field Name |Relevancy|Purpose
@@ -84,9 +115,9 @@ SCHEMA_CONFIG = {
 **The `"name"` entry** maps Frappe's internal document identifier directly to the
 primary key SQL column. Because it appears in `SCHEMA_CONFIG`, it is projected in
 the `SELECT` clause as `<column> AS name` and flows through like every other field —
-no special-casing required. Its `sql_column` must not be `None`. You will typically
-also declare a separate human-visible id field (e.g. `ascend_database_id`) pointing
-to the same column so it appears on the form.
+no special-casing required. You will typically also declare a separate human-visible
+id field (e.g. `ascend_database_id`) pointing to the same column so it appears on the
+form; two fields mapping to one column is expected and supported.
 
 ## Step 2b — Custom name expressions (`NAME_EXPRESSION`, optional)
 
@@ -103,10 +134,15 @@ class AscendThing(AbstractVirtualDocType):
     TABLE_NAME = "Things"
     NAME_EXPRESSION = "CONCAT(Things.StyleNumber, '-', Things.Size)"
     SCHEMA_CONFIG = {
-        'description': 'Things.Description',
+        'description': {'column': 'Description'},
         # no "name" entry needed — NAME_EXPRESSION supplies the primary key
     }
 ```
+
+`NAME_EXPRESSION` stays a separate class attribute rather than a field config option
+because it is raw SQL: it is spliced in verbatim, is never bracket-quoted, and must
+carry its own table qualifiers (`Things.StyleNumber`, not `StyleNumber`) since it has
+no structural `table` key to supply them.
 
 The projection emits `CONCAT(...) AS name`, and `load_from_db` looks a record up
 with `WHERE CONCAT(...) = %s`, so the *same* expression is used on both sides and
@@ -150,6 +186,10 @@ class AscendThing(AbstractVirtualDocType):
 
 ```
 
+Those five, plus the optional `NAME_EXPRESSION`, are the whole subclass contract.
+Everything per-field — alternate name resolution, linked-id pairing, cacheability —
+is declared inside `SCHEMA_CONFIG` rather than as its own class attribute.
+
 That's the whole controller. `load_from_db`, `get_list`, `get_count`, sorting,
 and the read-only guards are all inherited.
 
@@ -192,22 +232,22 @@ Multiple entries are concatenated in order, so you can chain as many JOINs as ne
 
 ### Column qualification
 
-With a JOIN in place, use dot notation (`table.column` or `alias.column`) in
-`sql_column` whenever two tables share a column name — including the primary key.
-The `"name"` entry should also be qualified in that case, since `load_from_db`
-uses its `sql_column` directly in the `WHERE` clause:
+With a JOIN in place, a field sourced from a joined table names that table (or its
+alias) with the `table` key. Fields on the primary table say nothing — they take the
+`TABLE_NAME` default, and the framework qualifies them for you, so an ambiguous column
+name shared by two joined tables can't arise:
 
 ```python
 SCHEMA_CONFIG = {
-    "name":               "Products.ID",
-    "ascend_database_id": "Products.ID",
-    "description":        "Products.Description",
-    "category":           "cat.Topic",
+    'name':               {'column': 'ID'},
+    'ascend_database_id': {'column': 'ID'},
+    'description':        {'column': 'Description'},
+    'category':           {'table': 'cat', 'column': 'Topic'},
 }
 ```
 
-If the joined tables have no overlapping column names, qualification is optional
-but still recommended for readability.
+A `table` value that is neither `TABLE_NAME` nor a table/alias declared in
+`JOIN_CONFIG` is a structural error, caught on `bench migrate`.
 
 ### Discovering joined-table columns
 
@@ -248,16 +288,26 @@ columns.
 
 ## Step 3c — Alternative name resolution fields (optional)
 
-If you find it ideal to be able to load a record using a field value other than the assigned `name` field, declare the additional fields in the `ALT_NAME_RESOLUTION_FIELDS` class attribute. Every filter on `name` (including `load_from_db` and Link resolution) is then widened to an OR across `name` plus those fields. The additional fields MUST be unique in Ascend's database, and each must have a `SCHEMA_CONFIG` mapping (validated on `bench migrate`).
+If you find it ideal to be able to load a record using a field value other than the
+assigned `name` field, mark those fields `'alternate_name': True`. Every filter on
+`name` (including `load_from_db` and Link resolution) is then widened to an OR across
+`name` plus those fields.
 
 For example, `Ascend Product` can be loaded by UPC in addition to the Store SKU:
 
 ```python
 class AscendProduct(AbstractVirtualDocType):
     TABLE_NAME = "Products"
-    ALT_NAME_RESOLUTION_FIELDS = ['upc']
-    SCHEMA_CONFIG = { ... }  # must include an 'upc' entry
+    SCHEMA_CONFIG = {
+        'name': {'column': 'Store UPC'},
+        'upc':  {'column': 'UPC', 'alternate_name': True},
+    }
 ```
+
+The flagged fields **must be unique** in Ascend's database — a non-unique one makes
+`load_from_db` return an arbitrary match and causes `db_update` to reject the save when
+its `WHERE` clause matches more than one row. `name` itself cannot be flagged (a filter
+would widen into a meaningless self-OR); `bench migrate` rejects that.
 
 ## Step 3d — Enabling writes (`ALLOW_WRITE`, optional)
 
@@ -288,22 +338,26 @@ since a new record's identifier must be supplied as a normal column value —
 except when `NAME_EXPRESSION` is set, in which case `db_insert` raises: a
 computed SQL expression has no single column to insert a literal value into.
 
-### Editing a JOIN-sourced field — `LINKED_ID_FIELDS`
+### Editing a JOIN-sourced field — `linked_id`
 
-A field mapped to a `JOIN_CONFIG` column (e.g. `category` → `cat.Topic`) **cannot be
+A field sourced from a `JOIN_CONFIG` table (e.g. `category` → `cat.Topic`) **cannot be
 written** — a plain `INSERT`/`UPDATE` only targets `TABLE_NAME`, so
 `_collect_writable_fields` skips it. Left unpaired, a user's edit to such a field
 **silently vanishes** on save. The fix is a convention: pair every editable joined
 *display* field with a writable *id* field that maps to the foreign-key column on
-`TABLE_NAME`, and declare the pairing in `LINKED_ID_FIELDS`.
+`TABLE_NAME`, declared with the display field's `linked_id` option.
 
 ```python
-LINKED_ID_FIELDS = {
-    'category': {                          # the joined display field (maps to cat.Topic)
-        'id_field': 'category_id',         # writable field mapping to Products.TopicID
-        'link_doctype': 'Product Category',# the DocType 'category' links to
-        'link_id_field': 'database_id',    # field on that DocType holding the id (Categories.ID)
+SCHEMA_CONFIG = {
+    'category': {
+        'table': 'cat', 'column': 'Topic',      # the joined display field
+        'linked_id': {
+            'id_field': 'category_id',          # writable field mapping to Products.TopicID
+            'link_doctype': 'Product Category', # the DocType 'category' links to
+            'link_id_field': 'database_id',     # field on that DocType holding the id (Categories.ID)
+        },
     },
+    'category_id': {'column': 'TopicID'},
 }
 ```
 
@@ -323,17 +377,16 @@ column). Behavior:
 silent data loss. The display field stays a normal editable `Link`.
 
 **Enforcement (`bench migrate`).** `validate_virtual_doctypes.py` checks the convention:
-each `LINKED_ID_FIELDS` entry must be structurally sound (display + id fields mapped, the
-id field's column on `TABLE_NAME`, the linked DocType and its id field resolvable, the id
-field declared and not read-only), and — the coverage rule — **every editable field mapped
-to a JOIN column must be paired**. On a write-enabled DocType (`ALLOW_WRITE = True`) any
-violation **raises and blocks the migration**; on a read-only DocType it is a console
-warning (no data is at risk until `ALLOW_WRITE` is enabled). This mirrors the autoname
-safety check.
+each `linked_id` pairing must be structurally sound (the id field mapped with its column on
+`TABLE_NAME`, the linked DocType and its id field resolvable, the id field declared and not
+read-only), and — the coverage rule — **every editable field mapped to a JOIN column must be
+paired**. On a write-enabled DocType (`ALLOW_WRITE = True`) any violation **raises and blocks
+the migration**; on a read-only DocType it is a console warning (no data is at risk until
+`ALLOW_WRITE` is enabled). This mirrors the autoname safety check. A pairing's own key set is
+checked earlier still, during normalization.
 
 **Single-record / no-duplicate safeguards.** `db_update` scopes its `UPDATE` by
-`name` the same way `load_from_db` does (including any `ALT_NAME_RESOLUTION_FIELDS`
-widening), then checks the SQL Server driver's affected-row-count after
+`name` the same way `load_from_db` does (including any alternate-name widening), then checks the SQL Server driver's affected-row-count after
 executing: zero rows raises `frappe.DoesNotExistError`, and more than one row
 raises and rolls back the write entirely rather than letting an ambiguous
 `WHERE` clause silently corrupt multiple Ascend records. `db_insert` has no
@@ -388,18 +441,19 @@ at the DocType autocompletes.
 (`bullwheel/ascend/validate_virtual_doctypes.py`) checks every virtual DocType
 whose controller inherits `AbstractVirtualDocType`:
 
-1. **Structural checks** (always): SCHEMA_CONFIG non-empty, a primary key defined
-   (a non-null `"name"` entry or a `NAME_EXPRESSION`), string values, every
-   `ALT_NAME_RESOLUTION_FIELDS` entry mapped, and every table/alias qualifier
-   (in `sql_column` values and `NAME_EXPRESSION`) declared in `TABLE_NAME` +
-   `JOIN_CONFIG`. A failure raises `ValueError` and **blocks the migration** with
-   the exact problem named.
+1. **Structural checks** (always): every entry normalizes cleanly (a dict or `None`,
+   no unknown option keys, a bare `column` present, boolean flags, a well-formed
+   `linked_id`), SCHEMA_CONFIG non-empty, a primary key defined (a `"name"` entry or a
+   `NAME_EXPRESSION`), `name` not flagged `alternate_name`, and every field's `table`
+   — plus every qualifier inside `NAME_EXPRESSION` — declared in `TABLE_NAME` +
+   `JOIN_CONFIG`. A failure raises `ValueError` and **blocks the migration** with the
+   exact problem named.
 2. **DocType JSON alignment**: a console warning for any declared JSON field with
    no SCHEMA_CONFIG mapping.
-3. **Live column checks** (when the Ascend database is reachable): every
-   `sql_column` is confirmed to exist in the introspected primary/joined table
-   schema. If the server is unreachable, this pass is skipped with a warning so
-   migration is not blocked. Bracket-quoting is stripped before comparison.
+3. **Live column checks** (when the Ascend database is reachable): every `column` is
+   confirmed to exist in the introspected primary/joined table schema, routed by the
+   field's `table`. If the server is unreachable, this pass is skipped with a warning so
+   migration is not blocked.
 
 To run the same check by hand (e.g. while authoring a config):
 
@@ -489,7 +543,7 @@ tables key on a SQL Server `uniqueidentifier` (e.g. `Categories.ID`). pymssql
 returns those columns as Python `uuid.UUID` objects, which Frappe cannot use as
 identifiers (a UUID `name` or Link value raises `Unsupported filters type: UUID`
 in the query builder). The base class normalizes every record through
-`normalize_record`, converting UUID values to strings, so `name`, Link fields,
+`to_document_dict`, converting UUID values to strings, so `name`, Link fields,
 and filters all work. **No action needed** — just be aware the `name` will be the
 lowercase, hyphenated GUID string.
 
@@ -516,12 +570,17 @@ works and how it is applied, see `MONKEY_PATCH.md`.
 ## Why this shape
 
 - **Single source of truth** — one `SCHEMA_CONFIG` drives the field map and SELECT
-  clause so they cannot drift apart.
+  clause so they cannot drift apart. Per-field concerns live *on the field* rather than
+  in parallel collections keyed by fieldname, so adding one doesn't add a class attribute
+  and a field is never described in two places at once.
+- **Structure over string parsing** — `table` and `column` are separate properties, so
+  the framework composes the qualified reference instead of re-parsing a string the author
+  assembled. Qualifier validation becomes an equality check, and quoting stops being the
+  author's problem.
 - **`name` is just another field** — declaring `"name"` in `SCHEMA_CONFIG` is
   explicit rather than inferred: the framework no longer needs to search for which
   field maps to the primary key, and the `WHERE` clause for `load_from_db` comes
-  directly from `SCHEMA_CONFIG["name"]["sql_column"]`. No separate `PRIMARY_KEY_COLUMN`
-  attribute is required.
+  directly from that entry. No separate `PRIMARY_KEY_COLUMN` attribute is required.
 - **Sorting fixed once** — `get_list` translates the list view's `order_by`
   (including DocType names with spaces) into a real SQL `ORDER BY`. No per-DocType
   sorting code, and no repeat of the original Ascend Product sorting bug.

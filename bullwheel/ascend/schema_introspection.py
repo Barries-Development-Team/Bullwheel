@@ -69,19 +69,55 @@ def format_schema_table(schema):
 
 
 def suggest_schema_config(schema, table_name, primary_key_column=None):
-	"""Produce a starter SCHEMA_CONFIG dict from an introspected schema."""
+	"""Produce a starter SCHEMA_CONFIG dict from an introspected schema, in the field config
+	format documented in schema_config.py.
+
+	Column names are emitted bare — the framework qualifies them with the table and
+	bracket-quotes them — and the `table` key is omitted entirely, since every suggested
+	field is on the introspected primary table and so takes the TABLE_NAME default. A
+	developer editing this scaffold adds `table` only when repointing a field at a joined
+	table.
+
+	When primary_key_column is given, it is emitted once as the 'name' entry rather than also
+	under its own snake_case fieldname: the two would be duplicate mappings of one column, and
+	the framework already projects 'name' from it. Declare a separate mirrored id field by hand
+	if the primary key should also appear on the form.
+
+	Columns whose value cannot change for a given record are suggested as 'cache' for the
+	developer to confirm — nothing reads that flag yet, but it is easier to review here than
+	to add later.
+	"""
 	config = {}
 
 	if primary_key_column:
-		sql_column = f"[{primary_key_column}]" if " " in primary_key_column else primary_key_column
-		config["name"] = sql_column
+		config["name"] = {"column": _strip_quoting(primary_key_column), "cache": True}
 
 	for column_name, info in schema.items():
-		fieldname = _columnname_to_fieldname(column_name)
-		sql_column = f"[{column_name}]" if " " in column_name else column_name
-		config[fieldname] = f"{table_name}.{sql_column}"
+		if primary_key_column and column_name.lower() == primary_key_column.strip().strip("[]").lower():
+			continue
+		field_config = {"column": column_name}
+		if _is_probably_cacheable(column_name):
+			field_config["cache"] = True
+		config[_columnname_to_fieldname(column_name)] = field_config
 
 	return config
+
+
+def _strip_quoting(column_name):
+	"""Remove any bracket-quoting from a column name supplied on the command line."""
+	return column_name.strip().strip("[]")
+
+
+"""Columns whose value is fixed once a record is created, so the suggested config marks them
+'cache' for the developer to confirm. Deliberately an exact-match list rather than an '*ID'
+suffix rule: a foreign key like TopicID or ModifierID is an id but changes freely."""
+CACHEABLE_COLUMN_NAMES = ("id", "datecreated", "creatorid")
+
+
+def _is_probably_cacheable(column_name):
+	"""Guess whether a column's value is fixed for the life of a record — its own identity
+	column and creation stamps. A suggestion only; the developer confirms it."""
+	return column_name.lower() in CACHEABLE_COLUMN_NAMES
 
 
 def introspect_join_schemas(server_document, join_config):

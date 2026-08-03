@@ -5,8 +5,9 @@
 """Unit tests for AbstractVirtualDocType's query builders and schema validation.
 
 All tests are pure unit tests with no SQL Server dependency (get_count is exercised
-against a mocked MSSQLDatabase). SCHEMA_CONFIG uses the current simplified format:
-fieldname -> sql_column string.
+against a mocked MSSQLDatabase). SCHEMA_CONFIG uses the field config format: every
+entry is a dict of per-field options, with the table defaulting to TABLE_NAME and
+column names bracket-quoted by the framework. See schema_config.py for the contract.
 """
 
 from datetime import date, datetime
@@ -16,6 +17,7 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
+from bullwheel.ascend.schema_config import normalize_schema_config, quote_column
 from bullwheel.ascend.validate_virtual_doctypes import (
 	validate_schema_config,
 	autoname_mismatch_reason,
@@ -27,28 +29,28 @@ from bullwheel.ascend.validate_virtual_doctypes import (
 
 
 class _SimpleVirtualDocType(AbstractVirtualDocType):
-	"""No JOINs — straightforward field-to-column mapping."""
+	"""No JOINs — every column defaults to TABLE_NAME."""
 	TABLE_NAME = "Products"
 	SHOW_FIELD_WARNINGS = False
 	SCHEMA_CONFIG = {
-		'name':        'ID',
-		'description': 'Description',
-		'quantity':    'Quantity',
-		'store_sku':   '[Store UPC]',
+		'name':        {'column': 'ID'},
+		'description': {'column': 'Description'},
+		'quantity':    {'column': 'Quantity'},
+		'store_sku':   {'column': 'Store UPC'},
 	}
 
 
 class _AliasedJoinVirtualDocType(AbstractVirtualDocType):
-	"""JOIN with an alias — table-qualified column references."""
+	"""JOIN with an alias — the joined field names that alias as its table."""
 	TABLE_NAME = "Products"
 	SHOW_FIELD_WARNINGS = False
 	JOIN_CONFIG = [
 		{'join': 'LEFT JOIN', 'table': 'Categories', 'alias': 'cat', 'on': 'Products.TopicID = cat.ID'}
 	]
 	SCHEMA_CONFIG = {
-		'name':        'Products.ID',
-		'description': 'Products.Description',
-		'category':    'cat.Topic',
+		'name':        {'column': 'ID'},
+		'description': {'column': 'Description'},
+		'category':    {'table': 'cat', 'column': 'Topic'},
 	}
 
 
@@ -60,8 +62,8 @@ class _UnaliasedJoinVirtualDocType(AbstractVirtualDocType):
 		{'join': 'LEFT JOIN', 'table': 'Categories', 'on': 'Products.TopicID = Categories.ID'}
 	]
 	SCHEMA_CONFIG = {
-		'name':        'Products.ID',
-		'description': 'Products.Description',
+		'name':        {'column': 'ID'},
+		'description': {'column': 'Description'},
 	}
 
 
@@ -71,8 +73,8 @@ class _NameExpressionVirtualDocType(AbstractVirtualDocType):
 	SHOW_FIELD_WARNINGS = False
 	NAME_EXPRESSION = "CONCAT(StyleNumber, '-', Size)"
 	SCHEMA_CONFIG = {
-		'description': 'Description',
-		'size':        'Size',
+		'description': {'column': 'Description'},
+		'size':        {'column': 'Size'},
 	}
 
 
@@ -85,19 +87,18 @@ class _NameExpressionJoinVirtualDocType(AbstractVirtualDocType):
 	]
 	NAME_EXPRESSION = "CONCAT(Products.ID, '-', cat.Topic)"
 	SCHEMA_CONFIG = {
-		'description': 'Products.Description',
+		'description': {'column': 'Description'},
 	}
 
 
 class _AltNameVirtualDocType(AbstractVirtualDocType):
-	"""'name' filters widen across ALT_NAME_RESOLUTION_FIELDS."""
+	"""'name' filters widen across every field flagged 'alternate_name'."""
 	TABLE_NAME = "Products"
 	SHOW_FIELD_WARNINGS = False
-	ALT_NAME_RESOLUTION_FIELDS = ['upc']
 	SCHEMA_CONFIG = {
-		'name':        '[Store UPC]',
-		'upc':         'UPC',
-		'description': 'Description',
+		'name':        {'column': 'Store UPC'},
+		'upc':         {'column': 'UPC', 'alternate_name': True},
+		'description': {'column': 'Description'},
 	}
 
 
@@ -126,7 +127,7 @@ class UnitTestValidateSchemaConfig(UnitTestCase):
 	def test_missing_name_entry_raises(self):
 		class _NoName(AbstractVirtualDocType):
 			TABLE_NAME = "T"
-			SCHEMA_CONFIG = {'description': 'Description'}
+			SCHEMA_CONFIG = {'description': {'column': 'Description'}}
 		with self.assertRaises(ValueError):
 			validate_schema_config(_NoName)
 
@@ -137,27 +138,29 @@ class UnitTestValidateSchemaConfig(UnitTestCase):
 		with self.assertRaises(ValueError):
 			validate_schema_config(_NullName)
 
-	def test_non_string_value_raises(self):
-		"""A dict value (old SCHEMA_CONFIG format accidentally used) should be caught."""
-		class _DictValue(AbstractVirtualDocType):
+	def test_flat_string_value_raises(self):
+		"""A bare string (the older flat SCHEMA_CONFIG format accidentally used) must be caught
+		rather than silently treated as a column name."""
+		class _StringValue(AbstractVirtualDocType):
 			TABLE_NAME = "T"
 			SCHEMA_CONFIG = {
-				'name':        'ID',
-				'description': {'sql_column': 'Description'},
+				'name':        {'column': 'ID'},
+				'description': 'T.Description',
 			}
 		with self.assertRaises(ValueError):
-			validate_schema_config(_DictValue)
+			validate_schema_config(_StringValue)
 
-	def test_alt_name_resolution_fields_must_be_mapped(self):
-		class _UnmappedAltField(AbstractVirtualDocType):
+	def test_alternate_name_on_name_field_raises(self):
+		"""'name' is what the alternate-name fields are alternatives to; flagging it would widen
+		a name filter into a meaningless self-OR."""
+		class _AlternateNameOnName(AbstractVirtualDocType):
 			TABLE_NAME = "T"
-			ALT_NAME_RESOLUTION_FIELDS = ['upc']
-			SCHEMA_CONFIG = {'name': 'ID'}
+			SCHEMA_CONFIG = {'name': {'column': 'ID', 'alternate_name': True}}
 		with self.assertRaises(ValueError) as context:
-			validate_schema_config(_UnmappedAltField)
-		self.assertIn('upc', str(context.exception))
+			validate_schema_config(_AlternateNameOnName)
+		self.assertIn('alternate_name', str(context.exception))
 
-	def test_mapped_alt_name_resolution_fields_pass(self):
+	def test_alternate_name_fields_pass(self):
 		self.assertTrue(validate_schema_config(_AltNameVirtualDocType))
 
 	def test_discovered_columns_valid_passes(self):
@@ -212,17 +215,31 @@ class UnitTestValidateSchemaConfig(UnitTestCase):
 			)
 
 	def test_undeclared_column_qualifier_raises(self):
-		"""A sql_column qualified with a table/alias not in TABLE_NAME + JOIN_CONFIG is a
-		structural error, caught without any introspected columns."""
+		"""A field whose table is not TABLE_NAME nor in JOIN_CONFIG is a structural error,
+		caught without any introspected columns."""
 		class _UndeclaredColumnQualifier(AbstractVirtualDocType):
 			TABLE_NAME = "Products"
 			SCHEMA_CONFIG = {
-				'name':     'Products.ID',
-				'category': 'cat.Topic',  # no JOIN_CONFIG declares 'cat'
+				'name':     {'column': 'ID'},
+				'category': {'table': 'cat', 'column': 'Topic'},  # no JOIN_CONFIG declares 'cat'
 			}
 		with self.assertRaises(ValueError) as context:
 			validate_schema_config(_UndeclaredColumnQualifier)
 		self.assertIn('cat', str(context.exception))
+
+	def test_unknown_field_config_key_raises(self):
+		"""The main new failure mode of a nested config: a misspelled option key must be named
+		rather than silently leaving the field unmapped."""
+		class _TypoKey(AbstractVirtualDocType):
+			TABLE_NAME = "Products"
+			SCHEMA_CONFIG = {
+				'name':        {'column': 'ID'},
+				'description': {'colum': 'Description'},  # typo
+			}
+		with self.assertRaises(ValueError) as context:
+			validate_schema_config(_TypoKey)
+		self.assertIn('colum', str(context.exception))
+		self.assertIn('description', str(context.exception))
 
 
 # ─── autoname_mismatch_reason ──────────────────────────────────────────────────
@@ -244,8 +261,8 @@ class UnitTestAutonameMismatchReason(UnitTestCase):
 		class _MirroredNameField(AbstractVirtualDocType):
 			TABLE_NAME = "Products"
 			SCHEMA_CONFIG = {
-				'name':      'Products.[Store UPC]',
-				'store_sku': 'Products.[Store UPC]',
+				'name':      {'column': 'Store UPC'},
+				'store_sku': {'column': 'Store UPC'},
 			}
 		self.assertIsNone(autoname_mismatch_reason(_MirroredNameField, 'field:store_sku'))
 
@@ -290,7 +307,7 @@ class UnitTestValidateNameExpression(UnitTestCase):
 	def test_neither_name_nor_expression_raises(self):
 		class _NoPrimaryKey(AbstractVirtualDocType):
 			TABLE_NAME = "T"
-			SCHEMA_CONFIG = {'description': 'Description'}
+			SCHEMA_CONFIG = {'description': {'column': 'Description'}}
 		with self.assertRaises(ValueError):
 			validate_schema_config(_NoPrimaryKey)
 
@@ -298,7 +315,7 @@ class UnitTestValidateNameExpression(UnitTestCase):
 		class _BadExpression(AbstractVirtualDocType):
 			TABLE_NAME = "T"
 			NAME_EXPRESSION = 123
-			SCHEMA_CONFIG = {'description': 'Description'}
+			SCHEMA_CONFIG = {'description': {'column': 'Description'}}
 		with self.assertRaises(ValueError):
 			validate_schema_config(_BadExpression)
 
@@ -310,7 +327,7 @@ class UnitTestValidateNameExpression(UnitTestCase):
 		class _UndeclaredAlias(AbstractVirtualDocType):
 			TABLE_NAME = "Products"
 			NAME_EXPRESSION = "CONCAT(Products.ID, '-', missing.Topic)"
-			SCHEMA_CONFIG = {'description': 'Products.Description'}
+			SCHEMA_CONFIG = {'description': {'column': 'Description'}}
 		with self.assertRaises(ValueError) as context:
 			validate_schema_config(_UndeclaredAlias)
 		self.assertIn('missing', str(context.exception))
@@ -320,7 +337,7 @@ class UnitTestValidateNameExpression(UnitTestCase):
 		class _DottedLiteral(AbstractVirtualDocType):
 			TABLE_NAME = "Things"
 			NAME_EXPRESSION = "CONCAT([Style.No], '.', Size)"
-			SCHEMA_CONFIG = {'description': 'Description'}
+			SCHEMA_CONFIG = {'description': {'column': 'Description'}}
 		self.assertTrue(validate_schema_config(_DottedLiteral))
 
 
@@ -333,16 +350,17 @@ class UnitTestBuildSelectClause(UnitTestCase):
 		result = _SimpleVirtualDocType._build_select_clause()
 		self.assertEqual(
 			result,
-			'SELECT ID AS name, Description AS description, Quantity AS quantity, [Store UPC] AS store_sku'
+			'SELECT Products.[ID] AS name, Products.[Description] AS description, '
+			'Products.[Quantity] AS quantity, Products.[Store UPC] AS store_sku'
 		)
 
 	def test_specific_fields_are_selected(self):
 		result = _SimpleVirtualDocType._build_select_clause(['name', 'description'])
-		self.assertEqual(result, 'SELECT ID AS name, Description AS description')
+		self.assertEqual(result, 'SELECT Products.[ID] AS name, Products.[Description] AS description')
 
 	def test_unmapped_fields_are_skipped(self):
 		result = _SimpleVirtualDocType._build_select_clause(['name', 'nonexistent', 'description'])
-		self.assertEqual(result, 'SELECT ID AS name, Description AS description')
+		self.assertEqual(result, 'SELECT Products.[ID] AS name, Products.[Description] AS description')
 
 	def test_strict_raises_on_unmapped_field(self):
 		"""strict mode (used by get_values) surfaces typos instead of silently narrowing results."""
@@ -407,7 +425,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		result = _SimpleVirtualDocType._build_where_clause(
 			values, [('AscendProduct', 'description', '=', 'Red Ski')], []
 		)
-		self.assertEqual(result, 'WHERE (Description = %s)')
+		self.assertEqual(result, 'WHERE (Products.[Description] = %s)')
 		self.assertEqual(values, ['Red Ski'])
 
 	def test_multiple_and_filters(self):
@@ -419,7 +437,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 				('AscendProduct', 'quantity',    '>',   0),
 			], []
 		)
-		self.assertEqual(result, 'WHERE (Description = %s AND Quantity > %s)')
+		self.assertEqual(result, 'WHERE (Products.[Description] = %s AND Products.[Quantity] > %s)')
 		self.assertEqual(values, ['Red Ski', 0])
 
 	def test_single_or_filter(self):
@@ -427,7 +445,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		result = _SimpleVirtualDocType._build_where_clause(
 			values, [], [('AscendProduct', 'store_sku', 'LIKE', '%12345%')]
 		)
-		self.assertEqual(result, 'WHERE ([Store UPC] LIKE %s)')
+		self.assertEqual(result, 'WHERE (Products.[Store UPC] LIKE %s)')
 		self.assertEqual(values, ['%12345%'])
 
 	def test_combined_and_and_or_filters(self):
@@ -437,7 +455,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 			[('AscendProduct', 'quantity',    '>',    0)],
 			[('AscendProduct', 'description', 'LIKE', '%ski%')]
 		)
-		self.assertEqual(result, 'WHERE (Quantity > %s) AND (Description LIKE %s)')
+		self.assertEqual(result, 'WHERE (Products.[Quantity] > %s) AND (Products.[Description] LIKE %s)')
 		self.assertEqual(values, [0, '%ski%'])
 
 	def test_three_element_conditions_are_accepted(self):
@@ -446,7 +464,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		result = _SimpleVirtualDocType._build_where_clause(
 			values, [('description', '=', 'Red Ski')], []
 		)
-		self.assertEqual(result, 'WHERE (Description = %s)')
+		self.assertEqual(result, 'WHERE (Products.[Description] = %s)')
 		self.assertEqual(values, ['Red Ski'])
 
 	def test_dict_filters_are_accepted(self):
@@ -455,7 +473,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		result = _SimpleVirtualDocType._build_where_clause(
 			values, {'description': 'Red Ski', 'quantity': ('>', 0)}, []
 		)
-		self.assertEqual(result, 'WHERE (Description = %s AND Quantity > %s)')
+		self.assertEqual(result, 'WHERE (Products.[Description] = %s AND Products.[Quantity] > %s)')
 		self.assertEqual(values, ['Red Ski', 0])
 
 	def test_qualified_filter_fieldname_is_cleaned(self):
@@ -464,7 +482,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		result = _SimpleVirtualDocType._build_where_clause(
 			values, [('AscendProduct', '`tabAscend Product`.`description`', '=', 'Red Ski')], []
 		)
-		self.assertEqual(result, 'WHERE (Description = %s)')
+		self.assertEqual(result, 'WHERE (Products.[Description] = %s)')
 		self.assertEqual(values, ['Red Ski'])
 
 	def test_unmapped_filter_field_raises(self):
@@ -486,7 +504,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 				('AscendProduct', 'description', '=',    'Red Ski'),
 			], []
 		)
-		self.assertEqual(result, 'WHERE (Description = %s)')
+		self.assertEqual(result, 'WHERE (Products.[Description] = %s)')
 		self.assertEqual(values, ['Red Ski'])
 
 	def test_only_ignored_fields_returns_passthrough(self):
@@ -502,7 +520,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		result = _SimpleVirtualDocType._build_where_clause(
 			values, [('AscendProduct', 'description', 'is', 'set')], []
 		)
-		self.assertEqual(result, 'WHERE (Description IS NOT NULL)')
+		self.assertEqual(result, 'WHERE (Products.[Description] IS NOT NULL)')
 		self.assertEqual(values, [])
 
 	def test_is_not_set_translates_to_is_null(self):
@@ -510,7 +528,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		result = _SimpleVirtualDocType._build_where_clause(
 			values, [('AscendProduct', 'description', 'is', 'not set')], []
 		)
-		self.assertEqual(result, 'WHERE (Description IS NULL)')
+		self.assertEqual(result, 'WHERE (Products.[Description] IS NULL)')
 		self.assertEqual(values, [])
 
 	def test_unsupported_operator_raises(self):
@@ -535,7 +553,7 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		result = _AltNameVirtualDocType._build_where_clause(
 			values, [('AscendProduct', 'name', '=', '012345678905')], []
 		)
-		self.assertEqual(result, 'WHERE (([Store UPC] = %s OR UPC = %s))')
+		self.assertEqual(result, 'WHERE ((Products.[Store UPC] = %s OR Products.[UPC] = %s))')
 		self.assertEqual(values, ['012345678905', '012345678905'])
 
 
@@ -613,6 +631,188 @@ class UnitTestGetValues(UnitTestCase):
 		self.assertIn('upc', str(context.exception))
 
 
+# ─── get_bulk_values ──────────────────────────────────────────────────────────
+
+
+class _SmallBatchVirtualDocType(_SimpleVirtualDocType):
+	"""Small MAX_BATCH_INSERT_SIZE so chunking is exercised without 1000 fixture names."""
+	MAX_BATCH_INSERT_SIZE = 2
+
+
+class UnitTestGetBulkValues(UnitTestCase):
+
+	def test_empty_fields_raises(self):
+		with self.assertRaises(ValueError):
+			_SimpleVirtualDocType.get_bulk_values(['SKU-1'], [])
+
+	def test_non_list_fields_raises(self):
+		with self.assertRaises(ValueError):
+			_SimpleVirtualDocType.get_bulk_values(['SKU-1'], 'description')
+
+	def test_empty_names_returns_empty_dict_without_querying(self):
+		with patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase') as fake_database_class:
+			result = _SimpleVirtualDocType.get_bulk_values([], ['description'])
+
+		self.assertEqual(result, {})
+		fake_database_class.assert_not_called()
+
+	def test_creates_temp_table_inserts_names_and_joins_on_it(self):
+		"""The batch lookup goes through a #lookup_names temp table joined against TABLE_NAME,
+		not a WHERE name IN (...) clause — _format_condition's 'in' handling appends the whole
+		list as a single bound value rather than expanding it into one placeholder per name,
+		which does not render correctly against pymssql."""
+		queries = []
+
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			queries.append((query, values))
+			if query.strip().startswith('SELECT'):
+				return [{'name': 'SKU-1', 'description': 'Red Ski'}]
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			result = _SimpleVirtualDocType.get_bulk_values(['SKU-1', 'SKU-2'], ['description'])
+
+		create_query, insert_query, select_query = (query for query, _ in queries)
+		self.assertIn('CREATE TABLE #lookup_names', create_query)
+		self.assertIn('INSERT INTO #lookup_names', insert_query)
+		self.assertEqual(queries[1][1], ['SKU-1', 'SKU-2'])
+		self.assertIn('INNER JOIN #lookup_names ON Products.[ID] = #lookup_names.lookup_name', select_query)
+		self.assertEqual(result, {'SKU-1': {'description': 'Red Ski'}})
+
+	def test_missing_name_absent_from_result(self):
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.sql.side_effect = lambda query=None, values=None, as_dict=True: (
+			[{'name': 'SKU-1', 'description': 'Red Ski'}] if query.strip().startswith('SELECT') else []
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			result = _SimpleVirtualDocType.get_bulk_values(['SKU-1', 'SKU-404'], ['description'])
+
+		self.assertEqual(list(result), ['SKU-1'])
+
+	def test_name_expression_used_as_join_column(self):
+		"""A NAME_EXPRESSION-backed primary key (a computed SQL expression, not a raw column)
+		must be used as the join predicate, matching _column_for('name')."""
+		captured = {}
+
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			if query.strip().startswith('SELECT'):
+				captured['select'] = query
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			_NameExpressionVirtualDocType.get_bulk_values(['A-1'], ['description'])
+
+		self.assertIn(
+			"INNER JOIN #lookup_names ON CONCAT(StyleNumber, '-', Size) = #lookup_names.lookup_name",
+			captured['select'],
+		)
+
+	def test_chunks_insert_at_max_batch_insert_size(self):
+		insert_values = []
+
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			if query.strip().startswith('INSERT'):
+				insert_values.append(values)
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			_SmallBatchVirtualDocType.get_bulk_values(['A', 'B', 'C'], ['description'])
+
+		self.assertEqual(insert_values, [['A', 'B'], ['C']])
+
+
+# ─── get_bulk_short_cached_values ─────────────────────────────────────────────
+
+
+class UnitTestGetBulkShortCachedValues(UnitTestCase):
+
+	def test_cold_cache_queries_once_and_caches_each_field(self):
+		set_calls = []
+
+		with (
+			patch('frappe.cache.get_value', return_value=None),
+			patch('frappe.cache.set_value', side_effect=lambda key, value, expires_in_sec=None: set_calls.append((key, value, expires_in_sec))),
+			patch.object(
+				_SimpleVirtualDocType, 'get_bulk_values',
+				return_value={'SKU-1': frappe._dict({'description': 'Red Ski', 'quantity': 3})},
+			) as fake_get_bulk_values,
+		):
+			result = _SimpleVirtualDocType.get_bulk_short_cached_values(['SKU-1'], ['description', 'quantity'])
+
+		fake_get_bulk_values.assert_called_once_with(['SKU-1'], ['description', 'quantity'])
+		self.assertEqual(result, {'SKU-1': {'description': 'Red Ski', 'quantity': 3}})
+		self.assertEqual(len(set_calls), 2)
+		for _key, _value, ttl in set_calls:
+			self.assertEqual(ttl, _SimpleVirtualDocType.SHORT_CACHE_TTL_SECONDS)
+
+	def test_warm_cache_never_queries(self):
+		with (
+			patch('frappe.cache.get_value', return_value='cached-value'),
+			patch.object(_SimpleVirtualDocType, 'get_bulk_values') as fake_get_bulk_values,
+		):
+			result = _SimpleVirtualDocType.get_bulk_short_cached_values(['SKU-1'], ['description'])
+
+		fake_get_bulk_values.assert_not_called()
+		self.assertEqual(result, {'SKU-1': {'description': 'cached-value'}})
+
+	def test_mixed_hot_and_cold_only_fetches_misses(self):
+		def fake_get_value(key, expires=False):
+			return 'Warm Ski' if 'SKU-1' in key else None
+
+		with (
+			patch('frappe.cache.get_value', side_effect=fake_get_value),
+			patch('frappe.cache.set_value'),
+			patch.object(
+				_SimpleVirtualDocType, 'get_bulk_values',
+				return_value={'SKU-2': frappe._dict({'description': 'Cold Ski'})},
+			) as fake_get_bulk_values,
+		):
+			result = _SimpleVirtualDocType.get_bulk_short_cached_values(['SKU-1', 'SKU-2'], ['description'])
+
+		fake_get_bulk_values.assert_called_once_with(['SKU-2'], ['description'])
+		self.assertEqual(result, {'SKU-1': {'description': 'Warm Ski'}, 'SKU-2': {'description': 'Cold Ski'}})
+
+	def test_name_with_no_ascend_match_is_absent_and_never_cached(self):
+		with (
+			patch('frappe.cache.get_value', return_value=None),
+			patch('frappe.cache.set_value') as fake_set_value,
+			patch.object(_SimpleVirtualDocType, 'get_bulk_values', return_value={}),
+		):
+			result = _SimpleVirtualDocType.get_bulk_short_cached_values(['SKU-404'], ['description'])
+
+		self.assertEqual(result, {})
+		fake_set_value.assert_not_called()
+
+
 # ─── get_count ────────────────────────────────────────────────────────────────
 
 
@@ -647,7 +847,7 @@ class UnitTestGetCount(UnitTestCase):
 			)
 
 		self.assertEqual(count, 7)
-		self.assertIn('Description = %s', captured['query'])
+		self.assertIn('Products.[Description] = %s', captured['query'])
 		self.assertEqual(captured['values'], ['Red Ski'])
 
 
@@ -669,9 +869,9 @@ class _WritableWithModifiedVirtualDocType(AbstractVirtualDocType):
 	SHOW_FIELD_WARNINGS = False
 	ALLOW_WRITE = True
 	SCHEMA_CONFIG = {
-		'name':          'ID',
-		'modified':      'DateModified',
-		'purchase_date': 'PurchaseDate',
+		'name':          {'column': 'ID'},
+		'modified':      {'column': 'DateModified'},
+		'purchase_date': {'column': 'PurchaseDate'},
 	}
 
 
@@ -768,10 +968,10 @@ class UnitTestDbUpdate(UnitTestCase):
 			document.db_update()
 
 		self.assertIn('UPDATE Products SET', captured['query'])
-		self.assertIn('Description = %s', captured['query'])
-		self.assertIn('Quantity = %s', captured['query'])
-		self.assertIn('[Store UPC] = %s', captured['query'])
-		self.assertIn('ID = %s', captured['query'])
+		self.assertIn('Products.[Description] = %s', captured['query'])
+		self.assertIn('Products.[Quantity] = %s', captured['query'])
+		self.assertIn('Products.[Store UPC] = %s', captured['query'])
+		self.assertIn('Products.[ID] = %s', captured['query'])
 		self.assertEqual(captured['values'], ['Red Ski', 4, 'UPC-1', 'SKU-1'])
 
 	def test_zero_matched_rows_raises_does_not_exist(self):
@@ -859,9 +1059,9 @@ class UnitTestDbUpdate(UnitTestCase):
 		):
 			document.db_update()
 
-		self.assertNotIn('cat.Topic', captured['query'])
+		self.assertNotIn('cat.[Topic]', captured['query'])
 		self.assertNotIn('Skis', captured['values'])
-		self.assertIn('Products.Description = %s', captured['query'])
+		self.assertIn('Products.[Description] = %s', captured['query'])
 
 	def test_modified_field_string_is_converted_to_datetime(self):
 		"""Regression: Frappe sets 'modified' to a plain string (e.g. via now()) before
@@ -949,7 +1149,7 @@ class UnitTestDbUpdate(UnitTestCase):
 		):
 			document.db_update()
 
-		self.assertNotIn('Quantity = %s', captured['query'])
+		self.assertNotIn('Products.[Quantity] = %s', captured['query'])
 		self.assertNotIn(4, captured['values'])
 
 
@@ -1023,10 +1223,10 @@ class UnitTestDbInsert(UnitTestCase):
 			document.db_insert()
 
 		self.assertIn('INSERT INTO Products', captured['query'])
-		self.assertIn('ID', captured['query'])
-		self.assertIn('Description', captured['query'])
-		self.assertIn('Quantity', captured['query'])
-		self.assertIn('[Store UPC]', captured['query'])
+		self.assertIn('Products.[ID]', captured['query'])
+		self.assertIn('Products.[Description]', captured['query'])
+		self.assertIn('Products.[Quantity]', captured['query'])
+		self.assertIn('Products.[Store UPC]', captured['query'])
 		self.assertIn('SKU-1', captured['values'])
 		self.assertIn('Red Ski', captured['values'])
 
@@ -1081,12 +1281,12 @@ class UnitTestDbInsert(UnitTestCase):
 		):
 			document.db_insert()
 
-		self.assertNotIn('Quantity', captured['query'])
-		self.assertNotIn('[Store UPC]', captured['query'])
-		self.assertIn('Description', captured['query'])
+		self.assertNotIn('Products.[Quantity]', captured['query'])
+		self.assertNotIn('Products.[Store UPC]', captured['query'])
+		self.assertIn('Products.[Description]', captured['query'])
 
 
-# ─── LINKED_ID_FIELDS — resolution on write ───────────────────────────────────
+# ─── linked_id — resolution on write ──────────────────────────────────────────
 
 
 class _LinkedCategoryDocType(AbstractVirtualDocType):
@@ -1095,8 +1295,8 @@ class _LinkedCategoryDocType(AbstractVirtualDocType):
 	TABLE_NAME = "Categories"
 	SHOW_FIELD_WARNINGS = False
 	SCHEMA_CONFIG = {
-		'name':        'Categories.Topic',
-		'database_id': 'Categories.ID',
+		'name':        {'column': 'Topic'},
+		'database_id': {'column': 'ID', 'cache': True},
 	}
 
 
@@ -1110,17 +1310,13 @@ class _LinkedIdVirtualDocType(AbstractVirtualDocType):
 		{'join': 'LEFT JOIN', 'table': 'Categories', 'alias': 'cat', 'on': 'Products.TopicID = cat.ID'}
 	]
 	SCHEMA_CONFIG = {
-		'name':        'Products.ID',
-		'description': 'Products.Description',
-		'category':    'cat.Topic',
-		'category_id': 'Products.TopicID',
-	}
-	LINKED_ID_FIELDS = {
-		'category': {
-			'id_field':      'category_id',
-			'link_doctype':  'Product Category',
-			'link_id_field': 'database_id',
-		},
+		'name':        {'column': 'ID'},
+		'description': {'column': 'Description'},
+		'category':    {'table': 'cat', 'column': 'Topic',
+		                'linked_id': {'id_field':      'category_id',
+		                              'link_doctype':  'Product Category',
+		                              'link_id_field': 'database_id'}},
+		'category_id': {'column': 'TopicID'},
 	}
 
 
@@ -1180,7 +1376,7 @@ class UnitTestResolveLinkedIdFields(UnitTestCase):
 		self.assertIsNone(document.get('category_id'))
 
 	def test_no_linked_id_fields_is_noop(self):
-		"""A controller without LINKED_ID_FIELDS resolves nothing and never touches get_controller."""
+		"""A controller with no 'linked_id' pairing resolves nothing and never touches get_controller."""
 		document = _make_document(_WritableSimpleVirtualDocType, 'SKU-1', description='Red Ski')
 		with patch('bullwheel.ascend.virtual_doctype_base.get_controller') as fake_get_controller:
 			document._resolve_linked_id_fields()
@@ -1228,11 +1424,25 @@ class UnitTestResolveLinkedIdFields(UnitTestCase):
 				document.db_update()
 
 
-# ─── LINKED_ID_FIELDS — structural validation ─────────────────────────────────
+# ─── linked_id — structural validation ────────────────────────────────────────
+
+
+def _linked_id_fixture(name, category_config=None, category_id_config=None):
+	"""Build a _LinkedIdVirtualDocType variant overriding the 'category' and/or 'category_id'
+	entries. Subclasses can't just override SCHEMA_CONFIG piecemeal (it is one dict), so each
+	variant gets a full copy with the named entries replaced."""
+	schema_config = dict(_LinkedIdVirtualDocType.SCHEMA_CONFIG)
+	if category_config is not None:
+		schema_config['category'] = category_config
+	if category_id_config is not None:
+		schema_config['category_id'] = category_id_config
+	return type(name, (_LinkedIdVirtualDocType,), {'SCHEMA_CONFIG': schema_config})
 
 
 class UnitTestLinkedIdFieldStructuralProblems(UnitTestCase):
-	"""The DB-free structural half of the convention check. The meta-dependent coverage and
+	"""The DB-free structural half of the convention check. A pairing's own key set is enforced
+	during normalization (see UnitTestNormalizeSchemaConfig), and its display field is mapped by
+	construction, so those cases are no longer reachable here. The meta-dependent coverage and
 	read-only checks are exercised end-to-end by `bench migrate`."""
 
 	def _patch_get_controller(self):
@@ -1246,63 +1456,184 @@ class UnitTestLinkedIdFieldStructuralProblems(UnitTestCase):
 		with self._patch_get_controller():
 			self.assertEqual(_linked_id_field_structural_problems(_LinkedIdVirtualDocType), [])
 
-	def test_missing_required_key_is_flagged(self):
-		class _MissingKey(_LinkedIdVirtualDocType):
-			LINKED_ID_FIELDS = {'category': {'id_field': 'category_id'}}  # no link_doctype/link_id_field
-		with self._patch_get_controller():
-			problems = _linked_id_field_structural_problems(_MissingKey)
-		self.assertTrue(any('category' in problem for problem in problems))
-
 	def test_id_field_on_join_table_is_flagged(self):
 		"""A JOIN column can't be written, so an id_field mapped to one defeats the convention."""
-		class _JoinIdField(_LinkedIdVirtualDocType):
-			SCHEMA_CONFIG = {
-				'name':        'Products.ID',
-				'category':    'cat.Topic',
-				'category_id': 'cat.ID',  # on the joined table, not Products
-			}
+		_JoinIdField = _linked_id_fixture(
+			'_JoinIdField',
+			category_id_config={'table': 'cat', 'column': 'ID'},  # on the joined table, not Products
+		)
 		with self._patch_get_controller():
 			problems = _linked_id_field_structural_problems(_JoinIdField)
 		self.assertTrue(any('category_id' in problem for problem in problems))
 
-	def test_unmapped_display_field_is_flagged(self):
-		class _UnmappedDisplay(_LinkedIdVirtualDocType):
-			LINKED_ID_FIELDS = {
-				'nonexistent': {
-					'id_field':      'category_id',
-					'link_doctype':  'Product Category',
-					'link_id_field': 'database_id',
-				},
-			}
+	def test_unmapped_id_field_is_flagged(self):
+		"""The pairing names an id_field with no SCHEMA_CONFIG entry, so there is no column to
+		write the resolved id to."""
+		_UnmappedIdField = _linked_id_fixture(
+			'_UnmappedIdField',
+			category_config={'table': 'cat', 'column': 'Topic',
+			                 'linked_id': {'id_field':      'nonexistent',
+			                               'link_doctype':  'Product Category',
+			                               'link_id_field': 'database_id'}},
+		)
 		with self._patch_get_controller():
-			problems = _linked_id_field_structural_problems(_UnmappedDisplay)
+			problems = _linked_id_field_structural_problems(_UnmappedIdField)
 		self.assertTrue(any('nonexistent' in problem for problem in problems))
 
 	def test_unmapped_link_id_field_is_flagged(self):
-		class _BadLinkIdField(_LinkedIdVirtualDocType):
-			LINKED_ID_FIELDS = {
-				'category': {
-					'id_field':      'category_id',
-					'link_doctype':  'Product Category',
-					'link_id_field': 'not_a_field',  # absent from Product Category's SCHEMA_CONFIG
-				},
-			}
+		_BadLinkIdField = _linked_id_fixture(
+			'_BadLinkIdField',
+			category_config={'table': 'cat', 'column': 'Topic',
+			                 'linked_id': {'id_field':      'category_id',
+			                               'link_doctype':  'Product Category',
+			                               'link_id_field': 'not_a_field'}},
+		)
 		with self._patch_get_controller():
 			problems = _linked_id_field_structural_problems(_BadLinkIdField)
 		self.assertTrue(any('not_a_field' in problem for problem in problems))
 
 	def test_unresolvable_link_doctype_is_flagged(self):
-		class _BadLinkDoctype(_LinkedIdVirtualDocType):
-			LINKED_ID_FIELDS = {
-				'category': {
-					'id_field':      'category_id',
-					'link_doctype':  'Nope',
-					'link_id_field': 'database_id',
-				},
-			}
+		_BadLinkDoctype = _linked_id_fixture(
+			'_BadLinkDoctype',
+			category_config={'table': 'cat', 'column': 'Topic',
+			                 'linked_id': {'id_field':      'category_id',
+			                               'link_doctype':  'Nope',
+			                               'link_id_field': 'database_id'}},
+		)
 		with patch(
 			'bullwheel.ascend.validate_virtual_doctypes.get_controller',
 			side_effect=Exception('no such doctype'),
 		):
 			problems = _linked_id_field_structural_problems(_BadLinkDoctype)
 		self.assertTrue(any('Nope' in problem for problem in problems))
+
+
+# ─── schema_config normalization ──────────────────────────────────────────────
+
+
+class UnitTestNormalizeSchemaConfig(UnitTestCase):
+	"""The field config contract: what a valid entry looks like, and which authoring mistakes
+	are rejected at normalization time (and so block `bench migrate`)."""
+
+	def _normalize(self, schema_config, table_name="Products"):
+		fixture = type('_Fixture', (AbstractVirtualDocType,), {
+			'TABLE_NAME': table_name, 'SCHEMA_CONFIG': schema_config,
+		})
+		return normalize_schema_config(fixture)
+
+	def test_table_defaults_to_table_name(self):
+		normalized = self._normalize({'description': {'column': 'Description'}})
+		self.assertEqual(normalized['description']['table'], 'Products')
+		self.assertEqual(normalized['description']['sql'], 'Products.[Description]')
+
+	def test_explicit_table_is_used(self):
+		normalized = self._normalize({'category': {'table': 'cat', 'column': 'Topic'}})
+		self.assertEqual(normalized['category']['sql'], 'cat.[Topic]')
+
+	def test_column_is_always_bracket_quoted(self):
+		"""Quoting is the framework's job, so a name with a space and a reserved word are both
+		safe without the author doing anything."""
+		normalized = self._normalize({
+			'store_sku': {'column': 'Store UPC'},
+			'year':      {'column': 'Year'},
+		})
+		self.assertEqual(normalized['store_sku']['sql'], 'Products.[Store UPC]')
+		self.assertEqual(normalized['year']['sql'], 'Products.[Year]')
+
+	def test_author_supplied_brackets_are_stripped(self):
+		"""'[Store UPC]' and 'Store UPC' must normalize identically rather than double-quoting."""
+		bracketed = self._normalize({'store_sku': {'column': '[Store UPC]'}})
+		bare = self._normalize({'store_sku': {'column': 'Store UPC'}})
+		self.assertEqual(bracketed['store_sku']['sql'], bare['store_sku']['sql'])
+		self.assertEqual(bracketed['store_sku']['column'], 'Store UPC')
+
+	def test_flags_default_to_false(self):
+		normalized = self._normalize({'description': {'column': 'Description'}})
+		self.assertFalse(normalized['description']['alternate_name'])
+		self.assertFalse(normalized['description']['cache'])
+		self.assertIsNone(normalized['description']['linked_id'])
+
+	def test_none_entry_declares_an_unmapped_field(self):
+		normalized = self._normalize({'placeholder': None})
+		self.assertIsNone(normalized['placeholder']['sql'])
+		self.assertIsNone(normalized['placeholder']['table'])
+
+	def test_declaration_order_is_preserved(self):
+		"""The default SELECT projection and the alternate-name OR widening both depend on it."""
+		normalized = self._normalize({
+			'name':        {'column': 'ID'},
+			'description': {'column': 'Description'},
+			'quantity':    {'column': 'Quantity'},
+		})
+		self.assertEqual(list(normalized), ['name', 'description', 'quantity'])
+
+	def test_unknown_key_raises_naming_the_field(self):
+		with self.assertRaises(ValueError) as context:
+			self._normalize({'description': {'colum': 'Description'}})
+		self.assertIn('colum', str(context.exception))
+		self.assertIn('description', str(context.exception))
+
+	def test_flat_string_entry_raises(self):
+		with self.assertRaises(ValueError):
+			self._normalize({'description': 'Products.Description'})
+
+	def test_missing_column_raises(self):
+		with self.assertRaises(ValueError):
+			self._normalize({'description': {'table': 'Products'}})
+
+	def test_table_qualified_column_raises(self):
+		"""The hallmark of an entry half-converted from the older flat format."""
+		with self.assertRaises(ValueError) as context:
+			self._normalize({'description': {'column': 'Products.Description'}})
+		self.assertIn('table', str(context.exception))
+
+	def test_non_boolean_flag_raises(self):
+		for key in ('alternate_name', 'cache'):
+			with self.subTest(key=key):
+				with self.assertRaises(ValueError):
+					self._normalize({'description': {'column': 'Description', key: 'yes'}})
+
+	def test_malformed_linked_id_raises(self):
+		with self.assertRaises(ValueError) as context:
+			self._normalize({'category': {'column': 'Topic', 'linked_id': {'id_field': 'category_id'}}})
+		self.assertIn('link_doctype', str(context.exception))
+
+	def test_unknown_linked_id_key_raises(self):
+		with self.assertRaises(ValueError):
+			self._normalize({'category': {'column': 'Topic', 'linked_id': {
+				'id_field': 'category_id', 'link_doctype': 'Product Category',
+				'link_id_field': 'database_id', 'extra': 'x',
+			}}})
+
+	def test_quote_column_is_idempotent(self):
+		self.assertEqual(quote_column('Store UPC'), '[Store UPC]')
+		self.assertEqual(quote_column('[Store UPC]'), '[Store UPC]')
+
+
+class UnitTestNormalizedSchemaMemoization(UnitTestCase):
+
+	def test_each_controller_resolves_its_own_config(self):
+		"""The memo is keyed by class on the base class. A plain class attribute would let one
+		controller's normalized config leak into every other, so this is the one subtle way the
+		cache can break."""
+		self.assertEqual(_SimpleVirtualDocType._column_for('description'), 'Products.[Description]')
+		self.assertEqual(_LinkedCategoryDocType._column_for('name'), 'Categories.[Topic]')
+		self.assertEqual(_AliasedJoinVirtualDocType._column_for('category'), 'cat.[Topic]')
+		# Re-read after the others have populated the cache.
+		self.assertEqual(_SimpleVirtualDocType._column_for('description'), 'Products.[Description]')
+		self.assertIsNone(_SimpleVirtualDocType._column_for('category'))
+
+	def test_accessors_derive_from_the_field_config(self):
+		self.assertEqual(_AltNameVirtualDocType.alternate_name_fields(), ['upc'])
+		self.assertEqual(_SimpleVirtualDocType.alternate_name_fields(), [])
+		self.assertEqual(list(_LinkedIdVirtualDocType.linked_id_fields()), ['category'])
+		self.assertEqual(
+			_LinkedIdVirtualDocType.linked_id_fields()['category']['id_field'], 'category_id'
+		)
+		self.assertEqual(_LinkedCategoryDocType.cache_fields(), ['database_id'])
+		self.assertEqual(_SimpleVirtualDocType.cache_fields(), [])
+
+	def test_column_belongs_to_table_uses_the_structural_table(self):
+		self.assertTrue(_AliasedJoinVirtualDocType._column_belongs_to_table('description'))
+		self.assertFalse(_AliasedJoinVirtualDocType._column_belongs_to_table('category'))
+		self.assertFalse(_AliasedJoinVirtualDocType._column_belongs_to_table('nonexistent'))
