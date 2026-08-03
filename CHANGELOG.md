@@ -2,7 +2,7 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
-## [1.1.4] - Unreleased
+## [1.1.4] - August 3, 2026
 
 ### Performance Improvements
 
@@ -12,6 +12,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 ### Bug Fixes
 
 - Fixed Order Receipt Item Description and Barcode fields not refreshing by, you guessed it, better caching.
+- Fixed incorrect whitelisted function reference preventing item location bays from being fetched during check-out.
 
 ## [1.1.3] - July 31, 2026
 
