@@ -3,7 +3,7 @@
  "allow_import": 1,
  "allow_rename": 1,
  "autoname": "field:location_name",
- "creation": "2026-06-01 12:52:22.129264",
+ "creation": "2026-07-14 16:51:22.826971",
  "default_view": "Tree",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -13,6 +13,8 @@
   "parent_warehouse_location",
   "is_group",
   "is_forklift_accessible",
+  "column_break_qqxl",
+  "total_inventory",
   "location_content_section",
   "scan_here",
   "location_inventory_quantities",
@@ -103,15 +105,27 @@
   },
   {
    "fieldname": "scan_here",
-   "fieldtype": "HTML",
-   "label": ""
+   "fieldtype": "HTML"
+  },
+  {
+   "fieldname": "column_break_qqxl",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Temporarily disabled",
+   "fieldname": "total_inventory",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "in_list_view": 1,
+   "is_virtual": 1,
+   "label": "Total Inventory"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_tree": 1,
  "links": [],
- "modified": "2026-07-10 13:36:02.132002",
+ "modified": "2026-08-03 16:11:23.671408",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Warehouse Location",

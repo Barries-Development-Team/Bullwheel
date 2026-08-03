@@ -5,6 +5,14 @@ import frappe
 from frappe.utils.nestedset import NestedSet
 
 class WarehouseLocation(NestedSet):
+
+	@property
+	def total_inventory(self):
+		total = 0
+		for item in self.location_inventory_quantities:
+			total += item.quantity or 0
+		return total
+
 	def validate(self):
 		self.validate_no_inventory_in_group()
 		self.validate_non_group_has_no_children()
