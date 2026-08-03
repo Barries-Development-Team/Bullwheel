@@ -227,7 +227,7 @@ bullwheel.warehouse.check_out_item = function ({ on_success, product } = {}) {
 		if (!product) return;
 
 		frappe.call({
-			method: 'bullwheel.warehouse.stock_handler.get_locations_for_product',
+			method: 'bullwheel.warehouse.stock_handler.get_product_locations',
 			args: { product: product },
 			callback(response) {
 				const rows = response.message || [];
