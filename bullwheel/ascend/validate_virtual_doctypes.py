@@ -108,6 +108,37 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 				f"neither TABLE_NAME nor a table/alias declared in JOIN_CONFIG."
 			)
 
+	# Guardrail: an INSERT_DEFAULTS key must resolve to a writable column on TABLE_NAME, or the
+	# default is silently dropped by _collect_writable_fields and the column it was meant to
+	# populate goes back to landing NULL — the failure it exists to prevent, reintroduced
+	# invisibly. Caught here rather than at insert time because a write path that only runs
+	# during receiving is a bad place to discover a typo.
+	insert_defaults = doctype_class.INSERT_DEFAULTS
+	if insert_defaults:
+		if not isinstance(insert_defaults, dict):
+			raise ValueError(
+				f"{class_name}: INSERT_DEFAULTS must be a dict of fieldname -> value, got "
+				f"{insert_defaults!r}."
+			)
+		if not doctype_class.ALLOW_WRITE:
+			raise ValueError(
+				f"{class_name}: INSERT_DEFAULTS is set but ALLOW_WRITE is False, so db_insert "
+				f"can never run and the defaults would have no effect."
+			)
+		for fieldname in insert_defaults:
+			field_config = schema_config.get(fieldname)
+			if field_config is None or field_config['sql'] is None:
+				raise ValueError(
+					f"{class_name}: INSERT_DEFAULTS names '{fieldname}', which has no SCHEMA_CONFIG "
+					f"mapping, so there is no column to write the default to."
+				)
+			if not doctype_class._column_belongs_to_table(fieldname):
+				raise ValueError(
+					f"{class_name}: INSERT_DEFAULTS names '{fieldname}', whose column "
+					f"'{field_config['sql']}' is not on {doctype_class.TABLE_NAME}. Only columns on "
+					f"the primary table are writable."
+				)
+
 	# Guardrail: every table/alias a NAME_EXPRESSION qualifies with must be declared, otherwise the
 	# query throws a bind error at runtime. Strip bracket-quoted names and string literals first so
 	# their internal dots/text don't register as spurious qualifiers.

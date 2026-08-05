@@ -103,4 +103,87 @@ def _format_suggested_config(config):
 	return "SCHEMA_CONFIG = {\n" + ",\n".join(lines) + "\n}"
 
 
-commands = [introspect_schema]
+@click.command("backfill-insert-defaults")
+@click.option(
+	"--doctype",
+	"doctype_name",
+	default="Ascend Product",
+	help="Virtual DocType whose INSERT_DEFAULTS to backfill. Defaults to Ascend Product.",
+)
+@click.option(
+	"--server",
+	"server_name",
+	default=None,
+	help="SQL Server DocType record name. Defaults to Bullwheel Settings -> default_database.",
+)
+@click.option("--apply", "apply_changes", is_flag=True, default=False, help="Perform the UPDATE. Without this, only counts are reported.")
+@pass_context
+def backfill_insert_defaults(context, doctype_name="Ascend Product", server_name=None, apply_changes=False):
+	"""Set a virtual DocType's INSERT_DEFAULTS on existing Ascend rows that are still NULL.
+
+	INSERT_DEFAULTS only governs rows written from here on; rows created before a default was
+	declared keep whatever the column defaulted to. This backfills those, one UPDATE per
+	declared field, touching only rows where the column IS NULL — a row that already carries a
+	value (including a deliberate non-default one) is never rewritten.
+
+	Reports the affected row count per column and does nothing else unless --apply is passed,
+	so the scope of the change can be read before any row in Ascend is modified.
+	"""
+	from frappe.model.base_document import get_controller
+
+	from bullwheel.ascend.schema_config import quote_column
+	from bullwheel.ascend.virtual_doctype_base import get_default_ascend_database
+	from bullwheel.database.SQLServer import MSSQLDatabase
+
+	site = get_site(context)
+	frappe.init(site=site)
+	frappe.connect()
+	try:
+		controller = get_controller(doctype_name)
+		insert_defaults = controller.INSERT_DEFAULTS
+		if not insert_defaults:
+			click.echo(f"{doctype_name} declares no INSERT_DEFAULTS — nothing to backfill.")
+			return
+
+		server_document = (
+			frappe.get_doc("SQL Server", server_name) if server_name else get_default_ascend_database()
+		)
+
+		click.echo(
+			f"\n{doctype_name} -> {controller.TABLE_NAME} on '{server_document.name}'"
+			f" ({'APPLYING' if apply_changes else 'dry run — pass --apply to write'})\n"
+		)
+
+		with MSSQLDatabase(server_document) as ascend:
+			for field, value in insert_defaults.items():
+				# Resolved through the controller so the column is the same one db_insert would
+				# write, bracket-quoted by the same helper rather than interpolated by hand.
+				column = quote_column(controller._field_config(field)['column'])
+				table = controller.TABLE_NAME
+
+				pending = ascend.sql(
+					f"SELECT COUNT(*) AS pending FROM {table} WHERE {column} IS NULL",
+					[], as_dict=True,
+				)[0]["pending"]
+
+				if not apply_changes:
+					click.echo(f"  {field:<28} {column:<28} {pending:>8} row(s) NULL -> would set {value!r}")
+					continue
+
+				ascend.sql(
+					f"UPDATE {table} SET {column} = %s WHERE {column} IS NULL",
+					[value], as_dict=False,
+				)
+				click.echo(f"  {field:<28} {column:<28} {ascend.cursor.rowcount:>8} row(s) set to {value!r}")
+
+			if apply_changes:
+				ascend.commit()
+				click.echo("\nCommitted.")
+	finally:
+		frappe.destroy()
+
+	if not site:
+		raise SiteNotSpecifiedError
+
+
+commands = [introspect_schema, backfill_insert_defaults]
