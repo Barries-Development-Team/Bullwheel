@@ -6,7 +6,12 @@ from unittest.mock import MagicMock, patch
 import frappe
 from frappe.tests import IntegrationTestCase, UnitTestCase
 
-from bullwheel.ascend.doctype.vendor_product.vendor_product import PART_NUMBER_LIMIT, generate_vpn
+from bullwheel.ascend.doctype.vendor_product.vendor_product import (
+	PART_NUMBER_LIMIT,
+	create_vendor_product,
+	generate_vpn,
+)
+from bullwheel.bullwheel_core.exceptions import AscendAttributionUserNotConfigured
 
 
 # On IntegrationTestCase, the doctype test records and all
@@ -53,3 +58,67 @@ class UnitTestGenerateVpnCharacterLimit(UnitTestCase):
 		PartNumber into Ascend."""
 		with self.assertRaises(frappe.ValidationError):
 			generate_vpn(vendor_id=1, vpn_prefix='A' * 50, brand='CD', model='M')
+
+
+# ─── create_vendor_product — Ascend edit attribution ───────────────────────────
+
+
+class UnitTestCreateVendorProductAttribution(UnitTestCase):
+	"""A VendorProducts row Bullwheel inserts must carry a real Ascend CreatorID/ModifierID.
+	Ascend refuses to save an order referencing a vendor product with no creator, so an
+	unattributed insert here surfaces much later as an order that will not save."""
+
+	def _patched_create(self, fake_database, resolved_user_id='ASCEND-USER-ID'):
+		"""Run create_vendor_product against a mocked Ascend connection and a stubbed user
+		resolution, returning the mock so the caller can assert on the executed INSERT."""
+		return patch.multiple(
+			'bullwheel.ascend.doctype.vendor_product.vendor_product',
+			MSSQLDatabase=MagicMock(return_value=fake_database),
+			get_default_ascend_database=MagicMock(return_value=None),
+			resolve_attributed_ascend_user_id=MagicMock(return_value=resolved_user_id),
+		)
+
+	def _fake_database(self):
+		"""A mocked MSSQLDatabase context manager reporting no existing part-number match and
+		exactly one inserted row, so create_vendor_product runs its INSERT path to completion."""
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.sql.return_value = []  # no existing VendorProducts row for this part number
+		fake_database.cursor.rowcount = 1
+		return fake_database
+
+	def test_insert_supplies_creator_and_modifier_ids(self):
+		"""The INSERT names CreatorID and ModifierID, and binds the resolved Ascend user id to
+		both."""
+		fake_database = self._fake_database()
+
+		with self._patched_create(fake_database):
+			inserted = create_vendor_product(
+				vendor_id=1, product_id=2, part_number='PART-1', cost=9.99, description='Item',
+			)
+
+		self.assertTrue(inserted)
+		query, values = fake_database.sql.call_args_list[-1][0][:2]
+		self.assertIn('CreatorID', query)
+		self.assertIn('ModifierID', query)
+		self.assertEqual(values.count('ASCEND-USER-ID'), 2)
+		# One placeholder per bound value, or pymssql binds them to the wrong columns.
+		self.assertEqual(query.count('%s'), len(values))
+
+	def test_unresolvable_user_aborts_before_inserting(self):
+		"""With neither a linked Ascend User nor a usable default_user, the insert is refused
+		outright rather than writing a row with a null CreatorID."""
+		fake_database = self._fake_database()
+
+		with patch.multiple(
+			'bullwheel.ascend.doctype.vendor_product.vendor_product',
+			MSSQLDatabase=MagicMock(return_value=fake_database),
+			get_default_ascend_database=MagicMock(return_value=None),
+			resolve_attributed_ascend_user_id=MagicMock(side_effect=AscendAttributionUserNotConfigured),
+		):
+			with self.assertRaises(frappe.ValidationError):
+				create_vendor_product(
+					vendor_id=1, product_id=2, part_number='PART-1', cost=9.99,
+				)
+
+		fake_database.sql.assert_not_called()

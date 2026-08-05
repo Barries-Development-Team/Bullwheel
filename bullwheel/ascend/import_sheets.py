@@ -11,7 +11,7 @@ import openpyxl
 def build_import_sheet(template_path, rows):
 	"""Fill an xlsx import template with `rows` and return the finished workbook as bytes.
 
-	This handles only the file IO: it loads the template, erases the sample rows the
+	This handles only the file IO: it loads the template, deletes the sample rows the
 	template ships with, and writes each row. `rows` is an ordered list of
 	{template_column_header: value} dicts — one dict per worksheet row — where each value
 	is placed under the column whose header matches the dict key. Keys with no matching
@@ -28,15 +28,22 @@ def build_import_sheet(template_path, rows):
 		if cell.value is not None
 	}
 
-	# Erase any sample rows the template ships with.
-	for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row):
-		for cell in row:
-			cell.value = None
+	# Delete — never merely blank — the sample rows the template ships with. Clearing a
+	# cell's value leaves the row itself in the saved file, so the finished sheet still
+	# reports the template's original used range (the purchase order template carries 64
+	# such rows, giving every export a used range of A1:E65 no matter how few items it
+	# holds). Ascend's "Import from Excel" reads that used range, so leftover rows arrive
+	# as blank order lines and inflate the imported order's item count.
+	if worksheet.max_row > 1:
+		worksheet.delete_rows(2, worksheet.max_row - 1)
 
 	for row_number, row_values in enumerate(rows, start=2):
 		for template_column, value in row_values.items():
 			column_index = header_to_column.get(template_column)
-			if column_index is None:
+			# A None value would still create a cell, re-widening the used range with a
+			# blank; leaving the cell out entirely keeps the sheet exactly as wide as its
+			# real data.
+			if column_index is None or value is None:
 				continue
 			worksheet.cell(row=row_number, column=column_index, value=value)
 

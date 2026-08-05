@@ -2,6 +2,13 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.6] - August 5, 2026
+
+### Bug Fixes
+
+- Fixed exported import sheets carrying the blank sample rows their template ships with, which Ascend imported as phantom order lines and which inflated the item count shown for an order. A generated sheet now ends at its last real row.
+- Vendor Products created by Bullwheel during receiving are now attributed to the acting user's Ascend User, like every other Ascend record. Previously they were written with no Creator, which could later block the order that referenced them from saving.
+
 ## [1.1.5] - August 4, 2026
 
 ### Features
