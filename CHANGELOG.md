@@ -2,6 +2,18 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.5] - August 4, 2026
+
+### Features
+
+- Added the Ascend User DocType.
+- Users can now be linked to a corresponding Ascend User via a new "Ascend User" field, with a configurable default fallback in Bullwheel Settings for users without one.
+- Edits to Ascend records are now attributed to the acting user's linked Ascend User (falling back to the configured default) instead of leaving Creator/Modifier fields unset.
+
+### Bug Fixes
+
+- Fixed a crash searching the Ascend User Link field, caused by records with a blank Employee ID.
+
 ## [1.1.4] - August 3, 2026
 
 ### Performance Improvements
