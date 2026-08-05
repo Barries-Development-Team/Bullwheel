@@ -8,6 +8,8 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 - Fixed exported import sheets carrying the blank sample rows their template ships with, which Ascend imported as phantom order lines and which inflated the item count shown for an order. A generated sheet now ends at its last real row.
 - Vendor Products created by Bullwheel during receiving are now attributed to the acting user's Ascend User, like every other Ascend record. Previously they were written with no Creator, which could later block the order that referenced them from saving.
+- Exported item costs are now rounded to the cost shown on the receipt. Costs were written to the sheet at full floating-point precision (up to 16 decimal places), leaving Ascend to round them into its own 4-decimal column and carry the rounding error into every total derived from them.
+- A multi-line Comment or Description is now collapsed onto one line for export, instead of putting a literal line break inside a spreadsheet cell.
 
 ## [1.1.5] - August 4, 2026
 

@@ -6,6 +6,7 @@ import re
 
 import frappe
 from frappe.model.document import Document
+from frappe.utils import flt
 
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core import get_default_ascend_database
@@ -312,15 +313,39 @@ def _resolve_ascend_vpn(item):
 	return _VENDOR_SUFFIX_PATTERN.sub("", item.vpn)
 
 
+def _single_line(value):
+	"""Collapse a value onto a single line, joining what was split across lines with a space.
+	A newline inside a spreadsheet cell is a literal line break in the imported value, which
+	Ascend's importer does not expect on a purchase order line; collapsing keeps the whole
+	note without the embedded break. Also strips the leading/trailing and repeated whitespace
+	that hand-entered comments tend to carry."""
+
+	if not value:
+		return value
+
+	return " ".join(str(value).split())
+
+
+def _export_cost(item):
+	"""An order item's cost rounded to the item's own Currency precision. The raw field value
+	can carry full binary float precision — costs derived from a buyout allocation come back
+	with 16 decimal places — and the exporter writes whatever it is given straight into the
+	sheet. Ascend's Cost column is money (4 decimal places), so an unrounded cost is rounded
+	somewhere inside Ascend instead, and every extended total Ascend derives from it inherits
+	the artifact. Rounding here means the sheet carries exactly the cost the receipt shows."""
+
+	return flt(item.cost, item.precision("cost") or 2)
+
+
 def _order_item_to_po_row(item):
 	"""Project one order item onto the Ascend Vendor Order (PO) template column headers."""
 
 	return {
 		"Identifier": _resolve_ascend_vpn(item),
-		"Description": item.description,
+		"Description": _single_line(item.description),
 		"Qty": item.quantity,
-		"Cost": item.cost,
-		"Comments": item.comments,
+		"Cost": _export_cost(item),
+		"Comments": _single_line(item.comments),
 	}
 
 
