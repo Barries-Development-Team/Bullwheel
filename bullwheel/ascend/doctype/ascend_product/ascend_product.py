@@ -26,6 +26,24 @@ class AscendProduct(AbstractVirtualDocType):
 	TABLE_NAME = "Products"
 	ALLOW_WRITE = True
 
+	# Products.NonInventory is a flag this DocType surfaces no field for, so nothing on the
+	# document ever supplies it and db_insert left it at the column default — NULL, since that
+	# column has none. Ascend reads a NULL flag as neither set nor unset and drops the row
+	# wherever it filters on one: every product created with NonInventory NULL is missing from
+	# the item grid of any purchase order referencing it, while the order header still counts
+	# and totals it. Measured on PO "Bearded Ginger Helm of Sun Valley Batch 1" — 223 of 243
+	# lines had NonInventory NULL, and the grid rendered every one of the 20 rows that had it
+	# set and none of the rest.
+	#
+	# Hide is deliberately absent: it came back non-NULL on all 243, so that column carries its
+	# own database default and needs nothing from us. Reconciled, NoLabel, eCommerce, DolCom,
+	# PrintLabelsByDivision and HasPendingDelta are equally undeclared and so equally unwritten,
+	# but whether Ascend needs them non-NULL has not been checked — add them here only once a
+	# NULL count on the Products table says they matter.
+	INSERT_DEFAULTS = {
+		'non_inventory': 0,
+	}
+
 	# 'category' displays the joined column cat.Topic, which can't be written directly. Its
 	# foreign key lives on Products as TopicID (mapped to 'category_id'). On save the framework
 	# resolves the chosen category (a Product Category name) to its Categories.ID via the linked

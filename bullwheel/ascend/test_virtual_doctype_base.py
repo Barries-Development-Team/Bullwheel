@@ -1914,3 +1914,145 @@ class UnitTestNormalizedSchemaMemoization(UnitTestCase):
 		self.assertTrue(_AliasedJoinVirtualDocType._column_belongs_to_table('description'))
 		self.assertFalse(_AliasedJoinVirtualDocType._column_belongs_to_table('category'))
 		self.assertFalse(_AliasedJoinVirtualDocType._column_belongs_to_table('nonexistent'))
+
+
+# ─── INSERT_DEFAULTS ──────────────────────────────────────────────────────────
+
+
+class _InsertDefaultsVirtualDocType(_SimpleVirtualDocType):
+	"""Mirrors Ascend Product's situation: a column mapped in SCHEMA_CONFIG that the DocType
+	surfaces no field for, so only INSERT_DEFAULTS can put a value in it."""
+	ALLOW_WRITE = True
+	SCHEMA_CONFIG = {
+		**_SimpleVirtualDocType.SCHEMA_CONFIG,
+		'non_inventory': {'column': 'NonInventory'},
+	}
+	INSERT_DEFAULTS = {'non_inventory': 0}
+
+
+def _capture_insert(document):
+	"""Run db_insert against a mocked Ascend connection and return the executed INSERT's
+	(query, values). The existence pre-flight is answered with a zero count so the insert
+	path always runs to completion."""
+	captured = {}
+	fake_database = MagicMock()
+	fake_database.__enter__.return_value = fake_database
+
+	def fake_sql(query=None, values=None, as_dict=True):
+		if query and query.strip().startswith('SELECT COUNT'):
+			return [{'count': 0}]
+		captured['query'] = query
+		captured['values'] = values
+		fake_database.cursor.rowcount = 1
+		return []
+
+	fake_database.sql.side_effect = fake_sql
+
+	with (
+		patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+		patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+	):
+		document.db_insert()
+
+	return captured['query'], captured['values']
+
+
+class UnitTestInsertDefaults(UnitTestCase):
+
+	def test_default_reaches_the_insert_for_a_field_the_document_never_declares(self):
+		"""The whole point: 'non_inventory' is absent from as_dict(), so without
+		INSERT_DEFAULTS the column would be missing from the INSERT and land NULL."""
+		document = _make_document(_InsertDefaultsVirtualDocType, 'SKU-1', description='Red Ski')
+
+		query, values = _capture_insert(document)
+
+		self.assertIn('Products.[NonInventory]', query)
+		self.assertIn(0, values)
+		# One placeholder per bound value, or pymssql binds them to the wrong columns.
+		self.assertEqual(query.count('%s'), len(values))
+
+	def test_a_value_on_the_document_wins_over_the_default(self):
+		"""A default is a floor, not an override — a real value must survive."""
+		document = _make_document(
+			_InsertDefaultsVirtualDocType, 'SKU-1', description='Red Ski', non_inventory=1,
+		)
+
+		query, values = _capture_insert(document)
+
+		column_index = [
+			part.strip() for part in
+			query.split('(', 1)[1].split(')', 1)[0].split(',')
+		].index('Products.[NonInventory]')
+		self.assertEqual(values[column_index], 1)
+
+	def test_controller_without_insert_defaults_is_unaffected(self):
+		document = _make_document(_WritableSimpleVirtualDocType, 'SKU-1', description='Red Ski')
+
+		query, _ = _capture_insert(document)
+
+		self.assertNotIn('NonInventory', query)
+
+	def test_defaults_do_not_reach_db_update(self):
+		"""INSERT_DEFAULTS names columns whose value is set once at creation; re-asserting
+		them on every save would overwrite whatever Ascend has done to the row since."""
+		document = _make_document(
+			_InsertDefaultsVirtualDocType, 'SKU-1', description='Red Ski', is_new=False,
+		)
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			captured['query'] = query
+			fake_database.cursor.rowcount = 1
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			document.db_update()
+
+		self.assertNotIn('NonInventory', captured['query'])
+
+
+class UnitTestInsertDefaultsValidation(UnitTestCase):
+
+	def test_unmapped_fieldname_is_rejected(self):
+		class _BadInsertDefaults(_InsertDefaultsVirtualDocType):
+			INSERT_DEFAULTS = {'not_a_mapped_field': 0}
+
+		with self.assertRaises(ValueError) as raised:
+			validate_schema_config(_BadInsertDefaults)
+		self.assertIn('not_a_mapped_field', str(raised.exception))
+
+	def test_joined_column_is_rejected(self):
+		"""Only TABLE_NAME columns are writable; a default on a joined column would be
+		silently dropped and the column would go back to landing NULL."""
+		class _JoinedInsertDefaults(_WritableAliasedJoinVirtualDocType):
+			INSERT_DEFAULTS = {'category': 0}
+
+		with self.assertRaises(ValueError) as raised:
+			validate_schema_config(_JoinedInsertDefaults)
+		self.assertIn('category', str(raised.exception))
+
+	def test_read_only_doctype_is_rejected(self):
+		class _ReadOnlyInsertDefaults(_SimpleVirtualDocType):
+			SCHEMA_CONFIG = _InsertDefaultsVirtualDocType.SCHEMA_CONFIG
+			INSERT_DEFAULTS = {'non_inventory': 0}
+
+		with self.assertRaises(ValueError) as raised:
+			validate_schema_config(_ReadOnlyInsertDefaults)
+		self.assertIn('ALLOW_WRITE', str(raised.exception))
+
+	def test_non_dict_is_rejected(self):
+		class _NonDictInsertDefaults(_InsertDefaultsVirtualDocType):
+			INSERT_DEFAULTS = ['non_inventory']
+
+		with self.assertRaises(ValueError):
+			validate_schema_config(_NonDictInsertDefaults)
+
+	def test_a_valid_declaration_passes(self):
+		self.assertTrue(validate_schema_config(_InsertDefaultsVirtualDocType))

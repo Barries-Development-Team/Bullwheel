@@ -80,6 +80,14 @@ class AbstractVirtualDocType(Document):
 	# ─── Subclass Contract — override these ───────────────────────────────────
 	TABLE_NAME: str = None       		# Ascend SQL table name, e.g. "Products"
 	ALLOW_WRITE: bool = False			# If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
+	INSERT_DEFAULTS: dict = None 		# Fieldname -> value written by db_insert when the document carries no value of its
+										# own. For an Ascend column the DocType does not surface as a field at all, the
+										# column is simply absent from the INSERT and lands at whatever the table's default
+										# is — NULL when there isn't one. Ascend then treats that row as invisible wherever
+										# it filters on the column: a NULL Products.NonInventory dropped 223 of 243 lines
+										# out of an imported purchase order's item grid while the header still counted them.
+										# Declare the columns Ascend expects a real value in here. Keys must map to a
+										# TABLE_NAME column in SCHEMA_CONFIG; validation rejects anything else on migrate.
 	JOIN_CONFIG: list = None     		# List of JOIN descriptors — see _build_join_clause for the dict shape
 	SCHEMA_CONFIG: dict = None    		# Fieldname -> dict of per-field options. Must include a "name" entry naming the
 								 		# primary key column (or set NAME_EXPRESSION instead). Every option is documented
@@ -897,6 +905,25 @@ class AbstractVirtualDocType(Document):
 
 		return overrides
 
+	def _resolve_insert_defaults(self) -> dict:
+		"""Build the field_overrides carrying this controller's INSERT_DEFAULTS, limited to the
+		fields the document has no value of its own for. A default is a floor, not an override:
+		anything the user actually entered wins, so this yields on any non-None document value
+		(and, being applied before the attribution overrides, on those too).
+
+		A field the DocType never declares is absent from self.as_dict() entirely, which is
+		precisely the case this exists for — _collect_writable_fields considers a field present
+		only in field_overrides, so the column reaches the INSERT even with no field behind it."""
+		if not self.INSERT_DEFAULTS:
+			return {}
+
+		document_values = self.as_dict()
+		return {
+			field: value
+			for field, value in self.INSERT_DEFAULTS.items()
+			if document_values.get(field) is None
+		}
+
 	def db_insert(self, *args, **kwargs):
 		"""Insert this document as a new row in TABLE_NAME. Frappe performs no name-uniqueness
 		check for virtual doctypes before calling db_insert (unlike a real doctype, where the
@@ -916,8 +943,12 @@ class AbstractVirtualDocType(Document):
 			frappe.throw(f"{self.doctype} '{self.name}' already exists.", frappe.DuplicateEntryError)
 
 		self._resolve_linked_id_fields()
-		attribution_overrides = self._resolve_attribution_overrides(include_creator=True)
-		writable_fields = self._collect_writable_fields(include_name=True, field_overrides=attribution_overrides)
+		# Attribution last: a CreatorID/ModifierID resolved by the framework outranks a default.
+		field_overrides = {
+			**self._resolve_insert_defaults(),
+			**self._resolve_attribution_overrides(include_creator=True),
+		}
+		writable_fields = self._collect_writable_fields(include_name=True, field_overrides=field_overrides)
 		if not writable_fields:
 			frappe.throw(f"{self.doctype}: no writable SCHEMA_CONFIG columns resolve for db_insert.")
 
