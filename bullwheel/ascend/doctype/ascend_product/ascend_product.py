@@ -15,9 +15,21 @@ bullwheel/ascend/schema_config.py for every field config option.
 """
 
 import json
+from datetime import datetime, timezone
+
 import frappe
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
+from bullwheel.bullwheel_core import get_default_location_id
+
+
+def _ascend_utc_timestamp() -> str:
+	"""Ascend's own Products.ConcurrencyToken format, e.g. '2026-07-23 21:16:48Z' — confirmed
+	against a record Ascend's desktop client had saved (ConcurrencyToken is a plain nvarchar(100),
+	not a SQL Server concurrency type, and the value matched that record's DateModified converted
+	to UTC). Resolved fresh on every insert via INSERT_DEFAULTS' callable support, not computed
+	once at import time."""
+	return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S') + 'Z'
 
 
 class AscendProduct(AbstractVirtualDocType):
@@ -26,22 +38,25 @@ class AscendProduct(AbstractVirtualDocType):
 	TABLE_NAME = "Products"
 	ALLOW_WRITE = True
 
-	# Products.NonInventory is a flag this DocType surfaces no field for, so nothing on the
-	# document ever supplies it and db_insert left it at the column default — NULL, since that
-	# column has none. Ascend reads a NULL flag as neither set nor unset and drops the row
-	# wherever it filters on one: every product created with NonInventory NULL is missing from
-	# the item grid of any purchase order referencing it, while the order header still counts
-	# and totals it. Measured on PO "Bearded Ginger Helm of Sun Valley Batch 1" — 223 of 243
-	# lines had NonInventory NULL, and the grid rendered every one of the 20 rows that had it
-	# set and none of the rest.
+	# Products.ModifierLocationID and Products.ConcurrencyToken are flags this DocType surfaces
+	# no field for, so nothing on the document ever supplied them and db_insert left both at the
+	# column default — NULL, since neither column has one (confirmed via sys.default_constraints;
+	# VendorProducts.ModifierLocationID getting populated is some other Ascend-side mechanism,
+	# not a table default, and is unaffected by any of this). A NULL ModifierLocationID keeps a
+	# product's row out of the item grid of any purchase order that references it, while the
+	# order header still counts and totals it. Measured on PO "Bearded Ginger Helm of Sun Valley
+	# Batch 1": ModifierLocationID and ConcurrencyToken were NULL on exactly the 220 of 243 lines
+	# missing from the order's item grid, and set on exactly the 23 that rendered — an earlier
+	# theory pinning this on NonInventory did not hold up against a second example and is not
+	# the cause (kept below only as a smaller, unrelated correctness fix).
 	#
-	# Hide is deliberately absent: it came back non-NULL on all 243, so that column carries its
-	# own database default and needs nothing from us. Reconciled, NoLabel, eCommerce, DolCom,
-	# PrintLabelsByDivision and HasPendingDelta are equally undeclared and so equally unwritten,
-	# but whether Ascend needs them non-NULL has not been checked — add them here only once a
-	# NULL count on the Products table says they matter.
+	# default_location resolves through Bullwheel Settings (see get_default_location_id) rather
+	# than a hardcoded GUID, matching how default_user attributes CreatorID/ModifierID — the shop
+	# has one active Ascend location today, but that's a fact about the business, not the code.
 	INSERT_DEFAULTS = {
 		'non_inventory': 0,
+		'modifier_location_id': get_default_location_id,
+		'concurrency_token': _ascend_utc_timestamp,
 	}
 
 	# 'category' displays the joined column cat.Topic, which can't be written directly. Its

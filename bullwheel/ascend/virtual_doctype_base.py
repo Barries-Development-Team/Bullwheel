@@ -80,14 +80,18 @@ class AbstractVirtualDocType(Document):
 	# ─── Subclass Contract — override these ───────────────────────────────────
 	TABLE_NAME: str = None       		# Ascend SQL table name, e.g. "Products"
 	ALLOW_WRITE: bool = False			# If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
-	INSERT_DEFAULTS: dict = None 		# Fieldname -> value written by db_insert when the document carries no value of its
-										# own. For an Ascend column the DocType does not surface as a field at all, the
-										# column is simply absent from the INSERT and lands at whatever the table's default
-										# is — NULL when there isn't one. Ascend then treats that row as invisible wherever
-										# it filters on the column: a NULL Products.NonInventory dropped 223 of 243 lines
-										# out of an imported purchase order's item grid while the header still counted them.
-										# Declare the columns Ascend expects a real value in here. Keys must map to a
-										# TABLE_NAME column in SCHEMA_CONFIG; validation rejects anything else on migrate.
+	INSERT_DEFAULTS: dict = None 		# Fieldname -> value (or zero-arg callable returning a value, resolved at insert
+										# time — use this for anything that must reflect the moment of the insert, e.g. a
+										# timestamp) written by db_insert when the document carries no value of its own.
+										# For an Ascend column the DocType does not surface as a field at all, the column
+										# is simply absent from the INSERT and lands at whatever the table's default is —
+										# NULL when there isn't one. Ascend then treats that row as invisible wherever it
+										# filters on the column: a NULL Products.ModifierLocationID dropped 220 of 243
+										# lines out of an imported purchase order's item grid while the header still
+										# counted them. Declare the columns Ascend expects a real value in here. Keys must
+										# map to a TABLE_NAME column in SCHEMA_CONFIG; validation rejects anything else on
+										# migrate. A callable returning None is treated as "no default available" and
+										# skipped, same as never declaring the field.
 	JOIN_CONFIG: list = None     		# List of JOIN descriptors — see _build_join_clause for the dict shape
 	SCHEMA_CONFIG: dict = None    		# Fieldname -> dict of per-field options. Must include a "name" entry naming the
 								 		# primary key column (or set NAME_EXPRESSION instead). Every option is documented
@@ -913,16 +917,26 @@ class AbstractVirtualDocType(Document):
 
 		A field the DocType never declares is absent from self.as_dict() entirely, which is
 		precisely the case this exists for — _collect_writable_fields considers a field present
-		only in field_overrides, so the column reaches the INSERT even with no field behind it."""
+		only in field_overrides, so the column reaches the INSERT even with no field behind it.
+
+		A callable default is invoked here, at insert time, rather than once when INSERT_DEFAULTS
+		is defined — the timestamp-style default this exists for (e.g. Products.ConcurrencyToken)
+		would otherwise carry the moment the class was imported for the life of the process. A
+		callable returning None means no default is available (e.g. a Bullwheel Settings field
+		left unconfigured); that field is left out entirely rather than writing an explicit NULL."""
 		if not self.INSERT_DEFAULTS:
 			return {}
 
 		document_values = self.as_dict()
-		return {
-			field: value
-			for field, value in self.INSERT_DEFAULTS.items()
-			if document_values.get(field) is None
-		}
+		overrides = {}
+		for field, default in self.INSERT_DEFAULTS.items():
+			if document_values.get(field) is not None:
+				continue
+			value = default() if callable(default) else default
+			if value is None:
+				continue
+			overrides[field] = value
+		return overrides
 
 	def db_insert(self, *args, **kwargs):
 		"""Insert this document as a new row in TABLE_NAME. Frappe performs no name-uniqueness
