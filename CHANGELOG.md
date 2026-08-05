@@ -2,6 +2,16 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.7] - August 5, 2026
+
+### Changes
+
+- Added Location to Bullwheel Settings.
+
+### Bug Fixes
+
+- Fixed Products not being assigned Location IDs and ConcurrencyTokens.
+
 ## [1.1.6] - August 5, 2026
 
 ### Bug Fixes
