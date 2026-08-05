@@ -45,6 +45,16 @@ def resolve_attributed_ascend_user_id(frappe_user: str) -> str:
 
 	return resolved['id']
 
+def get_default_location_id():
+	"""Bullwheel Settings' configured Ascend Locations.ID, or None when unset. Ascend leaves a
+	record's ModifierLocationID NULL when it is inserted outside Ascend's own desktop client,
+	and a NULL ModifierLocationID keeps that record out of the item grid of any purchase order
+	that references it (confirmed against a real order: 220 of 243 item lines missing, one
+	confirmed cause). Returning None rather than raising lets a caller degrade to leaving the
+	column unset — same as before this existed — instead of blocking every product insert on a
+	Settings field most callers don't strictly need."""
+	return frappe.db.get_single_value('Bullwheel Settings', 'default_location') or None
+
 def get_label(slot):
 	"""Return the Zebra Printer Label configured for a Bullwheel Settings label slot
 	(e.g. 'warehouse_location'), raising PrintLabelNotConfigured if the slot is unset."""

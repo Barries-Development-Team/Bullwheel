@@ -2056,3 +2056,62 @@ class UnitTestInsertDefaultsValidation(UnitTestCase):
 
 	def test_a_valid_declaration_passes(self):
 		self.assertTrue(validate_schema_config(_InsertDefaultsVirtualDocType))
+
+
+class _CallableInsertDefaultsVirtualDocType(_SimpleVirtualDocType):
+	"""Mirrors Ascend Product's ConcurrencyToken/ModifierLocationID situation: a default that
+	must be computed fresh at insert time (a timestamp) or looked up from configuration that
+	may be unset (a Bullwheel Settings field with no value)."""
+	ALLOW_WRITE = True
+	SCHEMA_CONFIG = {
+		**_SimpleVirtualDocType.SCHEMA_CONFIG,
+		'non_inventory': {'column': 'NonInventory'},
+		'modifier_location_id': {'column': 'ModifierLocationID'},
+	}
+	INSERT_DEFAULTS = {
+		'non_inventory': lambda: 0,
+		'modifier_location_id': lambda: None,  # e.g. an unconfigured Bullwheel Settings field
+	}
+
+
+class UnitTestInsertDefaultsCallables(UnitTestCase):
+
+	def test_callable_default_is_invoked_and_its_result_written(self):
+		document = _make_document(_CallableInsertDefaultsVirtualDocType, 'SKU-1', description='Red Ski')
+
+		query, values = _capture_insert(document)
+
+		self.assertIn('Products.[NonInventory]', query)
+		self.assertIn(0, values)
+
+	def test_callable_default_resolving_to_none_is_left_out_of_the_insert(self):
+		"""A default that can't currently be computed (e.g. an unconfigured Settings field) must
+		not write an explicit NULL — same as never declaring the field."""
+		document = _make_document(_CallableInsertDefaultsVirtualDocType, 'SKU-1', description='Red Ski')
+
+		query, _ = _capture_insert(document)
+
+		self.assertNotIn('ModifierLocationID', query)
+
+	def test_callable_is_invoked_fresh_on_each_insert(self):
+		"""A timestamp-style default must reflect the moment of each insert, not the moment
+		INSERT_DEFAULTS was defined — proven by a callable returning a different value per call."""
+		call_count = {'n': 0}
+
+		def next_value():
+			call_count['n'] += 1
+			return call_count['n']
+
+		class _IncrementingDefault(_SimpleVirtualDocType):
+			ALLOW_WRITE = True
+			SCHEMA_CONFIG = {
+				**_SimpleVirtualDocType.SCHEMA_CONFIG,
+				'non_inventory': {'column': 'NonInventory'},
+			}
+			INSERT_DEFAULTS = {'non_inventory': next_value}
+
+		_, first_values = _capture_insert(_make_document(_IncrementingDefault, 'SKU-1', description='A'))
+		_, second_values = _capture_insert(_make_document(_IncrementingDefault, 'SKU-2', description='B'))
+
+		self.assertIn(1, first_values)
+		self.assertIn(2, second_values)

@@ -155,7 +155,15 @@ def backfill_insert_defaults(context, doctype_name="Ascend Product", server_name
 		)
 
 		with MSSQLDatabase(server_document) as ascend:
-			for field, value in insert_defaults.items():
+			for field, default in insert_defaults.items():
+				# A callable default (e.g. a Bullwheel Settings lookup, a timestamp) is resolved
+				# once here — the same value is used for every row this backfill pass touches,
+				# same as db_insert resolves it once per document.
+				value = default() if callable(default) else default
+				if value is None:
+					click.echo(f"  {field:<28} {'':<28} {'skipped':>8} — default resolved to None")
+					continue
+
 				# Resolved through the controller so the column is the same one db_insert would
 				# write, bracket-quoted by the same helper rather than interpolated by hand.
 				column = quote_column(controller._field_config(field)['column'])
