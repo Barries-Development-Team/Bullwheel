@@ -6,7 +6,8 @@ import re
 import frappe
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
-from bullwheel.bullwheel_core import get_default_ascend_database
+from bullwheel.bullwheel_core import get_default_ascend_database, resolve_attributed_ascend_user_id
+from bullwheel.bullwheel_core.exceptions import AscendAttributionUserNotConfigured
 from bullwheel.database.SQLServer import MSSQLDatabase
 
 
@@ -128,6 +129,23 @@ def generate_vpn(vendor_id, vpn_prefix, brand, model, size=None, color=None) -> 
 				return candidate
 			counter += 1
 
+def _attributed_ascend_user_id():
+	"""Resolve the current Frappe session user to the Ascend Users.ID that a VendorProducts row
+	created by this session should be attributed to, throwing the same guidance the virtual
+	doctype framework throws when neither the user nor Bullwheel Settings' default_user resolves
+	to an Ascend User. Kept outside the Ascend connection below so a configuration problem is
+	reported before any row is written."""
+
+	try:
+		return resolve_attributed_ascend_user_id(frappe.session.user)
+	except AscendAttributionUserNotConfigured:
+		frappe.throw(
+			f"Cannot create Vendor Product: '{frappe.session.user}' has no linked Ascend User, "
+			f"and Bullwheel Settings' default_user does not resolve to one either. Link a User "
+			f"to an Ascend User, or configure a valid default_user."
+		)
+
+
 def create_vendor_product(
 	vendor_id, product_id, part_number, cost, description=None,
 	case_quantity=None, case_upc=None, case_msrp=None,
@@ -137,20 +155,24 @@ def create_vendor_product(
 	insert for brand-new products. Returns True when a row was inserted, False when an existing
 	row was found and reused."""
 
-	
+	ascend_user_id = _attributed_ascend_user_id()
+
 	with MSSQLDatabase(get_default_ascend_database()) as ascend:
 		if _part_number_match_count(ascend, vendor_id, part_number):
 			return False
 
 		# Raw parameterized INSERT instead of the virtual doctype framework: NAME_EXPRESSION
 		# (PartNumber + Vendor.Name) isn't a real column, so the framework's generic db_insert
-		# can't produce it.
+		# can't produce it. CreatorID/ModifierID are attributed the same way db_insert does it
+		# (see AbstractVirtualDocType._resolve_attribution_overrides) — Ascend rejects a Vendor
+		# Product with no creator, which surfaces later as an order that will not save.
 		ascend.sql(
 			"INSERT INTO VendorProducts "
 			"(ID, VendorID, ProductID, PartNumber, Cost, Description, CaseQty, CaseUPC, CaseMSRP, "
-			"DateCreated, Hide, HasPendingDelta) "
-			"VALUES (NEWID(), %s, %s, %s, %s, %s, %s, %s, %s, GETDATE(), 0, 0)",
-			[vendor_id, product_id, part_number, cost, description, case_quantity, case_upc, case_msrp],
+			"CreatorID, ModifierID, DateCreated, DateModified, Hide, HasPendingDelta) "
+			"VALUES (NEWID(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, GETDATE(), GETDATE(), 0, 0)",
+			[vendor_id, product_id, part_number, cost, description, case_quantity, case_upc, case_msrp,
+			 ascend_user_id, ascend_user_id],
 			as_dict=False,
 		)
 
