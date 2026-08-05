@@ -89,9 +89,21 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "person-standing",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Ascend Users",
+   "link_to": "Ascend User",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
   }
  ],
- "modified": "2026-07-23 10:00:13.637057",
+ "modified": "2026-08-04 17:50:52.176089",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend",

@@ -6,3 +6,6 @@ class AscendDatabaseNotConfigured(Exception):
 
 class PrintLabelNotConfigured(Exception):
 	pass
+
+class AscendAttributionUserNotConfigured(Exception):
+	pass

@@ -11,7 +11,8 @@ from frappe.model.base_document import get_controller
 from frappe.utils import get_datetime, getdate
 
 from bullwheel.database.SQLServer import MSSQLDatabase
-from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning
+from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning, resolve_attributed_ascend_user_id
+from bullwheel.bullwheel_core.exceptions import AscendAttributionUserNotConfigured
 from bullwheel.ascend.schema_config import normalize_schema_config
 
 # ─── Static Helper Functions ───────────────────────────────────────
@@ -88,6 +89,12 @@ class AbstractVirtualDocType(Document):
 								 		# ORDER BY (and makes the SCHEMA_CONFIG 'name' entry optional). A field config
 								 		# cannot hold an expression itself, since column names are always bracket-quoted.
 	SHOW_FIELD_WARNINGS: bool = True	# Display a warning in the console if an expected field has no mapping in SCHEMA_CONFIG
+	EXCLUDE_NULL_NAME: bool = False	# Frappe's document 'name' must be unique and non-null for every record. Set True
+										# when the column 'name'/NAME_EXPRESSION resolves to can itself be NULL (e.g. a
+										# business field like EmployeeId that isn't populated for every row) — every query
+										# then carries an unconditional '<name column> IS NOT NULL', so a null-named row
+										# is excluded everywhere rather than crashing Link search's relevance sort (which
+										# assumes 'name' is always a string) or silently colliding as a phantom duplicate.
 	MAX_BATCH_INSERT_SIZE: int = 1000	# T-SQL's per-statement row cap for a multi-row INSERT...VALUES — get_bulk_values
 										# chunks its temp-table INSERT at this size.
 	SHORT_CACHE_TTL_SECONDS: int = 300	# Default TTL for get_bulk_short_cached_values — genuinely mutable Ascend values
@@ -337,8 +344,15 @@ class AbstractVirtualDocType(Document):
 	def _build_where_clause(cls, values: list, filters=None, or_filters=None) -> str:
 		"""Build the WHERE clause from Frappe filters (list or dict format). Filter values are
 		appended to the passed values list. Conditions on 'name' are automatically widened across
-		the alternate-name fields; conditions on unmapped standard Frappe fields are dropped."""
+		the alternate-name fields; conditions on unmapped standard Frappe fields are dropped.
+		When EXCLUDE_NULL_NAME is set, a '<name column> IS NOT NULL' condition is unconditionally
+		ANDed in, so a row whose primary key column is NULL never appears in any result."""
 		where_statements = []
+
+		if cls.EXCLUDE_NULL_NAME:
+			name_column = cls._column_for('name')
+			if name_column is not None:
+				where_statements.append(f'{name_column} IS NOT NULL')
 
 		and_statements = [
 			statement for field, operator, value in cls._normalize_filter_conditions(filters)
@@ -641,7 +655,7 @@ class AbstractVirtualDocType(Document):
 		if cls.JOIN_CONFIG is not None:
 			query_clauses.append(cls._build_join_clause())
 		# WHERE
-		if filters or or_filters:
+		if filters or or_filters or cls.EXCLUDE_NULL_NAME:
 			query_clauses.append(cls._build_where_clause(values=values, filters=filters, or_filters=or_filters))
 		# ORDER BY (required before OFFSET/FETCH)
 		query_clauses.append(cls._build_order_by_clause(order_by) if order_by else 'ORDER BY (SELECT NULL)')
@@ -686,7 +700,7 @@ class AbstractVirtualDocType(Document):
 		if cls.JOIN_CONFIG is not None:
 			query_clauses.append(cls._build_join_clause())
 		# WHERE
-		if filters or or_filters:
+		if filters or or_filters or cls.EXCLUDE_NULL_NAME:
 			query_clauses.append(cls._build_where_clause(values=values, filters=filters, or_filters=or_filters))
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
@@ -732,7 +746,7 @@ class AbstractVirtualDocType(Document):
 			return getdate(value)
 		return value
 
-	def _collect_writable_fields(self, *, include_name: bool) -> list[tuple[str, object]]:
+	def _collect_writable_fields(self, *, include_name: bool, field_overrides: dict | None = None) -> list[tuple[str, object]]:
 		"""Resolve this document's writable (sql_column, value) pairs against SCHEMA_CONFIG,
 		shared by db_insert and db_update. A field is writable when it has a SCHEMA_CONFIG
 		mapping, that mapping's column belongs to TABLE_NAME (not a JOIN_CONFIG table), and —
@@ -740,19 +754,32 @@ class AbstractVirtualDocType(Document):
 		virtual, or a no-value fieldtype in the DocType's meta (read_only in particular is how
 		a server-generated column like a SQL Server IDENTITY field, e.g. AscendProduct.id, is
 		marked). 'name' is only included when include_name is True: db_update writes it into
-		the WHERE clause instead of SET, while db_insert must supply it as a normal column value."""
+		the WHERE clause instead of SET, while db_insert must supply it as a normal column value.
+
+		field_overrides supplies framework-resolved values (currently just the CreatorID/
+		ModifierID attribution built by _resolve_attribution_overrides) that must reach SQL
+		regardless of the read_only/virtual/no-value gate below — that gate exists to stop a
+		user-edited value from reaching a server-managed column, which doesn't apply to a value
+		the framework itself computed. An override is considered even for a field with no entry
+		in self.as_dict() at all (e.g. a SCHEMA_CONFIG mapping with no matching declared field)."""
+		field_overrides = field_overrides or {}
+		document_values = self.as_dict()
 		writable_fields = []
-		for field, value in self.as_dict().items():
-			if field == 'name':
-				if not include_name:
-					continue
+		for field in dict.fromkeys([*document_values.keys(), *field_overrides.keys()]):
+			if field in field_overrides:
+				value = field_overrides[field]
 			else:
-				meta_field = self.meta.get_field(field)
-				if meta_field and (
-					meta_field.read_only or meta_field.is_virtual
-					or meta_field.fieldtype in frappe.model.no_value_fields
-				):
-					continue
+				if field == 'name':
+					if not include_name:
+						continue
+				else:
+					meta_field = self.meta.get_field(field)
+					if meta_field and (
+						meta_field.read_only or meta_field.is_virtual
+						or meta_field.fieldtype in frappe.model.no_value_fields
+					):
+						continue
+				value = self._normalize_write_value(field, document_values[field])
 
 			# Resolved through _field_config rather than _column_for so that NAME_EXPRESSION can
 			# never reach a write: a computed expression is not a column and must not appear in
@@ -767,7 +794,7 @@ class AbstractVirtualDocType(Document):
 						f"column '{field_config['sql']}' does not belong to {self.TABLE_NAME}."
 					)
 				continue
-			writable_fields.append((field_config['sql'], self._normalize_write_value(field, value)))
+			writable_fields.append((field_config['sql'], value))
 		return writable_fields
 
 	def _resolve_linked_id_fields(self) -> None:
@@ -832,6 +859,44 @@ class AbstractVirtualDocType(Document):
 				)
 			self.set(id_field, resolved.get(link_id_field))
 
+	def _resolve_attribution_overrides(self, *, include_creator: bool) -> dict:
+		"""Build the field_overrides _collect_writable_fields needs to attribute a
+		CreatorID/ModifierID-style write to a real Ascend Users.ID rather than the Frappe
+		email string that lives in self.owner/self.modified_by. Only touches 'creator_id'/
+		'modified_by' when the subclass has actually mapped them to a writable TABLE_NAME
+		column — most virtual DocTypes don't declare either, and a JOIN-sourced mapping (e.g.
+		AscendProduct's 'modified_by' -> modifier.Initials) is read-only, so resolving it would
+		be wasted work and could needlessly block a save over an unrelated Settings gap.
+
+		self.owner and self.modified_by are never mutated here — only the values returned in
+		the override dict are affected, so Frappe's own version tracking and 'Last Modified
+		By' display keep seeing real Frappe user emails.
+
+		'creator_id' only resolves when include_creator is True (db_insert only) — CreatorID
+		is meant to be immutable after creation, so db_update omits it here, and the field
+		falls back to its normal read_only-gated (i.e. untouched) handling."""
+		overrides = {}
+		resolved_by_frappe_user = {}
+
+		def resolve(frappe_user):
+			if frappe_user not in resolved_by_frappe_user:
+				try:
+					resolved_by_frappe_user[frappe_user] = resolve_attributed_ascend_user_id(frappe_user)
+				except AscendAttributionUserNotConfigured:
+					frappe.throw(
+						f"Cannot save {self.doctype} '{self.name}': '{frappe_user}' has no linked "
+						f"Ascend User, and Bullwheel Settings' default_user does not resolve to one "
+						f"either. Link a User to an Ascend User, or configure a valid default_user."
+					)
+			return resolved_by_frappe_user[frappe_user]
+
+		if include_creator and self._column_belongs_to_table('creator_id'):
+			overrides['creator_id'] = resolve(self.owner)
+		if self._column_belongs_to_table('modified_by'):
+			overrides['modified_by'] = resolve(self.modified_by)
+
+		return overrides
+
 	def db_insert(self, *args, **kwargs):
 		"""Insert this document as a new row in TABLE_NAME. Frappe performs no name-uniqueness
 		check for virtual doctypes before calling db_insert (unlike a real doctype, where the
@@ -851,7 +916,8 @@ class AbstractVirtualDocType(Document):
 			frappe.throw(f"{self.doctype} '{self.name}' already exists.", frappe.DuplicateEntryError)
 
 		self._resolve_linked_id_fields()
-		writable_fields = self._collect_writable_fields(include_name=True)
+		attribution_overrides = self._resolve_attribution_overrides(include_creator=True)
+		writable_fields = self._collect_writable_fields(include_name=True, field_overrides=attribution_overrides)
 		if not writable_fields:
 			frappe.throw(f"{self.doctype}: no writable SCHEMA_CONFIG columns resolve for db_insert.")
 
@@ -883,7 +949,8 @@ class AbstractVirtualDocType(Document):
 			frappe.throw(f"Cannot update {self.doctype}: no primary key value set.")
 
 		self._resolve_linked_id_fields()
-		writable_fields = self._collect_writable_fields(include_name=False)
+		attribution_overrides = self._resolve_attribution_overrides(include_creator=False)
+		writable_fields = self._collect_writable_fields(include_name=False, field_overrides=attribution_overrides)
 		if not writable_fields:
 			frappe.throw(f"{self.doctype}: no writable SCHEMA_CONFIG columns resolve for db_update.")
 

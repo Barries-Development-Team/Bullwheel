@@ -8,6 +8,7 @@
   "ascend_configuration_tab",
   "ascend_configuration_section",
   "default_database",
+  "default_user",
   "receiving_section",
   "ski_category_prefix",
   "tab_2_tab",
@@ -79,13 +80,22 @@
    "fieldtype": "Link",
    "label": "Ascend Tag",
    "options": "Zebra Printer Label"
+  },
+  {
+   "description": "Bullwheel users that don't have a linked Ascend User will have their edits attributed to this user.",
+   "fieldname": "default_user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Default User",
+   "options": "Ascend User",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-06 13:57:39.419437",
+ "modified": "2026-08-04 17:36:54.583867",
  "modified_by": "Administrator",
  "module": "Bullwheel Core",
  "name": "Bullwheel Settings",

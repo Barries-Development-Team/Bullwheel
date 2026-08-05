@@ -66,7 +66,7 @@ class AscendProduct(AbstractVirtualDocType):
 		'non_inventory':             {'column': 'NonInventory'},
 		'appt_length':               {'column': 'ApptLength'},
 		'creator_id':                {'column': 'CreatorID', 'cache': True},
-		'modified_by':               {'table': 'modifier', 'column': 'Initials'},
+		'modified_by':               {'column': 'ModifierID'},
 		'date_created':              {'column': 'DateCreated', 'cache': True},
 		'modified':                  {'column': 'DateModified'},
 		'hide':                      {'column': 'Hide'},

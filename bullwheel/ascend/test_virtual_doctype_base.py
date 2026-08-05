@@ -23,6 +23,7 @@ from bullwheel.ascend.validate_virtual_doctypes import (
 	autoname_mismatch_reason,
 	_linked_id_field_structural_problems,
 )
+from bullwheel.bullwheel_core.exceptions import AscendAttributionUserNotConfigured
 
 
 # ─── Test Fixtures ────────────────────────────────────────────────────────────
@@ -555,6 +556,86 @@ class UnitTestBuildWhereClause(UnitTestCase):
 		)
 		self.assertEqual(result, 'WHERE ((Products.[Store UPC] = %s OR Products.[UPC] = %s))')
 		self.assertEqual(values, ['012345678905', '012345678905'])
+
+
+# ─── EXCLUDE_NULL_NAME ─────────────────────────────────────────────────────────
+
+
+class _ExcludeNullNameVirtualDocType(AbstractVirtualDocType):
+	"""Mirrors AscendUser-shaped config: 'name' maps to a business field (EmployeeId-like)
+	that isn't populated for every row, so null-named rows must be excluded everywhere."""
+	TABLE_NAME = "Users"
+	SHOW_FIELD_WARNINGS = False
+	EXCLUDE_NULL_NAME = True
+	SCHEMA_CONFIG = {
+		'name':       {'column': 'EmployeeId'},
+		'first_name': {'column': 'FirstName'},
+	}
+
+
+class UnitTestExcludeNullName(UnitTestCase):
+
+	def test_default_is_false_and_unaffected(self):
+		"""Existing doctypes never opt in, so their WHERE clause is unchanged by default —
+		this is what keeps every pre-existing _build_where_clause test passing unmodified."""
+		self.assertFalse(_SimpleVirtualDocType.EXCLUDE_NULL_NAME)
+
+	def test_guard_added_with_no_other_filters(self):
+		values = []
+		result = _ExcludeNullNameVirtualDocType._build_where_clause(values, [], [])
+		self.assertEqual(result, 'WHERE Users.[EmployeeId] IS NOT NULL')
+		self.assertEqual(values, [])
+
+	def test_guard_combined_with_and_filter(self):
+		values = []
+		result = _ExcludeNullNameVirtualDocType._build_where_clause(
+			values, [('Ascend User', 'first_name', '=', 'Carter')], []
+		)
+		self.assertEqual(
+			result,
+			'WHERE Users.[EmployeeId] IS NOT NULL AND (Users.[FirstName] = %s)'
+		)
+		self.assertEqual(values, ['Carter'])
+
+	def test_get_list_applies_guard_even_without_filters(self):
+		"""Regression: get_list previously skipped _build_where_clause entirely when called
+		with no filters/or_filters (the common case for a freshly opened Link search dropdown),
+		which would have silently dropped the null-name guard for exactly the query that
+		crashed Frappe's relevance sort."""
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.sql.side_effect = lambda query=None, values=None, as_dict=True: captured.update(query=query) or []
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			_ExcludeNullNameVirtualDocType.get_list(
+				doctype='Ascend User', fields=['name'], filters=[], start=0, page_length=10,
+				with_comment_count=False, save_user_settings=False,
+			)
+
+		self.assertIn('WHERE Users.[EmployeeId] IS NOT NULL', captured['query'])
+
+	def test_get_count_applies_guard_even_without_filters(self):
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		captured = {}
+		fake_database.sql.side_effect = lambda query=None, values=None, as_dict=True: (
+			captured.update(query=query) or [{'count': 3}]
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+		):
+			count = _ExcludeNullNameVirtualDocType.get_count(
+				doctype='Ascend User', filters=[], fields=[], distinct=False, save_user_settings=False, strict=None,
+			)
+
+		self.assertIn('WHERE Users.[EmployeeId] IS NOT NULL', captured['query'])
+		self.assertEqual(count, 3)
 
 
 # ─── _build_order_by_clause ───────────────────────────────────────────────────
@@ -1284,6 +1365,202 @@ class UnitTestDbInsert(UnitTestCase):
 		self.assertNotIn('Products.[Quantity]', captured['query'])
 		self.assertNotIn('Products.[Store UPC]', captured['query'])
 		self.assertIn('Products.[Description]', captured['query'])
+
+
+# ─── attribution overrides (CreatorID/ModifierID) ─────────────────────────────
+
+
+class _WritableAttributionVirtualDocType(AbstractVirtualDocType):
+	"""Mirrors AscendUser-shaped attribution columns: both 'creator_id' and 'modified_by'
+	are plain TABLE_NAME columns, so both are eligible for attribution overrides."""
+	TABLE_NAME = "Users"
+	SHOW_FIELD_WARNINGS = False
+	ALLOW_WRITE = True
+	SCHEMA_CONFIG = {
+		'name':        {'column': 'ID'},
+		'first_name':  {'column': 'FirstName'},
+		'creator_id':  {'column': 'CreatorID'},
+		'modified_by': {'column': 'ModifierID'},
+	}
+
+
+class _WritableJoinModifiedByVirtualDocType(AbstractVirtualDocType):
+	"""Mirrors AscendProduct-shaped config: 'modified_by' is JOIN-sourced, so it's read-only
+	via _column_belongs_to_table — attribution must never resolve or write it."""
+	TABLE_NAME = "Products"
+	SHOW_FIELD_WARNINGS = False
+	ALLOW_WRITE = True
+	JOIN_CONFIG = [
+		{'join': 'LEFT JOIN', 'table': 'Users', 'alias': 'modifier', 'on': 'Products.ModifierID = modifier.ID'}
+	]
+	SCHEMA_CONFIG = {
+		'name':        {'column': 'ID'},
+		'description': {'column': 'Description'},
+		'creator_id':  {'column': 'CreatorID'},
+		'modified_by': {'table': 'modifier', 'column': 'Initials'},
+	}
+
+
+class UnitTestCollectWritableFieldsOverrides(UnitTestCase):
+
+	def test_override_bypasses_read_only_gate(self):
+		"""A field_overrides entry must reach SQL even when the DocType meta marks the field
+		read_only — the gate exists to stop a user-edited value, not a framework-resolved one."""
+		document = _make_document(
+			_WritableAttributionVirtualDocType, 'USER-1',
+			read_only_fields={'creator_id'},
+			first_name='Carter', creator_id=None,
+		)
+		writable = document._collect_writable_fields(
+			include_name=False, field_overrides={'creator_id': 'ASCEND-ID-1'}
+		)
+		self.assertIn(('Users.[CreatorID]', 'ASCEND-ID-1'), writable)
+
+	def test_override_reaches_field_absent_from_as_dict(self):
+		"""An override must be considered even when the field never appeared on the document at
+		all (e.g. an undeclared JSON field), not just when it already happened to be present."""
+		document = _make_document(_WritableAttributionVirtualDocType, 'USER-1', first_name='Carter')
+		writable = document._collect_writable_fields(
+			include_name=False, field_overrides={'modified_by': 'ASCEND-ID-2'}
+		)
+		self.assertIn(('Users.[ModifierID]', 'ASCEND-ID-2'), writable)
+
+	def test_override_for_join_sourced_field_is_a_noop(self):
+		"""An override for a field whose column lives on a JOIN table must still be dropped —
+		the override bypasses the read_only gate, not the table-membership check that stops a
+		plain UPDATE/INSERT from ever targeting a joined table."""
+		document = _make_document(_WritableJoinModifiedByVirtualDocType, 'ID-1', description='Red Ski')
+		writable = document._collect_writable_fields(
+			include_name=False, field_overrides={'modified_by': 'ASCEND-ID-3'}
+		)
+		self.assertFalse(any(column == 'modifier.[Initials]' for column, _ in writable))
+
+
+class UnitTestResolveAttributionOverrides(UnitTestCase):
+
+	def test_insert_resolves_both_creator_and_modified_by(self):
+		document = _make_document(
+			_WritableAttributionVirtualDocType, 'USER-1',
+			owner='carter@barriessports.com', modified_by='carter@barriessports.com',
+		)
+		with patch(
+			'bullwheel.ascend.virtual_doctype_base.resolve_attributed_ascend_user_id',
+			return_value='ASCEND-ID-1',
+		) as fake_resolve:
+			overrides = document._resolve_attribution_overrides(include_creator=True)
+		self.assertEqual(overrides, {'creator_id': 'ASCEND-ID-1', 'modified_by': 'ASCEND-ID-1'})
+		# owner == modified_by on insert, so only one Ascend lookup is needed.
+		fake_resolve.assert_called_once_with('carter@barriessports.com')
+
+	def test_update_never_resolves_creator_id(self):
+		"""CreatorID is immutable after creation — db_update must never overwrite it."""
+		document = _make_document(
+			_WritableAttributionVirtualDocType, 'USER-1', modified_by='carter@barriessports.com',
+		)
+		with patch(
+			'bullwheel.ascend.virtual_doctype_base.resolve_attributed_ascend_user_id',
+			return_value='ASCEND-ID-1',
+		):
+			overrides = document._resolve_attribution_overrides(include_creator=False)
+		self.assertEqual(overrides, {'modified_by': 'ASCEND-ID-1'})
+
+	def test_join_sourced_modified_by_never_resolves(self):
+		"""A JOIN-sourced modified_by (AscendProduct-shaped) must never trigger resolution —
+		even a resolver mocked to raise must never be called. include_creator=False here so
+		this stays focused on modified_by; _WritableAttributionVirtualDocType above already
+		covers creator_id's own (plain-column, writable) resolution path."""
+		document = _make_document(_WritableJoinModifiedByVirtualDocType, 'ID-1', description='Red Ski')
+		with patch(
+			'bullwheel.ascend.virtual_doctype_base.resolve_attributed_ascend_user_id',
+			side_effect=AssertionError('must not be called'),
+		):
+			overrides = document._resolve_attribution_overrides(include_creator=False)
+		self.assertEqual(overrides, {})
+
+	def test_unresolvable_attribution_raises(self):
+		document = _make_document(
+			_WritableAttributionVirtualDocType, 'USER-1', modified_by='ghost@barriessports.com',
+		)
+		with patch(
+			'bullwheel.ascend.virtual_doctype_base.resolve_attributed_ascend_user_id',
+			side_effect=AscendAttributionUserNotConfigured,
+		):
+			with self.assertRaises(frappe.ValidationError):
+				document._resolve_attribution_overrides(include_creator=False)
+
+
+class UnitTestDbInsertUpdateAttribution(UnitTestCase):
+
+	def test_db_insert_writes_resolved_creator_and_modifier(self):
+		"""The resolved Ascend id — not the raw Frappe email — must reach SQL, and the
+		in-memory document's own owner/modified_by must stay untouched afterward (Frappe's
+		version tracking and 'Last Modified By' display depend on them staying real emails)."""
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			if query and query.strip().startswith('SELECT COUNT'):
+				return [{'count': 0}]
+			captured['query'] = query
+			captured['values'] = values
+			fake_database.cursor.rowcount = 1
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableAttributionVirtualDocType, 'USER-1',
+			first_name='Carter', owner='carter@barriessports.com', modified_by='carter@barriessports.com',
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+			patch(
+				'bullwheel.ascend.virtual_doctype_base.resolve_attributed_ascend_user_id',
+				return_value='ASCEND-ID-1',
+			),
+		):
+			document.db_insert()
+
+		self.assertIn('Users.[CreatorID]', captured['query'])
+		self.assertIn('Users.[ModifierID]', captured['query'])
+		self.assertIn('ASCEND-ID-1', captured['values'])
+		self.assertNotIn('carter@barriessports.com', captured['values'])
+		self.assertEqual(document.owner, 'carter@barriessports.com')
+		self.assertEqual(document.modified_by, 'carter@barriessports.com')
+
+	def test_db_update_writes_modified_by_only(self):
+		captured = {}
+		fake_database = MagicMock()
+		fake_database.__enter__.return_value = fake_database
+		fake_database.cursor.rowcount = 1
+
+		def fake_sql(query=None, values=None, as_dict=True):
+			captured['query'] = query
+			captured['values'] = values
+			return []
+
+		fake_database.sql.side_effect = fake_sql
+
+		document = _make_document(
+			_WritableAttributionVirtualDocType, 'USER-1',
+			first_name='Carter', modified_by='carter@barriessports.com',
+		)
+
+		with (
+			patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+			patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+			patch(
+				'bullwheel.ascend.virtual_doctype_base.resolve_attributed_ascend_user_id',
+				return_value='ASCEND-ID-2',
+			),
+		):
+			document.db_update()
+
+		self.assertIn('Users.[ModifierID] = %s', captured['query'])
+		self.assertNotIn('Users.[CreatorID] = %s', captured['query'])
 
 
 # ─── linked_id — resolution on write ──────────────────────────────────────────

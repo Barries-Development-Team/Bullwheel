@@ -41,7 +41,11 @@ fixtures = [
         "doctype": "Role",
         "filters": [["name", "=", "Warehouse Staff"]]
     },
-    "Product Pricing Rule"
+    "Product Pricing Rule",
+    {
+        "doctype": "Custom Field",
+        "filters": [["name", "in", ["User-ascend_integration_section", "User-ascend_user"]]]
+    }
 ]
 
 # Includes in <head>
