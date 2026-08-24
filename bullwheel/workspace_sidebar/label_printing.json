@@ -1,0 +1,63 @@
+{
+ "app": "bullwheel",
+ "creation": "2026-08-24 13:01:02.224871",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "printer",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Label Printing Home",
+   "link_to": "Label Printing",
+   "link_type": "Workspace",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "list",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Label Printer",
+   "link_to": "Label Printer",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "list",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Zebra Printer Label",
+   "link_to": "Zebra Printer Label",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "list",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Reports",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Section Break"
+  }
+ ],
+ "modified": "2026-08-24 13:08:55.718054",
+ "modified_by": "Administrator",
+ "module": "Label Printing",
+ "name": "Label Printing",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "Label Printing"
+}

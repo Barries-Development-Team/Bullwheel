@@ -2,6 +2,21 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.8] - August 24, 2026
+
+### Features
+
+- Added the new *Label Printing* workspace.
+- Added a user friendly interface for scanning and printing Swap Tags.
+
+### Changes
+
+- Swap Tags will now refuse and fail to print if Swap Price is not set.
+
+### Bug Fixes
+
+- Corrected argument type validation for `print_labels` method.
+
 ## [1.1.7] - August 5, 2026
 
 ### Changes

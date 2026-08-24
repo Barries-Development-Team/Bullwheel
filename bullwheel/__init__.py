@@ -1,4 +1,4 @@
-__version__ = "1.1.7"
+__version__ = "1.1.8"
 
 from bullwheel.monkey_patches.virtual_link_title import apply as _apply_virtual_link_title_patch
 from bullwheel.monkey_patches.google_oauth_patch import apply as _apply_google_oauth_patch

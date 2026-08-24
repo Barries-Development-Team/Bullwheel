@@ -1,0 +1,52 @@
+{
+ "app": "bullwheel",
+ "charts": [],
+ "content": "[{\"id\":\"t32AeEd_of\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Label Printing Home</span>\",\"col\":12}},{\"id\":\"_yyUoCMncz\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Swap Tag Block\",\"col\":12}},{\"id\":\"IzhgKKTgNW\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Label Printers\",\"col\":3}},{\"id\":\"JjU5oQPvN3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zebra Printer Labels\",\"col\":3}}]",
+ "creation": "2026-08-24 13:01:02.181308",
+ "custom_blocks": [
+  {
+   "custom_block_name": "Swap Tag Block",
+   "label": "Swap Tag Block"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "printer",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Label Printing",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-08-24 13:48:32.208711",
+ "modified_by": "Administrator",
+ "module": "Label Printing",
+ "name": "Label Printing",
+ "number_cards": [],
+ "owner": "Administrator",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Label Printers",
+   "link_to": "Label Printer",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Zebra Printer Labels",
+   "link_to": "Zebra Printer Label",
+   "stats_filter": "[]",
+   "type": "DocType"
+  }
+ ],
+ "title": "Label Printing",
+ "type": "Workspace"
+}
