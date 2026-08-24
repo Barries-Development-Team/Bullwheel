@@ -1,0 +1,20 @@
+{
+ "app": "bullwheel",
+ "bg_color": "blue",
+ "creation": "2026-08-24 13:01:02.280496",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_type": "Link",
+ "idx": 0,
+ "label": "Label Printing",
+ "link_to": "Label Printing",
+ "link_type": "Workspace Sidebar",
+ "modified": "2026-08-24 13:02:27.886882",
+ "modified_by": "Administrator",
+ "name": "Label Printing",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "standard": 1
+}
