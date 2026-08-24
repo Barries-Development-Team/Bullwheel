@@ -218,7 +218,19 @@ async function show_print_dialog({ title, items, slot, on_submit }) {
 	dialog.show();
 }
 
-function send_print_request({ method, printer_name, slot, doctype, items, label }) {
+// Send a print job for already-resolved items to an already-chosen printer. Exposed
+// publicly for callers that have their own printer-selection UI and want to skip
+// show_print_dialog entirely.
+//
+//   method       - whitelisted server action to call, e.g.
+//                  'bullwheel.label_printing.print_labels'
+//   printer_name - the Label Printer to send to (required)
+//   slot         - Bullwheel Settings ▸ Printing ▸ Labels slot (required)
+//   doctype      - default doctype for items that carry none
+//   items        - [{doctype?, name, quantity}], already resolved — no items contract
+//                  normalization is applied here
+//   label        - text used in the "Sending {0}..." / "{0} sent" alerts (required)
+bullwheel.printing.send_print_request = function ({ method, printer_name, slot, doctype, items, label }) {
 	// One call carries everything: the server resolves each item to its Native
 	// document, renders the slot's Zebra Printer Label per item, and transmits.
 	frappe.show_alert({ message: __('Sending {0}...', [__(label)]), indicator: 'blue' });
@@ -234,7 +246,7 @@ function send_print_request({ method, printer_name, slot, doctype, items, label 
 			frappe.show_alert({ message: __('{0} sent', [__(label)]), indicator: 'green' });
 		},
 	});
-}
+};
 
 // Add a form button that renders the label configured for `slot` against the target
 // items and sends it to a Label Printer chosen at click time.
@@ -286,7 +298,7 @@ bullwheel.printing.add_print_button = function ({
 				items: normalized_items,
 				slot: slot,
 				on_submit: (printer_name, printable_items) => {
-					send_print_request({
+					bullwheel.printing.send_print_request({
 						method: method,
 						printer_name: printer_name,
 						slot: slot,
@@ -347,7 +359,7 @@ bullwheel.printing.add_list_print_button = function ({
 				items: normalized_items,
 				slot: slot,
 				on_submit: (printer_name, printable_items) => {
-					send_print_request({
+					bullwheel.printing.send_print_request({
 						method: method,
 						printer_name: printer_name,
 						slot: slot,
