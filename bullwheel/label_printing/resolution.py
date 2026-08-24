@@ -119,6 +119,14 @@ def resolve_print_items(items: list, default_doctype: str | None = None, target_
 	resolved_items = []
 	failure_messages = []
 
+	if type(items) not in {list, tuple}:
+		raise TypeError("'resolve_print_items' 'items' argument was not of type 'list' or 'tuple'.")
+
+	for item in items:
+		if not hasattr(item, "get"):
+			failure_messages.append(f"An item was not a dict: {item!r}.")
+			continue
+
 	for item in items:
 		item_doctype = item.get("doctype") or default_doctype
 		item_name = item.get("name")
