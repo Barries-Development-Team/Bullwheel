@@ -11,4 +11,4 @@ class SwapTagBatchItem(Document):
 	
 	@property
 	def description(self):
-		AscendProduct.get_cached_value(self.product, "description")
+		return AscendProduct.get_cached_value(self.product, "description")
