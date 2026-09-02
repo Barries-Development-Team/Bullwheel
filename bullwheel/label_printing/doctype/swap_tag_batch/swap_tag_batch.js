@@ -86,9 +86,10 @@ frappe.ui.form.on('Swap Tag Batch', {
             let count = (frm.doc.swap_tag_items || []).reduce((total, row) => total + (row.print_quantity || 0), 0);
 
             frappe.confirm(`You are about to print ${count} labels. Proceed?`,
-                () => {/* continue on Yes */}, () => {
-                    return;
-                })
+                // Yes
+                () => {},
+                // No
+                () => { return; })
 
 
             // TODO: Print logic
