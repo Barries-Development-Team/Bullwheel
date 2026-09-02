@@ -543,7 +543,7 @@ class AbstractVirtualDocType(Document):
 		return results
 
 	@classmethod
-	def get_cached_value(cls, name: str, field: str):
+	def get_cached_value(cls, name: str, field: str, ttl = SHORT_CACHE_TTL_SECONDS):
 
 		if field not in cls.cache_fields():
 			raise ValueError(f'Field "{field}" is not configured as cachable in DocType SCHEMA_CONFIG.')
@@ -554,7 +554,10 @@ class AbstractVirtualDocType(Document):
 			return cached_value
 
 		value = cls.get_values(name=name, fields=[field]).get(field)
-		frappe.cache.set_value(key, value)
+		if ttl is not None:
+			frappe.cache.set_value(key, value, expires_in_sec = ttl)
+		else:
+			frappe.cache.set_value(key, value)
 		return value
 
 	@classmethod
