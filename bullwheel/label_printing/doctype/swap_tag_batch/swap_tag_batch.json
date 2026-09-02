@@ -8,24 +8,24 @@
  "engine": "InnoDB",
  "field_order": [
   "scan_here",
-  "table_zzjz"
+  "swap_tag_items"
  ],
  "fields": [
-  {
-   "fieldname": "table_zzjz",
-   "fieldtype": "Table",
-   "options": "Swap Tag Batch Item"
-  },
   {
    "fieldname": "scan_here",
    "fieldtype": "HTML",
    "placeholder": "Scan here"
+  },
+  {
+   "fieldname": "swap_tag_items",
+   "fieldtype": "Table",
+   "options": "Swap Tag Batch Item"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-02 14:02:18.546229",
+ "modified": "2026-09-02 17:14:02.528507",
  "modified_by": "Administrator",
  "module": "Label Printing",
  "name": "Swap Tag Batch",
