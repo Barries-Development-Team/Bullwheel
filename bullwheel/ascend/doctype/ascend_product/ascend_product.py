@@ -74,7 +74,7 @@ class AscendProduct(AbstractVirtualDocType):
 		                                            'link_doctype': 'Product Category',
 		                                            'link_id_field': 'database_id'}},
 		'category_id':               {'column': 'TopicID'},
-		'description':               {'column': 'Description'},
+		'description':               {'column': 'Description', 'cache': True},
 		'price':                     {'column': 'Price'},
 		'estimated_cost':            {'column': 'EstCost'},
 		'quantity':                  {'column': 'Quantity'},
