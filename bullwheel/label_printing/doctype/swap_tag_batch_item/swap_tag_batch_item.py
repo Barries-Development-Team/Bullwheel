@@ -4,6 +4,11 @@
 # import frappe
 from frappe.model.document import Document
 
+from bullwheel.ascend.doctype.ascend_product.ascend_product import AscendProduct
+
 
 class SwapTagBatchItem(Document):
-	pass
+	
+	@property
+	def description(self):
+		AscendProduct.get_cached_value(self.product, "description")
