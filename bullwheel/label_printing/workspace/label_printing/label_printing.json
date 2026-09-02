@@ -1,7 +1,7 @@
 {
  "app": "bullwheel",
  "charts": [],
- "content": "[{\"id\":\"t32AeEd_of\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Label Printing Home</span>\",\"col\":12}},{\"id\":\"_yyUoCMncz\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Swap Tag Block\",\"col\":12}},{\"id\":\"IzhgKKTgNW\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Label Printers\",\"col\":3}},{\"id\":\"JjU5oQPvN3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zebra Printer Labels\",\"col\":3}}]",
+ "content": "[{\"id\":\"t32AeEd_of\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Label Printing Home</span>\",\"col\":12}},{\"id\":\"_yyUoCMncz\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Swap Tag Block\",\"col\":10}},{\"id\":\"ab3nwJvkV1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Swap Tag Batches\",\"col\":3}},{\"id\":\"IzhgKKTgNW\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Label Printers\",\"col\":3}},{\"id\":\"JjU5oQPvN3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zebra Printer Labels\",\"col\":3}}]",
  "creation": "2026-08-24 13:01:02.181308",
  "custom_blocks": [
   {
@@ -19,7 +19,7 @@
  "label": "Label Printing",
  "link_type": "DocType",
  "links": [],
- "modified": "2026-08-24 13:48:32.208711",
+ "modified": "2026-09-02 13:59:32.472968",
  "modified_by": "Administrator",
  "module": "Label Printing",
  "name": "Label Printing",
@@ -30,6 +30,14 @@
  "roles": [],
  "sequence_id": 0.0,
  "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Swap Tag Batches",
+   "link_to": "Swap Tag Batch",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
   {
    "color": "Grey",
    "doc_view": "List",
