@@ -79,22 +79,30 @@ function setup_scan_box(frm) {
 	});
 }
 
+// Map enabled rows in swap_tag_items to the items contract expected by
+// bullwheel.printing.add_print_button — Ascend Product is a Native doctype for
+// label resolution, so no Vendor Product hop is needed here.
+function enabled_swap_tag_items(frm) {
+	return (frm.doc.swap_tag_items || [])
+		.filter((row) => row.print && row.product)
+		.map((row) => ({
+			doctype: 'Ascend Product',
+			name: row.product,
+			quantity: row.print_quantity,
+			label: row.description || row.product,
+		}));
+}
+
 frappe.ui.form.on('Swap Tag Batch', {
 	refresh(frm) {
-        frm.add_custom_button(__('Print Enabled Labels'), function() {
-
-            let count = (frm.doc.swap_tag_items || []).reduce((total, row) => total + (row.print_quantity || 0), 0);
-
-            frappe.confirm(`You are about to print ${count} labels. Proceed?`,
-                // Yes
-                () => {},
-                // No
-                () => { return; })
-
-
-            // TODO: Print logic
-        });
-
+		bullwheel.printing.add_print_button({
+			frm,
+			label: __('Print Enabled Labels'),
+			slot: 'swap_tag',
+			doctype: 'Ascend Product',
+			items: enabled_swap_tag_items,
+			empty_message: __('No items are marked to print.'),
+		});
 
 		setup_scan_box(frm);
 	}
