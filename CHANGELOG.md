@@ -6,6 +6,10 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 - Added a Bulk Swap Printing document tot he Label Printing workspace for tracking of large Swap Tag jobs.
 
+### Performance 
+
+- Added configurable TTL to Ascend Database caching for better data responsiveness. 
+
 ## [1.1.8] - August 24, 2026
 
 ### Features
