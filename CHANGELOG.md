@@ -2,6 +2,10 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.9] - September 9, 2026
+
+- Added a Bulk Swap Printing document tot he Label Printing workspace for tracking of large Swap Tag jobs.
+
 ## [1.1.8] - August 24, 2026
 
 ### Features
