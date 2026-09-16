@@ -2,6 +2,12 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.10] - September 16, 2026
+
+- Overhauled Swap Tag Batch UI.
+- Added support for printing of temporary Swap Prices, without permanantly updating pricing data.
+- Reworked printing JS bundle.
+
 ## [1.1.9] - September 9, 2026
 
 - Added a Bulk Swap Printing document tot he Label Printing workspace for tracking of large Swap Tag jobs.
