@@ -218,6 +218,11 @@ async function show_print_dialog({ title, items, slot, on_submit }) {
 	dialog.show();
 }
 
+// Exposed so callers with their own pre-flight logic (price sync, confirmation, etc.)
+// can show the printer/quantity dialog directly instead of going through
+// add_print_button, while still reusing its printer-memory and quantity-editing UX.
+bullwheel.printing.show_print_dialog = show_print_dialog;
+
 // Send a print job for already-resolved items to an already-chosen printer. Exposed
 // publicly for callers that have their own printer-selection UI and want to skip
 // show_print_dialog entirely.
@@ -234,7 +239,7 @@ bullwheel.printing.send_print_request = function ({ method, printer_name, slot, 
 	// One call carries everything: the server resolves each item to its Native
 	// document, renders the slot's Zebra Printer Label per item, and transmits.
 	frappe.show_alert({ message: __('Sending {0}...', [__(label)]), indicator: 'blue' });
-	frappe.call({
+	return frappe.call({
 		method: method,
 		args: {
 			printer_name: printer_name,
