@@ -10,7 +10,8 @@
   "print",
   "product",
   "description",
-  "cost",
+  "estimated_cost",
+  "average_cost",
   "msrp",
   "swap_price",
   "print_quantity"
@@ -44,16 +45,7 @@
    "in_list_view": 1,
    "is_virtual": 1,
    "label": "Description",
-   "placeholder": "Will display on refresh",
-   "read_only": 1
-  },
-  {
-   "fieldname": "cost",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "is_virtual": 1,
-   "label": "Cost",
-   "placeholder": "Will display on refresh",
+   "placeholder": "Save to display",
    "read_only": 1
   },
   {
@@ -62,21 +54,43 @@
    "in_list_view": 1,
    "is_virtual": 1,
    "label": "MSRP",
-   "placeholder": "Will display on refresh",
+   "placeholder": "Save to display",
    "read_only": 1
   },
   {
    "fieldname": "swap_price",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Swap Price"
+   "label": "Swap Price",
+   "placeholder": "Save to display"
+  },
+  {
+   "description": "Estimated Cost",
+   "fieldname": "estimated_cost",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "is_virtual": 1,
+   "label": "Est. Cost",
+   "placeholder": "Save to display",
+   "read_only": 1,
+   "show_description_on_click": 1
+  },
+  {
+   "description": "Average Cost",
+   "fieldname": "average_cost",
+   "fieldtype": "Data",
+   "is_virtual": 1,
+   "label": "Avg. Cost",
+   "placeholder": "Save to display",
+   "read_only": 1,
+   "show_description_on_click": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-16 10:20:47.850936",
+ "modified": "2026-09-16 10:52:25.188802",
  "modified_by": "Administrator",
  "module": "Label Printing",
  "name": "Swap Tag Batch Item",
