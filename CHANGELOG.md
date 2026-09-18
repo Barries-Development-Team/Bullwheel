@@ -2,11 +2,12 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
-## [Unreleased]
+## [1.1.11] - September 18, 2026
 
 ### Features
 
-- Added the *Browser* connection method for Label Printers. The server renders the ZPL and returns it to the browser, which posts it to the Bullwheel Print Service on the user's own computer — so remote users can print to a locally attached USB printer.
+- Added the *Browser* connection method for Label Printers.
+    - The server renders the label and returns it to the browser, which posts it to the Bullwheel Print Service on the user's own computer — so remote users can print to a locally attached USB printer.
 
 ### Bug Fixes
 
