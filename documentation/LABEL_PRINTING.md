@@ -28,7 +28,7 @@ The transport deliberately mirrors the SQL Server handler pattern (`MSSQLDatabas
 
 ## Bullwheel Print Service HTTP contract
 
-The Browser method relies on an HTTP endpoint in the Bullwheel Print Service, running on the same computer as the browser. This is the contract Bullwheel expects:
+The Browser method relies on an HTTP endpoint in the Bullwheel Print Service, running on the same computer as the browser. The full service specification — both listeners, printer selection, security, and an acceptance checklist — is in [BULLWHEEL_PRINT_SERVICE.md](BULLWHEEL_PRINT_SERVICE.md). A summary of the Browser contract:
 
 **Request** — `POST http://127.0.0.1:9110/print`, `Content-Type: application/json`:
 
@@ -45,7 +45,7 @@ The Browser method relies on an HTTP endpoint in the Bullwheel Print Service, ru
 
 **CORS is required.** The Bullwheel page has a different origin from `127.0.0.1`, and a JSON POST triggers a preflight. The service must answer `OPTIONS /print` with:
 
-- `Access-Control-Allow-Origin: <Bullwheel origin>` (or `*`)
+- `Access-Control-Allow-Origin: <Bullwheel origin>` — echoed from an allow-list, never `*` (see the security section of the service spec)
 - `Access-Control-Allow-Methods: POST`
 - `Access-Control-Allow-Headers: Content-Type`
 - `Access-Control-Allow-Private-Network: true` — Chrome/Edge *Private Network Access* may send `Access-Control-Request-Private-Network: true` when a public HTTPS page calls loopback, and block the request without this header.
