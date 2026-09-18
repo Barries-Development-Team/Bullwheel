@@ -13,5 +13,24 @@ frappe.ui.form.on('Label Printer', {
         });
 
         button.prop('disabled', frm.is_new());
+        frm.test_connection_button = button;
+        update_test_connection_button_visibility(frm);
+    },
+
+    connection_method(frm) {
+        if (frm.test_connection_button) {
+            update_test_connection_button_visibility(frm);
+        }
     }
 });
+
+function update_test_connection_button_visibility(frm) {
+    const connection_method = frm.doc.connection_method;
+    const button = frm.test_connection_button;
+
+    if (connection_method === 'USB' || connection_method === 'Network') {
+        button.show();
+    } else {
+        button.hide();
+    }
+}

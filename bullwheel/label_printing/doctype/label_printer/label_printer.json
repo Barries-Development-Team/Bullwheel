@@ -46,6 +46,7 @@
   },
   {
    "default": "5",
+   "depends_on": "eval:doc.connection_method === \"USB\" || doc.connection_method === \"Network\"",
    "fieldname": "timeout",
    "fieldtype": "Int",
    "label": "Connection Timeout Interval (seconds)",
@@ -93,7 +94,7 @@
    "fieldname": "connection_method",
    "fieldtype": "Select",
    "label": "Connection Method",
-   "options": "Network\nUSB",
+   "options": "Network\nUSB\nBrowser",
    "reqd": 1
   },
   {
@@ -108,7 +109,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-06 15:22:39.225963",
+ "modified": "2026-09-18 14:55:53.589285",
  "modified_by": "Administrator",
  "module": "Label Printing",
  "name": "Label Printer",
