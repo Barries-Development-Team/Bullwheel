@@ -4,10 +4,11 @@ The **Label Printing** module prints to Zebra printers using **raw ZPL over a TC
 
 The transport deliberately mirrors the SQL Server handler pattern (`MSSQLDatabase`), so the same conventions apply.
 
-**Connection methods** — the `Label Printer.connection_method` field (`Network` / `USB`) selects the socket endpoint; `ZebraPrinter` resolves it once in `__init__` into `target_host`/`target_port`:
+**Connection methods** — the `Label Printer.connection_method` field (`Network` / `USB` / `Browser`) selects how the rendered ZPL reaches the printer. For Network and USB, `ZebraPrinter` resolves it once in `__init__` into `target_host`/`target_port`:
 
 - **Network** → the printer's own ZPL listener at `ip:port` (default `:9100`).
 - **USB** → the **Bullwheel USB Print Service** at `connected_computer_address:9100`. The USB printer has no network port, so a small Windows-side relay service listens on TCP 9100 and forwards raw ZPL to the local printer via the Windows spooler (win32print RAW). From `ZebraPrinter`'s view both methods are identical — a fire-and-forget TCP send. The service port is fixed in `ZebraPrinter.USB_PRINT_SERVICE_PORT` (9100) and must match the service's `--port`.
+- **Browser** → the server never contacts the printer. `print_labels` returns the rendered ZPL to the client, and `bullwheel.printing.send_print_request` POSTs it to the **Bullwheel Print Service on the user's own computer** (`BROWSER_PRINT_SERVICE_URL` in `printing.js`, `http://127.0.0.1:9110/print`). This works for remote users the server cannot reach. `ZebraPrinter` is never constructed and there is no Test Connection. See [Bullwheel Print Service HTTP contract](#bullwheel-print-service-http-contract).
 
 ## Files
 
@@ -23,7 +24,33 @@ The transport deliberately mirrors the SQL Server handler pattern (`MSSQLDatabas
 | `public/js/utils/printing.js` | Client framework: `bullwheel.printing.add_print_button` (forms) and `bullwheel.printing.add_list_print_button` (list views). Loaded globally via `utilities.bundle.js` / `app_include_js`. |
 | `fixtures/zebra_printer_label.json` | Default label templates (Ascend Tag, Swap Tag, Warehouse Location). |
 
-**`Label Printer` DocType** — device config: `printer_name` (autoname, unique), `connection_method` (Network/USB), `connected_computer_address` (USB only), `ip`/`port` (Network only, default 9100), `timeout` (default 5s), `dpi`, `type` (Direct Thermal / Thermal Transfer), `location`, `disabled`. Network vs USB fields are toggled via `depends_on` / `mandatory_depends_on` on `connection_method`.
+**`Label Printer` DocType** — device config: `printer_name` (autoname, unique), `connection_method` (Network/USB/Browser), `connected_computer_address` (USB only), `ip`/`port` (Network only, default 9100), `timeout` (Network/USB only, default 5s), `dpi`, `type` (Direct Thermal / Thermal Transfer), `location`, `disabled`. Per-method fields are toggled via `depends_on` / `mandatory_depends_on` on `connection_method`; the Test Connection button is hidden for Browser.
+
+## Bullwheel Print Service HTTP contract
+
+The Browser method relies on an HTTP endpoint in the Bullwheel Print Service, running on the same computer as the browser. The full service specification — both listeners, printer selection, security, and an acceptance checklist — is in [BULLWHEEL_PRINT_SERVICE.md](BULLWHEEL_PRINT_SERVICE.md). A summary of the Browser contract:
+
+**Request** — `POST http://127.0.0.1:9110/print`, `Content-Type: application/json`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `printer_name` | string | `name` of the Label Printer the user chose. |
+| `media_type` | string or null | Label Printer `type` — `Direct Thermal` / `Thermal Transfer`. Null when unset. |
+| `dpi` | integer | Label Printer `dpi`. |
+| `zpl` | string | Rendered ZPL for every item, concatenated, ready to send to the printer as-is. |
+
+**Response** — any 2xx means printed. Anything else is a failure: return a plain-text reason in the body and it is shown to the user.
+
+**Port** — must be different from 9100, which the same service already uses for raw TCP (USB method). Changing it means updating `BROWSER_PRINT_SERVICE_URL` in `public/js/utils/printing.js`.
+
+**CORS is required.** The Bullwheel page has a different origin from `127.0.0.1`, and a JSON POST triggers a preflight. The service must answer `OPTIONS /print` with:
+
+- `Access-Control-Allow-Origin: <Bullwheel origin>` — echoed from an allow-list, never `*` (see the security section of the service spec)
+- `Access-Control-Allow-Methods: POST`
+- `Access-Control-Allow-Headers: Content-Type`
+- `Access-Control-Allow-Private-Network: true` — Chrome/Edge *Private Network Access* may send `Access-Control-Request-Private-Network: true` when a public HTTPS page calls loopback, and block the request without this header.
+
+Mixed content is not a problem: browsers treat `http://127.0.0.1` as a trustworthy origin, so a plain-HTTP service can be called from the HTTPS production site.
 
 ## Label templates and slots
 
@@ -67,7 +94,9 @@ The client therefore never round-trips to translate a selection: it sends whatev
 | `items` | List (or JSON string) of `{doctype?, name, quantity?}` dicts. `quantity` defaults to 1; `quantity: 0` skips the item. |
 | `doctype` | Optional default for items that carry no `doctype` of their own. |
 
-Duplicate items resolving to the same native document are fetched once and rendered per requested quantity; all rendered ZPL is concatenated and sent in a single transmission.
+Duplicate items resolving to the same native document are fetched once and rendered per requested quantity; all rendered ZPL is concatenated and sent in a single transmission. Rendering lives in `render_label_zpl(printer_document, slot, items, doctype)`; `print_labels` adds the guards and the transport.
+
+Return value — `{"status": "success" | "connection error", "printer"}` for Network/USB, or `{"status": "browser", "printer", "media_type", "dpi", "zpl"}` for Browser. `send_print_request` handles all three: it forwards Browser jobs to the local service, shows red on a connection error or a service failure, and green otherwise. Its promise resolves only after that, so post-print work can be chained with `.then()`.
 
 ### Client utilities (`bullwheel.printing`)
 
@@ -125,7 +154,7 @@ frappe.listview_settings['Ascend Product'] = {
 
 - **`ZebraPrinter` is transport, not templating.** Layouts live in `Zebra Printer Label` Jinja; `print_labels` renders and sends.
 - **Add print buttons only via `bullwheel.printing.add_print_button` / `add_list_print_button`** — never hand-roll a `frappe.call` to the print method, and never touch `ZebraPrinter` from client code.
-- **Health check uses `~HS` (Host Status).** `get_host_status` parses paper-out / paused / head-open flags. A silent target — a printer that doesn't reply, or the **send-only USB service** (which never returns status) — is treated as **reachable-but-unknown**, not a failure. So USB printers always report "reachable, status unknown"; network printers get full status.
+- **Health check uses `~HS` (Host Status).** `get_host_status` parses paper-out / paused / head-open flags. A silent target — a printer that doesn't reply, or the **send-only USB service** (which never returns status) — is treated as **reachable-but-unknown**, not a failure. So USB printers always report "reachable, status unknown"; network printers get full status. Browser printers have no health check at all — the server cannot reach them.
 - **Sanitize interpolated values** — strip `^` and `~` (ZPL command prefixes) from any user/data string placed into ZPL. Do this inside the Jinja template (`| replace('^',' ') | replace('~',' ')`).
 - **Geometry comes from the printer's `dpi`, computed in the template.** ZPL positions are in dots and ZPL cannot do arithmetic, so templates derive dot dimensions in Jinja from `printer.dpi` and `label.width`/`label.height` (e.g. `{%- set W = (label.width * printer.dpi) | int -%}`).
 - **Centering:** `^FB<label_width>,1,0,C` at `^FO0,y` centers **text** fields — but **not** barcodes. `^FB` never moves a barcode's bars; they always start at the `^FO` origin. Center a barcode manually: estimate its width (Code 128 ≈ `(11 * chars + 35) * module_width` dots) and set `^FO<(label_width - barcode_width) / 2>,y`.
