@@ -278,8 +278,8 @@ async function report_print_outcome(result, label) {
 			frappe.msgprint({
 				title: __('Bullwheel Print Service Unavailable'),
 				message: __(
-					'Could not send the label to the Bullwheel Print Service at {0}. Make sure the service is running on this computer.<br><br>{1}',
-					[BROWSER_PRINT_SERVICE_URL, frappe.utils.escape_html(error.message)]
+					'Could not send the label to the Bullwheel Print Service at {0}. Make sure the service is running on this computer, and that {1} is configured as an allowed origin.<br><br>{2}',
+					[BROWSER_PRINT_SERVICE_URL, window.location.origin, frappe.utils.escape_html(error.message)]
 				),
 				indicator: 'red',
 			});
