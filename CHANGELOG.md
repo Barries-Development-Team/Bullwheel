@@ -2,6 +2,16 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [Unreleased]
+
+### Features
+
+- Added the *Browser* connection method for Label Printers. The server renders the ZPL and returns it to the browser, which posts it to the Bullwheel Print Service on the user's own computer — so remote users can print to a locally attached USB printer.
+
+### Bug Fixes
+
+- Print jobs that fail to reach a Network or USB printer now show a red failure alert instead of a green "sent" alert.
+
 ## [1.1.10] - September 16, 2026
 
 - Overhauled Swap Tag Batch UI.

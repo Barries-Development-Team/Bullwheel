@@ -31,6 +31,17 @@ def test_connection(**kwargs):
 	status, surfacing the outcome to the user via a colored message box."""
 	document = json.loads(kwargs.get('doc'))
 	printer_document = frappe.get_doc("Label Printer", document.get('name'))
+
+	# A Browser printer is reached from the user's own machine, never from the server,
+	# so there is nothing here to test.
+	if printer_document.connection_method == "Browser":
+		frappe.msgprint(
+			msg="Browser printers are reached from the user's computer through the Bullwheel Print Service, so the server cannot test them.",
+			title="Connection Test Unavailable",
+			indicator="orange",
+		)
+		return
+
 	result = ZebraPrinter(printer_document).test_connection()
 
 	if isinstance(result, PrinterException):
@@ -70,28 +81,11 @@ def get_recommended_print_media(slot: str):
 	return label.recommended_print_media or None
 
 
-# Multi-Label Print
-@frappe.whitelist()
-def print_labels(printer_name: str, slot: str, items, doctype: str = None):
-	"""Resolve each requested item to a natively printable document, render the Zebra
-	Printer Label configured for the given Bullwheel Settings slot once per item with
-	its own quantity, and send the concatenated ZPL to the printer in one transmission.
-
-	`items` is a list (or JSON string) of {doctype?, name, quantity?} dicts; `doctype`
-	is the default for items that do not carry their own. Items on a Resolved doctype
-	are followed to their Native document server-side (see label_printing/resolution.py),
-	so callers pass whatever identifiers they have in scope. If any item cannot be
-	resolved, nothing prints."""
-
-	if isinstance(items, str):
-		items = frappe.parse_json(items)
-	if not items:
-		frappe.throw("No items were provided to print.")
-
-	printer_document = frappe.get_doc("Label Printer", printer_name)
-	if printer_document.disabled:
-		frappe.throw(f"Label Printer '{printer_name}' is disabled and cannot be used for printing.")
-
+def render_label_zpl(printer_document, slot: str, items: list, doctype: str = None) -> str:
+	"""Resolve each item to a natively printable document and render the Zebra Printer
+	Label configured for `slot` once per item with its own quantity, returning the
+	concatenated ZPL. Throws, rendering nothing, if the slot has no label or any item
+	cannot be resolved."""
 	try:
 		label = get_label(slot)
 	except PrintLabelNotConfigured:
@@ -123,6 +117,45 @@ def print_labels(printer_name: str, slot: str, items, doctype: str = None):
 			except frappe.DoesNotExistError:
 				frappe.throw(f"Nothing was printed. {native_doctype} '{native_name}' was not found.")
 		zpl += label.render(document_cache[cache_key], printer_document, quantity)
+	return zpl
+
+
+# Multi-Label Print
+@frappe.whitelist()
+def print_labels(printer_name: str, slot: str, items, doctype: str = None):
+	"""Resolve each requested item to a natively printable document, render the Zebra
+	Printer Label configured for the given Bullwheel Settings slot once per item with
+	its own quantity, and deliver the concatenated ZPL in one transmission.
+
+	`items` is a list (or JSON string) of {doctype?, name, quantity?} dicts; `doctype`
+	is the default for items that do not carry their own. Items on a Resolved doctype
+	are followed to their Native document server-side (see label_printing/resolution.py),
+	so callers pass whatever identifiers they have in scope. If any item cannot be
+	resolved, nothing prints.
+
+	Network and USB printers are sent the ZPL over a socket from here. Browser printers
+	cannot be reached from the server, so the ZPL is returned to the client instead,
+	which forwards it to the Bullwheel Print Service on the user's own machine."""
+
+	if isinstance(items, str):
+		items = frappe.parse_json(items)
+	if not items:
+		frappe.throw("No items were provided to print.")
+
+	printer_document = frappe.get_doc("Label Printer", printer_name)
+	if printer_document.disabled:
+		frappe.throw(f"Label Printer '{printer_name}' is disabled and cannot be used for printing.")
+
+	zpl = render_label_zpl(printer_document, slot, items, doctype)
+
+	if printer_document.connection_method == "Browser":
+		return {
+			"status": "browser",
+			"printer": printer_name,
+			"media_type": printer_document.type,
+			"dpi": printer_document.dpi,
+			"zpl": zpl,
+		}
 
 	try:
 		with ZebraPrinter(printer_document) as printer:

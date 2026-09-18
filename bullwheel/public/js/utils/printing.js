@@ -9,6 +9,10 @@ frappe.provide('bullwheel.printing');
 
 const DEFAULT_BUTTON_GROUP = 'Print Labels';
 const DEFAULT_PRINT_METHOD = 'bullwheel.label_printing.print_labels';
+// The Bullwheel Print Service's HTTP endpoint on the user's own machine, used by Label
+// Printers with the Browser connection method. Must match the service's HTTP port — which
+// cannot be 9100, since the service already listens there on raw TCP for USB printers.
+const BROWSER_PRINT_SERVICE_URL = 'http://127.0.0.1:9110/print';
 // Bucket name for frappe.model.user_settings — not a real DocType, just a per-user
 // settings namespace, keyed by print media type so one remembered printer can serve
 // every slot that shares that media (see show_print_dialog).
@@ -235,23 +239,85 @@ bullwheel.printing.show_print_dialog = show_print_dialog;
 //   items        - [{doctype?, name, quantity}], already resolved — no items contract
 //                  normalization is applied here
 //   label        - text used in the "Sending {0}..." / "{0} sent" alerts (required)
+//
+// The returned promise resolves once the job has been fully handled — for a Browser
+// printer, only after the local Bullwheel Print Service has answered — so callers can
+// chain post-print work onto it.
 bullwheel.printing.send_print_request = function ({ method, printer_name, slot, doctype, items, label }) {
 	// One call carries everything: the server resolves each item to its Native
-	// document, renders the slot's Zebra Printer Label per item, and transmits.
+	// document, renders the slot's Zebra Printer Label per item, and transmits — or,
+	// for a Browser printer, hands the ZPL back for this browser to forward.
 	frappe.show_alert({ message: __('Sending {0}...', [__(label)]), indicator: 'blue' });
-	return frappe.call({
-		method: method,
-		args: {
-			printer_name: printer_name,
-			slot: slot,
-			doctype: doctype,
-			items: items,
-		},
-		callback() {
-			frappe.show_alert({ message: __('{0} sent', [__(label)]), indicator: 'green' });
-		},
-	});
+	return frappe
+		.call({
+			method: method,
+			args: {
+				printer_name: printer_name,
+				slot: slot,
+				doctype: doctype,
+				items: items,
+			},
+		})
+		.then((response) => report_print_outcome(response.message || {}, label));
 };
+
+async function report_print_outcome(result, label) {
+	// Turn the server's print result into user feedback, forwarding Browser jobs to the
+	// local Bullwheel Print Service first. Failures are reported, not rethrown, so
+	// callers' post-print work still runs as it did before Browser printing existed.
+	if (result.status === 'browser') {
+		try {
+			await send_to_browser_print_service({
+				printer_name: result.printer,
+				media_type: result.media_type,
+				dpi: result.dpi,
+				zpl: result.zpl,
+			});
+		} catch (error) {
+			frappe.show_alert({ message: __('{0} failed to print', [__(label)]), indicator: 'red' });
+			frappe.msgprint({
+				title: __('Bullwheel Print Service Unavailable'),
+				message: __(
+					'Could not send the label to the Bullwheel Print Service at {0}. Make sure the service is running on this computer.<br><br>{1}',
+					[BROWSER_PRINT_SERVICE_URL, frappe.utils.escape_html(error.message)]
+				),
+				indicator: 'red',
+			});
+			return;
+		}
+	} else if (result.status === 'connection error') {
+		frappe.show_alert({
+			message: __('{0} failed: could not reach printer {1}', [__(label), result.printer]),
+			indicator: 'red',
+		});
+		return;
+	}
+
+	frappe.show_alert({ message: __('{0} sent', [__(label)]), indicator: 'green' });
+}
+
+async function send_to_browser_print_service({ printer_name, media_type, dpi, zpl }) {
+	// POST rendered ZPL to the Bullwheel Print Service on this machine, which forwards
+	// it to the locally attached printer. Throws with a readable message when the
+	// service is unreachable or rejects the job.
+	let response;
+	try {
+		response = await fetch(BROWSER_PRINT_SERVICE_URL, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ printer_name, media_type, dpi, zpl }),
+		});
+	} catch (error) {
+		throw new Error(__('The service could not be reached ({0}).', [error.message]));
+	}
+
+	if (!response.ok) {
+		const response_text = await response.text().catch(() => '');
+		throw new Error(
+			__('The service rejected the job with HTTP {0}. {1}', [response.status, response_text])
+		);
+	}
+}
 
 // Add a form button that renders the label configured for `slot` against the target
 // items and sends it to a Label Printer chosen at click time.
