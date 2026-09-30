@@ -355,11 +355,17 @@ function handle_scan(frm, scanned_value) {
 
 // Mount the scan box as a standalone control (no frm/doc) inside the scan_item HTML field, so
 // typing/scanning never writes to frm.doc and never marks the form dirty — a dirty form would
-// suppress the realtime auto-refresh. Frappe re-renders the HTML field on every form refresh,
-// so we re-mount the control here each time.
+// suppress the realtime auto-refresh. This is called on every form refresh (including the
+// refresh triggered by the post-scan realtime reload), so it's guarded to reuse the existing
+// control instead of rebuilding it — rebuilding would replace the <input> DOM node and drop
+// focus out from under the person scanning.
 function setup_scan_box(frm) {
 	const field = frm.get_field('scan_item');
 	if (!field) return;
+
+	if (field.scan_control && field.scan_control.$input && field.scan_control.$input.closest('body').length) {
+		return;
+	}
 
 	field.$wrapper.empty();
 	const control = frappe.ui.form.make_control({
@@ -374,6 +380,7 @@ function setup_scan_box(frm) {
 		render_input: true
 	});
 	control.refresh();
+	field.scan_control = control;
 
 	// Read/clear the raw input directly; the value stays out of frm.doc entirely.
 	control.$input.on('keydown', (event) => {
@@ -385,6 +392,7 @@ function setup_scan_box(frm) {
 
 		control.$input.val('');
 		handle_scan(frm, scanned_value);
+		control.$input.focus();
 	});
 }
 
