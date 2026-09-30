@@ -2,6 +2,12 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.1.12] - September 30, 2026
+
+### Bug Fixes
+
+- Fixed lost focus on Order Receipt scan field on form update.
+
 ## [1.1.11] - September 18, 2026
 
 ### Features
