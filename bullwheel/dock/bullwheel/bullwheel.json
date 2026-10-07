@@ -1,0 +1,47 @@
+{
+ "app": "bullwheel",
+ "creation": "2026-10-07 12:23:35.847595",
+ "docstatus": 0,
+ "doctype": "Dock",
+ "idx": 0,
+ "items": [
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "mountain-snow",
+   "link_to": "Ascend",
+   "link_type": "Workspace",
+   "title": "Ascend"
+  },
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "ferris-wheel",
+   "link_to": "Bullwheel",
+   "link_type": "Workspace",
+   "title": "Bullwheel"
+  },
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "printer",
+   "link_to": "Label Printing",
+   "link_type": "Workspace",
+   "title": "Label Printing"
+  },
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "warehouse",
+   "link_to": "Warehouse",
+   "link_type": "Workspace",
+   "title": "Warehouse"
+  }
+ ],
+ "modified": "2026-10-07 12:23:35.847595",
+ "modified_by": "Administrator",
+ "name": "bullwheel",
+ "owner": "Administrator",
+ "standard": 1,
+ "user": ""
+}

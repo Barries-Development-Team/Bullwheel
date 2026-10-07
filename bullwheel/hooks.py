@@ -14,15 +14,15 @@ app_license = "unlicense"
 # required_apps = []
 
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "bullwheel",
-# 		"logo": "/assets/bullwheel/logo.png",
-# 		"title": "Bullwheel",
-# 		"route": "/bullwheel",
-# 		"has_permission": "bullwheel.api.permission.has_app_permission"
-# 	}
-# ]
+add_to_apps_screen = [
+    {
+        "name": "bullwheel",
+        "logo": "/assets/bullwheel/images/bullwheel_frappe_icon.svg",
+        "title": "Bullwheel",
+        "route": "/desk/bullwheel",
+        "sequence_id": 50,
+    }
+]
 
 # Fixtures
 # ------------------

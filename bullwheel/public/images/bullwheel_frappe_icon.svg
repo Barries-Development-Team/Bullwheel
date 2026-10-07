@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="680"
+   viewBox="0 0 680 680"
+   role="img"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="bullwheel_frappe_icon.svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   height="680"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs8" />
+  <sodipodi:namedview
+     id="namedview8"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:zoom="0.55767021"
+     inkscape:cx="737.89131"
+     inkscape:cy="220.56046"
+     inkscape:window-width="1920"
+     inkscape:window-height="991"
+     inkscape:window-x="-9"
+     inkscape:window-y="-9"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg8" />
+  <title
+     id="title1">Bullwheel icon in Frappe module-icon style</title>
+  <desc
+     id="desc1">A flat solid-blue rounded square containing a simplified white bullwheel glyph: a rimmed wheel with spokes and hub, mounted on a post, with a cable wrapping over the top and descending on both sides.</desc>
+  <rect
+     x="0.36027437"
+     y="0.53451055"
+     width="679.41974"
+     height="679.41974"
+     rx="148.62306"
+     fill="#2490EF"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#2490ef;stroke:none;stroke-width:2.12318px;stroke-linecap:butt;stroke-linejoin:miter"
+     id="rect1" />
+  <rect
+     x="212.67894"
+     y="603.51953"
+     width="254.78239"
+     height="42.463734"
+     rx="16.985493"
+     fill="#ffffff"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#ffffff;stroke:none;stroke-width:2.12318px;stroke-linecap:butt;stroke-linejoin:miter"
+     id="rect2" />
+  <rect
+     x="313.38336"
+     y="345.76523"
+     width="50.956478"
+     height="280.16174"
+     rx="16.985493"
+     fill="#ffffff"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#ffffff;stroke:none;stroke-width:2.22641px;stroke-linecap:butt;stroke-linejoin:miter"
+     id="rect3" />
+  <circle
+     cx="340.07016"
+     cy="319.01251"
+     fill="none"
+     stroke="#ffffff"
+     stroke-width="16"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:none;stroke:#ffffff;stroke-width:33.971px;stroke-linecap:butt;stroke-linejoin:miter"
+     id="circle3"
+     r="201.70273" />
+  <line
+     x1="340.07016"
+     y1="319.01251"
+     x2="340.07016"
+     y2="127.92571"
+     stroke="#ffffff"
+     stroke-width="10"
+     stroke-linecap="round"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#000000;stroke:#ffffff;stroke-width:21.2318px;stroke-linecap:round;stroke-linejoin:miter"
+     id="line3" />
+  <line
+     x1="340.07016"
+     y1="319.01251"
+     x2="505.67874"
+     y2="223.4691"
+     stroke="#ffffff"
+     stroke-width="10"
+     stroke-linecap="round"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#000000;stroke:#ffffff;stroke-width:21.2318px;stroke-linecap:round;stroke-linejoin:miter"
+     id="line4" />
+  <line
+     x1="340.07016"
+     y1="319.01251"
+     x2="505.67874"
+     y2="414.55591"
+     stroke="#ffffff"
+     stroke-width="10"
+     stroke-linecap="round"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#000000;stroke:#ffffff;stroke-width:21.2318px;stroke-linecap:round;stroke-linejoin:miter"
+     id="line5" />
+  <line
+     x1="340.07016"
+     y1="324.69266"
+     x2="340.07016"
+     y2="618.02203"
+     stroke="#ffffff"
+     stroke-width="10"
+     stroke-linecap="round"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#000000;stroke:#ffffff;stroke-width:26.3057px;stroke-linecap:round;stroke-linejoin:miter"
+     id="line6" />
+  <line
+     x1="340.07016"
+     y1="319.01251"
+     x2="174.46159"
+     y2="414.55591"
+     stroke="#ffffff"
+     stroke-width="10"
+     stroke-linecap="round"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#000000;stroke:#ffffff;stroke-width:21.2318px;stroke-linecap:round;stroke-linejoin:miter"
+     id="line7" />
+  <line
+     x1="340.07016"
+     y1="319.01251"
+     x2="174.46159"
+     y2="223.4691"
+     stroke="#ffffff"
+     stroke-width="10"
+     stroke-linecap="round"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#000000;stroke:#ffffff;stroke-width:21.2318px;stroke-linecap:round;stroke-linejoin:miter"
+     id="line8" />
+  <circle
+     cx="340.07016"
+     cy="319.01251"
+     fill="#ffffff"
+     style="color:#0b0b0b;font-weight:400;font-size:16px;font-family:'Anthropic Sans', '-apple-system', BlinkMacSystemFont, 'Segoe UI', sans-serif;dominant-baseline:auto;text-anchor:start;opacity:1;fill:#ffffff;stroke:none;stroke-width:2.12318px;stroke-linecap:butt;stroke-linejoin:miter"
+     id="circle8"
+     r="46.710106" />
+  <rect
+     style="fill:#ffffff;stroke-width:1.75266"
+     id="rect8"
+     width="15.711032"
+     height="385.40967"
+     x="123.35674"
+     y="292.34219" />
+  <rect
+     style="fill:#ffffff;stroke-width:1.72104"
+     id="rect8-9"
+     width="15.711032"
+     height="371.62982"
+     x="541.28119"
+     y="306.10858" />
+  <path
+     style="fill:#ffffff;stroke-width:2.12318"
+     d="m 123.33053,677.72625 h 15.70678 l 0.0238,1.90675 -5.98242,-0.50051 -5.43421,-0.66737 -3.93265,-0.59585 z"
+     id="path8" />
+  <path
+     style="fill:#ffffff;stroke-width:2.12318"
+     d="m 556.97446,677.71572 -15.68702,0.0477 -0.0477,1.86146 5.3775,-0.42956 6.04571,-0.76369 z"
+     id="path9" />
+  <metadata
+     id="metadata1">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>Bullwheel icon in Frappe module-icon style</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+</svg>
