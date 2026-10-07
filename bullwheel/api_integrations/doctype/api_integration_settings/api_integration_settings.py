@@ -5,7 +5,7 @@
 import frappe
 from frappe.model.document import Document
 
-from bullwheel.integrations.example_client import ExampleAPIClient
+from bullwheel.api_integrations.example_client import ExampleAPIClient
 
 
 class APIIntegrationSettings(Document):

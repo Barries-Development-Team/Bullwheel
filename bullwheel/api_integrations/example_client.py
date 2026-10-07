@@ -4,7 +4,7 @@
 
 from typing import Any
 
-from bullwheel.integrations.api_client import BaseAPIClient
+from bullwheel.api_integrations.api_client import BaseAPIClient
 
 
 class ExampleAPIClient(BaseAPIClient):

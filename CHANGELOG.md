@@ -5,7 +5,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ### Features
 
-- Added a provider-agnostic third-party REST API client (`bullwheel.integrations`) with timeouts, rate-limit handling, typed errors and an *API Integration Settings* doctype. Authentication is left to the integrator.
+- Added a provider-agnostic third-party REST API client (`bullwheel.api_integrations`) with timeouts, rate-limit handling, typed errors and an *API Integration Settings* doctype. Authentication is left to the integrator.
 
 ## [1.1.12] - September 30, 2026
 

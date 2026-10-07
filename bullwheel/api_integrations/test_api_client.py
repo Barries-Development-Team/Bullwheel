@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import requests
 from frappe.tests import UnitTestCase
 
-from bullwheel.integrations.api_client import BaseAPIClient
-from bullwheel.integrations.exceptions import APIConnectionError, APIRateLimitError, APIResponseError
+from bullwheel.api_integrations.api_client import BaseAPIClient
+from bullwheel.api_integrations.exceptions import APIConnectionError, APIRateLimitError, APIResponseError
 
 
 class AuthenticatedClient(BaseAPIClient):
@@ -29,13 +29,13 @@ def make_response(status_code: int = 200, body=None, headers=None) -> MagicMock:
 
 class UnitTestAPIClient(UnitTestCase):
 	def setUp(self):
-		session_patcher = patch("bullwheel.integrations.api_client.get_request_session")
+		session_patcher = patch("bullwheel.api_integrations.api_client.get_request_session")
 		self.session = session_patcher.start().return_value
 		self.addCleanup(session_patcher.stop)
-		sleep_patcher = patch("bullwheel.integrations.api_client.time.sleep")
+		sleep_patcher = patch("bullwheel.api_integrations.api_client.time.sleep")
 		self.sleep = sleep_patcher.start()
 		self.addCleanup(sleep_patcher.stop)
-		log_patcher = patch("bullwheel.integrations.api_client.frappe.log_error")
+		log_patcher = patch("bullwheel.api_integrations.api_client.frappe.log_error")
 		log_patcher.start()
 		self.addCleanup(log_patcher.stop)
 		self.client = AuthenticatedClient(base_url="https://api.test/v1/")

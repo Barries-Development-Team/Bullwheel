@@ -9,7 +9,7 @@ import frappe
 import requests
 from frappe.utils import get_request_session
 
-from bullwheel.integrations.exceptions import (
+from bullwheel.api_integrations.exceptions import (
 	APIConnectionError,
 	APIRateLimitError,
 	APIResponseError,

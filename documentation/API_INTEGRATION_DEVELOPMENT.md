@@ -1,6 +1,6 @@
 # Third-Party API Integration Development
 
-`bullwheel/integrations/` holds a provider-agnostic REST client. Subclass `BaseAPIClient`, implement authentication, and add one method per endpoint.
+`bullwheel/api_integrations/` holds a provider-agnostic REST client. Subclass `BaseAPIClient`, implement authentication, and add one method per endpoint.
 
 ## Layout
 
@@ -34,4 +34,4 @@
 
 ## Testing
 
-`bench --site barriesdev.localhost run-tests --app bullwheel --module bullwheel.integrations.test_api_client`
+`bench --site barriesdev.localhost run-tests --app bullwheel --module bullwheel.api_integrations.test_api_client`
