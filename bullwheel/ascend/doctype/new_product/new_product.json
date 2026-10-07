@@ -76,7 +76,7 @@
    "mandatory_depends_on": "eval:!doc.description_template",
    "placeholder": "Auto-generated when a Description Template is chosen below; edit directly only when Description Template is left blank.",
    "read_only_depends_on": "eval:doc.description_template",
-   "unique": 1
+   "unique": 0
   },
   {
    "allow_in_quick_entry": 1,
