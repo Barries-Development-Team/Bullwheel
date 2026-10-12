@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 bullwheel.patches.backfill_order_item_snapshot
 bullwheel.patches.drop_order_item_snapshot_columns
+bullwheel.patches.remove_ascend_attribution

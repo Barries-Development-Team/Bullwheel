@@ -57,18 +57,21 @@
    "in_global_search": 1,
    "in_list_view": 1,
    "label": "Description",
-   "unique": 1
+   "unique": 1,
+   "read_only": 1
   },
   {
    "fieldname": "keyword",
    "fieldtype": "Data",
    "in_standard_filter": 1,
-   "label": "Keyword"
+   "label": "Keyword",
+   "read_only": 1
   },
   {
    "fieldname": "brand",
    "fieldtype": "Data",
-   "label": "Brand"
+   "label": "Brand",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_czad",
@@ -77,12 +80,14 @@
   {
    "fieldname": "price",
    "fieldtype": "Currency",
-   "label": "MSRP"
+   "label": "MSRP",
+   "read_only": 1
   },
   {
    "fieldname": "estimated_cost",
    "fieldtype": "Currency",
-   "label": "Estimated Cost"
+   "label": "Estimated Cost",
+   "read_only": 1
   },
   {
    "fieldname": "ids_and_barcodes_section",
@@ -102,50 +107,59 @@
    "fieldtype": "Data",
    "in_global_search": 1,
    "in_list_view": 1,
-   "label": "UPC"
+   "label": "UPC",
+   "read_only": 1
   },
   {
    "fieldname": "manufacturers_part_number",
    "fieldtype": "Data",
    "in_global_search": 1,
-   "label": "Manufacturer's Part Number"
+   "label": "Manufacturer's Part Number",
+   "read_only": 1
   },
   {
    "fieldname": "category",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Category",
-   "options": "Product Category"
+   "options": "Product Category",
+   "read_only": 1
   },
   {
    "fieldname": "color",
    "fieldtype": "Data",
-   "label": "Color"
+   "label": "Color",
+   "read_only": 1
   },
   {
    "fieldname": "size",
    "fieldtype": "Data",
-   "label": "Size"
+   "label": "Size",
+   "read_only": 1
   },
   {
    "fieldname": "style_name",
    "fieldtype": "Data",
-   "label": "Style (Model) Name"
+   "label": "Style (Model) Name",
+   "read_only": 1
   },
   {
    "fieldname": "gender",
    "fieldtype": "Data",
-   "label": "Gender"
+   "label": "Gender",
+   "read_only": 1
   },
   {
    "fieldname": "season",
    "fieldtype": "Data",
-   "label": "Season"
+   "label": "Season",
+   "read_only": 1
   },
   {
    "fieldname": "year",
    "fieldtype": "Data",
-   "label": "Year"
+   "label": "Year",
+   "read_only": 1
   },
   {
    "fieldname": "average_cost",
@@ -169,7 +183,8 @@
    "fieldname": "style_number",
    "fieldtype": "Data",
    "in_global_search": 1,
-   "label": "Style Number"
+   "label": "Style Number",
+   "read_only": 1
   },
   {
    "fieldname": "id",
@@ -186,13 +201,15 @@
    "fieldname": "swap_price",
    "fieldtype": "Currency",
    "is_virtual": 1,
-   "label": "Swap Price"
+   "label": "Swap Price",
+   "read_only": 1
   },
   {
    "fieldname": "online_price",
    "fieldtype": "Currency",
    "is_virtual": 1,
-   "label": "Online Price"
+   "label": "Online Price",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_xrdr",
@@ -206,13 +223,15 @@
    "button_color": "Info",
    "fieldname": "edit_swap_price",
    "fieldtype": "Button",
-   "label": "Edit Swap Price"
+   "label": "Edit Swap Price",
+   "hidden": 1
   },
   {
    "button_color": "Info",
    "fieldname": "edit_online_price",
    "fieldtype": "Button",
-   "label": "Edit Online Price"
+   "label": "Edit Online Price",
+   "hidden": 1
   },
   {
    "collapsible": 1,
@@ -253,7 +272,8 @@
    "fieldname": "category_id",
    "fieldtype": "Data",
    "hidden": 1,
-   "label": "Category (Topic) ID"
+   "label": "Category (Topic) ID",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
@@ -269,16 +289,11 @@
  "owner": "Administrator",
  "permissions": [
   {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
+   "role": "System Manager"
   }
  ],
  "row_format": "Dynamic",

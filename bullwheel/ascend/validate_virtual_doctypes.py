@@ -48,7 +48,7 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 
 	Normalizing the config (see schema_config.py) is itself the primary structural gate: it
 	rejects an entry that is not a dict, names an unknown option key, omits its 'column',
-	carries a table-qualified column, or gives a non-boolean flag or a malformed 'linked_id'.
+	carries a table-qualified column, or gives a non-boolean flag.
 	On top of that this function checks that SCHEMA_CONFIG is not empty, that the primary key
 	is defined (either a 'name' entry or a NAME_EXPRESSION), that no field claims to be an
 	alternate name for 'name' itself, and that every field's table is the primary table or
@@ -107,37 +107,6 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 				f"{class_name}: Field '{fieldname}' maps to table/alias '{table}', which is "
 				f"neither TABLE_NAME nor a table/alias declared in JOIN_CONFIG."
 			)
-
-	# Guardrail: an INSERT_DEFAULTS key must resolve to a writable column on TABLE_NAME, or the
-	# default is silently dropped by _collect_writable_fields and the column it was meant to
-	# populate goes back to landing NULL — the failure it exists to prevent, reintroduced
-	# invisibly. Caught here rather than at insert time because a write path that only runs
-	# during receiving is a bad place to discover a typo.
-	insert_defaults = doctype_class.INSERT_DEFAULTS
-	if insert_defaults:
-		if not isinstance(insert_defaults, dict):
-			raise ValueError(
-				f"{class_name}: INSERT_DEFAULTS must be a dict of fieldname -> value, got "
-				f"{insert_defaults!r}."
-			)
-		if not doctype_class.ALLOW_WRITE:
-			raise ValueError(
-				f"{class_name}: INSERT_DEFAULTS is set but ALLOW_WRITE is False, so db_insert "
-				f"can never run and the defaults would have no effect."
-			)
-		for fieldname in insert_defaults:
-			field_config = schema_config.get(fieldname)
-			if field_config is None or field_config['sql'] is None:
-				raise ValueError(
-					f"{class_name}: INSERT_DEFAULTS names '{fieldname}', which has no SCHEMA_CONFIG "
-					f"mapping, so there is no column to write the default to."
-				)
-			if not doctype_class._column_belongs_to_table(fieldname):
-				raise ValueError(
-					f"{class_name}: INSERT_DEFAULTS names '{fieldname}', whose column "
-					f"'{field_config['sql']}' is not on {doctype_class.TABLE_NAME}. Only columns on "
-					f"the primary table are writable."
-				)
 
 	# Guardrail: every table/alias a NAME_EXPRESSION qualifies with must be declared, otherwise the
 	# query throws a bind error at runtime. Strip bracket-quoted names and string literals first so
@@ -257,141 +226,15 @@ def _warn_unmapped_json_fields(doctype_name: str, controller) -> None:
 
 
 def _check_autoname_safety(doctype_name: str, controller) -> None:
-	"""Checks the DocType's live `autoname` against autoname_mismatch_reason(). A write-enabled
-	DocType (ALLOW_WRITE=True) with an unsafe autoname blocks the migration outright, since the
-	next save would silently corrupt Ascend data (see autoname_mismatch_reason's docstring for
-	the exact mechanism). A read-only DocType only gets a console warning — no data is at risk
-	yet, but the same misconfiguration will corrupt data the moment ALLOW_WRITE is flipped on,
-	so it's worth surfacing early rather than waiting to rediscover it the same way."""
+	"""Warns when the DocType's live `autoname` does not mirror the controller's primary key
+	(see autoname_mismatch_reason). Ascend records are read-only in Bullwheel, so no data is
+	at risk, but a mismatched autoname still produces confusing record names, so it is worth
+	surfacing early."""
 	frappe.reload_doctype(doctype_name)
 	autoname = frappe.get_meta(doctype_name).autoname
 	mismatch_reason = autoname_mismatch_reason(controller, autoname)
-	if not mismatch_reason:
-		return
-
-	if controller.ALLOW_WRITE:
-		raise ValueError(
-			f"{doctype_name}: {mismatch_reason} Set autoname = 'Prompt' on the DocType, or "
-			f"point 'field:' at a field whose SCHEMA_CONFIG mapping mirrors the primary key "
-			f"column, before enabling ALLOW_WRITE."
-		)
-
-	print_console_warning(
-		f"Virtual DocType Validation: {doctype_name} — {mismatch_reason} This DocType is "
-		f"currently read-only (ALLOW_WRITE=False), so no data is at risk yet, but this will "
-		f"corrupt data the moment ALLOW_WRITE is enabled."
-	)
-
-
-def _linked_id_field_structural_problems(controller) -> list:
-	"""Collect the SCHEMA_CONFIG-only violations of the 'linked_id' convention — the checks that
-	need no DocType meta. Each pairing's id_field must be in SCHEMA_CONFIG and map to a column on
-	TABLE_NAME (a JOIN column can't be written), and link_doctype/link_id_field must resolve to a
-	real linked virtual DocType controller and one of its mapped fields. (A pairing's own key set
-	is enforced during normalization, and its display field is by construction a mapped field.)
-	Returns a list of problem strings (empty when sound)."""
-	problems = []
-	schema_config = controller._normalized_schema()
-
-	for display_field, config in controller.linked_id_fields().items():
-		id_field = config['id_field']
-		link_doctype = config['link_doctype']
-		link_id_field = config['link_id_field']
-
-		if id_field not in schema_config:
-			problems.append(
-				f"SCHEMA_CONFIG['{display_field}'].linked_id.id_field '{id_field}' has no "
-				f"SCHEMA_CONFIG mapping."
-			)
-		elif not controller._column_belongs_to_table(id_field):
-			problems.append(
-				f"SCHEMA_CONFIG['{display_field}'].linked_id.id_field '{id_field}' maps to "
-				f"'{schema_config[id_field]['sql']}', which is not a column on TABLE_NAME "
-				f"'{controller.TABLE_NAME}' and so cannot be written."
-			)
-
-		try:
-			linked_controller = get_controller(link_doctype)
-		except Exception:
-			linked_controller = None
-		if not (isinstance(linked_controller, type) and issubclass(linked_controller, AbstractVirtualDocType)):
-			problems.append(
-				f"SCHEMA_CONFIG['{display_field}'].linked_id.link_doctype '{link_doctype}' does not "
-				f"resolve to a virtual DocType controller."
-			)
-		elif linked_controller._field_config(link_id_field) is None:
-			problems.append(
-				f"SCHEMA_CONFIG['{display_field}'].linked_id.link_id_field '{link_id_field}' has no "
-				f"SCHEMA_CONFIG mapping on {link_doctype}."
-			)
-
-	return problems
-
-
-def _linked_id_field_meta_problems(doctype_name: str, controller) -> list:
-	"""Collect the meta-dependent violations of the 'linked_id' convention. Each pairing's
-	id_field must be a declared, non-read-only DocType field (a read-only or undeclared id field
-	would never be written, re-introducing the silent data loss this convention closes). And for
-	coverage: every editable DocType field (declared, not read-only, not virtual, not a no-value
-	fieldtype) whose SCHEMA_CONFIG column lives on a JOIN table rather than TABLE_NAME must declare
-	a 'linked_id' pairing — otherwise a user's edit to it silently vanishes on save."""
-	problems = []
-	linked_id_fields = controller.linked_id_fields()
-	meta = frappe.get_meta(doctype_name)
-
-	for display_field, config in linked_id_fields.items():
-		id_field = config['id_field']
-		id_meta_field = meta.get_field(id_field)
-		if not id_meta_field:
-			problems.append(
-				f"SCHEMA_CONFIG['{display_field}'].linked_id.id_field '{id_field}' is not a declared "
-				f"field on {doctype_name}, so its resolved id would never be written."
-			)
-		elif id_meta_field.read_only:
-			problems.append(
-				f"SCHEMA_CONFIG['{display_field}'].linked_id.id_field '{id_field}' is read_only on "
-				f"{doctype_name}; a read-only id field is never written. Make it hidden but not read_only."
-			)
-
-	for field in meta.fields:
-		if field.fieldtype in no_value_fields or field.get('is_virtual') or field.read_only:
-			continue
-		field_config = controller._field_config(field.fieldname)
-		if field_config is None:
-			continue  # Unmapped fields are reported by _warn_unmapped_json_fields.
-		if not controller._column_belongs_to_table(field.fieldname) and field.fieldname not in linked_id_fields:
-			problems.append(
-				f"Field '{field.fieldname}' is editable and maps to JOIN column "
-				f"'{field_config['sql']}' (not on TABLE_NAME '{controller.TABLE_NAME}'), but declares "
-				f"no 'linked_id' pairing. Edits to it would silently vanish on save. Pair it with a "
-				f"writable id field via the field config's 'linked_id' key, or mark it read_only."
-			)
-
-	return problems
-
-
-def _check_linked_id_fields(doctype_name: str, controller) -> None:
-	"""Enforce the 'linked_id' field config convention. On a write-enabled DocType (ALLOW_WRITE=True) any
-	violation blocks the migration, since the next save would either silently drop a joined-field
-	edit or fail to write a resolved id. A read-only DocType only gets a console warning — no data
-	is at risk yet, but the same misconfiguration bites the moment ALLOW_WRITE is enabled. Mirrors
-	_check_autoname_safety's severity split."""
-	problems = (
-		_linked_id_field_structural_problems(controller)
-		+ _linked_id_field_meta_problems(doctype_name, controller)
-	)
-	if not problems:
-		return
-
-	joined = '\n  - '.join(problems)
-	if controller.ALLOW_WRITE:
-		raise ValueError(f"{doctype_name}: 'linked_id' convention violated:\n  - {joined}")
-
-	print_console_warning(
-		f"Virtual DocType Validation: {doctype_name} — 'linked_id' convention violated (this "
-		f"DocType is currently read-only, so no data is at risk yet, but this will corrupt data the "
-		f"moment ALLOW_WRITE is enabled):\n  - {joined}"
-	)
+	if mismatch_reason:
+		print_console_warning(f"Virtual DocType Validation: {doctype_name} — {mismatch_reason}")
 
 
 def _introspected_columns_for(controller, server_document) -> tuple:
@@ -412,7 +255,6 @@ def validate_all_virtual_doctype_schemas() -> None:
 		validate_schema_config(controller)
 		_warn_unmapped_json_fields(doctype_name, controller)
 		_check_autoname_safety(doctype_name, controller)
-		_check_linked_id_fields(doctype_name, controller)
 
 	for doctype_name, controller in controllers:
 		try:

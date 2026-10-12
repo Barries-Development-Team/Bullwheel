@@ -8,8 +8,6 @@
   "ascend_configuration_tab",
   "ascend_configuration_section",
   "default_database",
-  "default_user",
-  "default_location",
   "receiving_section",
   "ski_category_prefix",
   "tab_2_tab",
@@ -81,22 +79,6 @@
    "fieldtype": "Link",
    "label": "Ascend Tag",
    "options": "Zebra Printer Label"
-  },
-  {
-   "description": "Bullwheel users that don't have a linked Ascend User will have their edits attributed to this user.",
-   "fieldname": "default_user",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Default User",
-   "options": "Ascend User",
-   "reqd": 1
-  },
-  {
-   "description": "Ascend Locations.ID that products Bullwheel creates are attributed to (Products.ModifierLocationID). Ascend leaves this NULL on a record inserted outside its own desktop client, and a NULL location keeps the record out of the item grid of any purchase order that references it — present in Ascend's Database Explorer under Locations.",
-   "fieldname": "default_location",
-   "fieldtype": "Data",
-   "label": "Default Location",
-   "length": 36
   }
  ],
  "grid_page_length": 50,
