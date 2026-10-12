@@ -94,12 +94,24 @@ def _format_vpn_component(value) -> str:
 PART_NUMBER_LIMIT = 45  # Ascend's Part Number column allows 50 characters; kept as a safety margin.
 
 
+def _pending_new_product_uses_vpn(vendor, candidate, exclude_new_product=None) -> bool:
+	"""True when a non-cancelled New Product for this vendor already holds `candidate` as its
+	VPN. A New Product waits in Bullwheel until it is imported, so its VPN is not yet in
+	VendorProducts and the Ascend check alone cannot see it."""
+	filters = {"vendor": vendor, "vpn": candidate, "status": ["!=", "Cancelled"]}
+	if exclude_new_product:
+		filters["name"] = ["!=", exclude_new_product]
+	return bool(frappe.db.exists("New Product", filters))
+
+
 @frappe.whitelist()
-def generate_vpn(vendor_id, vpn_prefix, brand, model, size=None, color=None) -> str:
+def generate_vpn(vendor_id, vpn_prefix, brand, model, size=None, color=None, vendor=None, exclude_new_product=None) -> str:
 	"""Build a unique Ascend part number as Vendor Acronym-Brand-Model-Size-Color-Counter: brand
 	is capped to its first two words and model is truncated if needed to stay within
 	PART_NUMBER_LIMIT, then a counter suffix (-1, -2, …) is searched for, inside one Ascend
-	connection, until a part number with no existing VendorProducts match is found."""
+	connection, until a part number with no existing VendorProducts match — and, when `vendor`
+	(the Vendor DocType name) is given, no pending New Product of that vendor — is found.
+	`exclude_new_product` names a New Product to ignore, so regenerating its own VPN can reuse it."""
 
 	def build_base_vpn(model_value):
 		components = [vpn_prefix, limited_brand, model_value, size, color]

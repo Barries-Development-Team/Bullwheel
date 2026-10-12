@@ -8,29 +8,35 @@ const TABLE_CONFIGS = {
 		table: 'order_items',
 		child_doctype: 'Order Receipt Item',
 		noun: 'Order Item',
-		// Scope the vpn Link to this receipt's vendor. Vendor Product records carry a
-		// `vendor` link (Vendor.Name) and are named "<part number> (<vendor>)".
 		customize_field: (frm, field, job) => {
-			if (field.fieldname === 'vpn') {
-				field.get_query = () => ({filters: {vendor: frm.doc.vendor}});
-				if (job === 'edit') field.read_only = 1;
-			}
+			if (['vpn', 'item_type'].includes(field.fieldname) && job === 'edit') field.read_only = 1;
 			if (field.fieldname === 'received' && job === 'add') {
 				field.hidden = 1;
 			}
 		},
-		// The Add dialog offers a shortcut into the same vendor-link flow the scan box uses,
-		// for when the desired vpn isn't in the Link field's options yet (no Vendor Product on
-		// file, or no Ascend Product at all).
+		// Scope the vpn Dynamic Link to this receipt's vendor. Vendor Product records carry a `vendor`
+		// link (Vendor.Name) and are named "<part number> (<vendor>)"; New Products carry one too, and
+		// cancelled/imported ones are not receivable. The Add dialog also offers a shortcut into the
+		// same vendor-link flow the scan box uses, for when the desired vpn isn't in the Link field's
+		// options yet (no Vendor Product on file, or no Ascend Product at all).
 		customize_dialog: (frm, dialog, job) => {
-			if (job !== 'add') return;
-			dialog.add_custom_action(__('Add Vendor Product'), () => {
+			dialog.fields_dict.vpn.get_query = () => ({
+				filters: dialog.get_value('item_type') === 'New Product'
+					? {vendor: frm.doc.vendor, status: ['in', STAGED_STATUSES]}
+					: {vendor: frm.doc.vendor},
+			});
+		if (job !== 'add') return;
+				dialog.add_custom_action(__('Add Vendor Product'), () => {
 				dialog.hide();
 				open_link_product_dialog(frm);
 			});
 		}
 	}
 };
+
+// New Product statuses a receipt can still add to an order: staged in Bullwheel, or exported and
+// waiting for Ascend. Imported products are Vendor Products by then.
+const STAGED_STATUSES = ['Pending', 'Exported', 'Import Failed'];
 
 // A child field is editable through the dialog/queue when it is writable, non-virtual, and
 // value-bearing. Mirrors writable_fieldnames() in order_receipt.py.
@@ -163,15 +169,16 @@ function show_table_buttons(frm, config) {
 
 // ── Label printing ─────────────────────────────────────────────────────────────
 
-// Map the selected order-item rows to print items. Each row's `vpn` (a Vendor Product
-// docname) is already in scope, so the client passes it straight through and the server
-// resolves the rest (Vendor Product → product → Ascend Product) — no per-row round trips.
+// Map the selected order-item rows to print items. Each row's `vpn` (a Vendor Product or New
+// Product docname) and item_type are already in scope, so the client passes them straight through
+// and the server resolves the rest (Vendor Product → product → Ascend Product; New Product →
+// itself, or its Ascend Product once imported) — no per-row round trips.
 function selected_order_items(frm) {
 	return frm.fields_dict.order_items.grid
 		.get_selected_children()
 		.filter((row) => row.vpn)
 		.map((row) => ({
-			doctype: 'Vendor Product',
+			doctype: row.item_type || 'Vendor Product',
 			name: row.vpn,
 			quantity: 1,
 			label: row.description || row.vpn,
@@ -200,14 +207,15 @@ function add_product_print_buttons(frm) {
 // All scan mutations route through the serialized queue (like the buttons), so the
 // grids stay read-only and concurrent scans from multiple users can't lose updates.
 
-// Add or increment an order item. The server-side upsert (match on vpn) keeps
+// Add or increment an order item. The server-side upsert (match on item_type + vpn) keeps
 // rapid/concurrent scans correct regardless of the form's on-screen state. description/upc
 // are computed (is_virtual, see order_receipt_item.py), not passed in.
-function queue_add_or_increment_item(frm, vpn, cost) {
+function queue_add_or_increment_item(frm, vpn, cost, item_type = 'Vendor Product') {
 	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.queue_add_or_increment_item', {
 		docname: frm.doc.name,
 		vpn: vpn,
-		cost: cost
+		cost: cost,
+		item_type: item_type
 	}).then(() => frappe.show_alert({
 		message: __('Added: {0}', [frappe.utils.escape_html(vpn)]),
 		indicator: 'green'
@@ -215,22 +223,37 @@ function queue_add_or_increment_item(frm, vpn, cost) {
 }
 
 // Entry point for the Add Order Item dialog's "Add Vendor Product" action: unlike the scan
-// flow, no Ascend Product has been resolved yet, so this collects one via a Link field before
-// handing off to open_vendor_link_dialog. Also offers "Create New Product" for when the
-// desired product isn't in Ascend at all yet.
+// flow, no product has been resolved yet, so this collects one via a Link field — an Ascend
+// Product, or a New Product still waiting to be imported (a product another vendor's order
+// staged) — before handing off to open_vendor_link_dialog. Also offers "Create New Product" for
+// when the desired product isn't in Ascend or Bullwheel at all yet.
 function open_link_product_dialog(frm) {
 	const dialog = new frappe.ui.Dialog({
 		title: __('Select Product to Link'),
 		fields: [
-			{fieldname: 'product', label: __('Product'), fieldtype: 'Link', options: 'Ascend Product', reqd: 1}
+			{fieldname: 'product', label: __('Ascend Product'), fieldtype: 'Link', options: 'Ascend Product'},
+			{
+				fieldname: 'pending_product', label: __('or Pending New Product'), fieldtype: 'Link', options: 'New Product',
+				description: __("A product that is not in Ascend yet because another vendor's New Product is waiting to be imported."),
+				get_query: () => ({filters: {status: ['in', STAGED_STATUSES]}})
+			}
 		],
 		primary_action_label: __('Next'),
 		primary_action: async (values) => {
 			if (!values) return;
-			const response = await frappe.db.get_value('Ascend Product', values.product,
-				['id', 'description', 'upc', 'brand', 'style_name', 'size', 'color']);
+			if (!!values.product === !!values.pending_product) {
+				frappe.msgprint(__('Choose either an Ascend Product or a Pending New Product.'));
+				return;
+			}
 			dialog.hide();
-			open_vendor_link_dialog(frm, {...response.message, product_id: response.message.id});
+			const fields = ['description', 'upc', 'brand', 'style_name', 'size', 'color'];
+			if (values.product) {
+				const response = await frappe.db.get_value('Ascend Product', values.product, fields);
+				open_vendor_link_dialog(frm, {...response.message, ascend_product: values.product});
+			} else {
+				const response = await frappe.db.get_value('New Product', values.pending_product, fields);
+				open_vendor_link_dialog(frm, {...response.message, base_new_product: values.pending_product});
+			}
 		}
 	});
 
@@ -242,13 +265,23 @@ function open_link_product_dialog(frm) {
 	dialog.show();
 }
 
-// 'product found': Ascend already has this product, but the receipt's vendor has no Vendor
-// Product on file for it yet. A minimal dialog collects just the part number (VPN) and cost
-// needed to create that Vendor Product; the server inserts it into Ascend and, on success,
-// adds/increments the matching order item. Runs synchronously (not via the queue) so an
-// Ascend insert failure is reported back into this dialog instead of failing silently in a
-// background job.
+// 'product found' / 'pending product found': the product exists (in Ascend, or staged as another
+// vendor's New Product), but the receipt's vendor has no part number for it yet. A minimal dialog
+// collects the part number (VPN) and cost; the server stages an Existing Product New Product —
+// Bullwheel cannot write the Vendor Product into Ascend — and adds/increments the matching order
+// item. Runs synchronously (not via the queue) so a rejected entry is reported back into this
+// dialog instead of failing silently in a background job. `record` carries either `ascend_product`
+// (the Store SKU) or `base_new_product` (the pending New Product's name).
 async function open_vendor_link_dialog(frm, record) {
+
+	if (!record.upc) {
+		frappe.msgprint({
+			title: __('No UPC'),
+			indicator: 'red',
+			message: __('This product has no UPC, so Ascend cannot attach a new vendor part number to it from an import sheet. Add the Vendor Product to it in Ascend directly.')
+		});
+		return;
+	}
 
 	const vendor_id_response = await frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.get_vendor_id', {
 		vendor: frm.doc.vendor
@@ -260,25 +293,26 @@ async function open_vendor_link_dialog(frm, record) {
 		brand: record.brand,
 		model: record.style_name,
 		size: record.size,
-		color: record.color
+		color: record.color,
+		vendor: frm.doc.vendor
 	});
 	const generated_vpn = generated_vpn_response.message;
 
 	const dialog = new frappe.ui.Dialog({
-		title: __('Link Vendor Product'),
+		title: __('Add Vendor Part Number'),
 		fields: [
 			{fieldname: 'description', label: __('Description'), fieldtype: 'Data', read_only: 1, default: record.description},
 			{fieldname: 'part_number', label: __('Part Number (VPN)'), fieldtype: 'Data', reqd: 1, default: generated_vpn },
 			{fieldname: 'cost', label: __('Cost'), fieldtype: 'Currency', reqd: 1}
 		],
-		primary_action_label: __('Link & Add'),
+		primary_action_label: __('Add'),
 		primary_action: (values) => {
-			frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.link_vendor_product', {
+			frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.stage_existing_product', {
 				docname: frm.doc.name,
-				product_id: record.product_id,
 				part_number: values.part_number,
 				cost: values.cost,
-				description: record.description
+				ascend_product: record.ascend_product,
+				base_new_product: record.base_new_product
 			}).then((response) => {
 				dialog.hide();
 				frappe.show_alert({
@@ -300,9 +334,9 @@ async function open_vendor_link_dialog(frm, record) {
 // value (when called from a scan; omitted when called from the "Create New Product" dialog
 // action), this receipt's vendor, and this receipt's vpn_prefix are seeded onto the document
 // before the modal opens (vpn_prefix is a hidden field, never rendered) — New Product's own
-// insert hooks (see new_product.py) generate the Vendor Part Number, create the Ascend
-// Product, and, since vendor is set, the linked Vendor Product. Vendor is visible by default
-// on New Product, but this flow sets it automatically from the receipt, so
+// insert hooks (see new_product.py) generate the Vendor Part Number. The record stays in
+// Bullwheel until it is exported on an import sheet and imported into Ascend. Vendor is visible by
+// default on New Product, but this flow sets it automatically from the receipt, so
 // __created_via_order_receipt (a client-only property, never persisted — see new_product.json's
 // vendor field) hides it specifically for this flow rather than for manual vendor entry.
 function open_new_product_form_dialog(frm, scanned_value = null) {
@@ -316,11 +350,7 @@ function open_new_product_form_dialog(frm, scanned_value = null) {
 		bullwheel.forms.open_form_dialog('New Product', {
 			seed_document: seed_document,
 			after_insert(new_product) {
-				queue_add_or_increment_item(
-					frm,
-					`${new_product.vpn} (${frm.doc.vendor})`, // matches VendorProduct.NAME_EXPRESSION
-					new_product.estimated_cost
-				);
+				queue_add_or_increment_item(frm, new_product.name, new_product.estimated_cost, 'New Product');
 			},
 		});
 	});
@@ -328,7 +358,8 @@ function open_new_product_form_dialog(frm, scanned_value = null) {
 
 // Dispatch a scanned identifier: resolve it via scan_item, then route the result through the
 // serialized queue (add/increment an order item), the vendor-link dialog, or the New Product
-// form dialog.
+// form dialog. 'new product found' is a product already staged for this vendor in Bullwheel;
+// 'pending product found' is one staged for another vendor.
 function handle_scan(frm, scanned_value) {
 	frappe.call('bullwheel.ascend.doctype.order_receipt.order_receipt.scan_item', {
 		id: scanned_value,
@@ -337,12 +368,18 @@ function handle_scan(frm, scanned_value) {
 	}).then((response) => {
 		const [status, record] = response.message || [];
 
-		if (status === 'vpn found') {
+		if (status === 'new product found') {
+			// record.name is the staged New Product's name.
+			queue_add_or_increment_item(frm, record.name, record.cost, 'New Product');
+		} else if (status === 'vpn found') {
 			// record.vpn is the Vendor Product's docname, e.g. "12345 (Specialized)".
 			queue_add_or_increment_item(frm, record.vpn, record.cost);
 		} else if (status === 'product found') {
 			// Ascend has this product, but this vendor has no Vendor Product on file yet.
-			open_vendor_link_dialog(frm, record);
+			open_vendor_link_dialog(frm, {...record, ascend_product: record.store_sku});
+		} else if (status === 'pending product found') {
+			// Another vendor's order staged this product and it is not in Ascend yet.
+			open_vendor_link_dialog(frm, {...record, base_new_product: record.name});
 		} else {
 			// No record of this item anywhere — confirm before creating one from scratch.
 			frappe.confirm(
@@ -468,14 +505,26 @@ frappe.ui.form.on("Order Receipt", {
 				})
         	},__("Receiving"));
 
+			frm.add_custom_button(__('Re-download Full Export'), () => {
+				// For a download that failed in the browser: exports every order item again and marks nothing.
+				window.open('/api/method/bullwheel.ascend.doctype.order_receipt.order_receipt.export_received_batch'
+					+ '?redownload=1&docname=' + encodeURIComponent(frm.doc.name));
+			},__("Receiving"));
+
 			frm.add_custom_button(__('Import Instructions'), () => {
 				frappe.msgprint({
 					title: __('Ascend Order Import Instructions'),
 					indicator: 'green',
 					message: __(`Note: This task should be performed by a member of the Receiving Team.
 								<div style='margin-top: 20px;'></div>
-								After exporting the received batch, a single "PO" spreadsheet will be downloaded to your computer, containing VPN, Cost, and Quantity data for the Order. New and vendor-linked products are created directly in Ascend during receiving, so there is no separate Vendor Products sheet to import.
+							After exporting the received batch, a file is downloaded to your computer. If the order contains New Products it is a ZIP holding a "Vendor Products" spreadsheet (the new products and the vendor part numbers for existing products) and a "PO" spreadsheet (VPN, Cost, and Quantity for the Order); otherwise it is the "PO" spreadsheet alone. New products are not in Ascend until the Vendor Products spreadsheet is imported, so it must be imported <b>first</b>.
 								<div style='margin-top: 20px;'></div>
+							<b>Vendor Products Import Steps</b> (skip when there is no Vendor Products spreadsheet)<br>
+							1. In Ascend, select File > Import > Vendor Products.<br>
+							2. Choose <b>this order's vendor</b> when asked. The spreadsheet does not name the vendor.<br>
+							3. Select the "Vendor Products" spreadsheet and import it.<br>
+							Bullwheel matches the imported products automatically within a few minutes (or press Check Ascend on the New Product list).
+							<div style='margin-top: 20px;'></div>
 								<b>Order Import Steps</b><br>
 								1. Open Orders from either the Ascend Desktop or the Database Explorer.<br>
 								2. Add a new order.<br>
@@ -497,11 +546,19 @@ frappe.ui.form.on("Order Receipt", {
 					return;
 				}
 
-				vpn = rows[0].vpn
+				const row = rows[0];
 				frappe.show_alert('Loading Product...', 5)
-				frappe.db.get_value('Vendor Product', vpn, 'product').then(response => {
+				if (row.item_type === 'New Product') {
+					// A staged New Product opens as itself; once imported it has an Ascend Product.
+					frappe.db.get_value('New Product', row.vpn, 'ascend_product').then(response => {
+						const ascend_product = response.message.ascend_product;
+						window.open(ascend_product ? `/desk/ascend-product/${ascend_product}` : `/desk/new-product/${row.vpn}`, '_blank');
+					});
+					return;
+				}
+				frappe.db.get_value('Vendor Product', row.vpn, 'product').then(response => {
 					window.open(`/desk/ascend-product/${response.message.product}`,'_blank');
- 				})	
+				});
 			})
 
 			add_product_print_buttons(frm);

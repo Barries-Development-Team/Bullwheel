@@ -1,12 +1,16 @@
 {
  "actions": [],
- "allow_rename": 1,
- "autoname": "field:store_sku",
+ "allow_rename": 0,
+ "autoname": "NP-.#####",
  "creation": "2026-07-14 17:51:16.658373",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "status",
+  "entry_type",
+  "ascend_product",
+  "base_new_product",
   "description_section",
   "description",
   "description_template",
@@ -55,9 +59,58 @@
   "manufacturers_part_number",
   "column_break_ipev",
   "style_number",
-  "vpn_prefix"
+  "vpn_prefix",
+  "import_status_section",
+  "exported_on",
+  "imported_on",
+  "export_batch"
  ],
  "fields": [
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nExported\nImported\nImport Failed\nCancelled",
+   "default": "Pending",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Pending: waiting to be exported. Exported: on an import sheet, waiting for Ascend to create it. Imported: matched to its Ascend Product."
+  },
+  {
+   "fieldname": "entry_type",
+   "fieldtype": "Select",
+   "label": "Entry Type",
+   "options": "New Product\nExisting Product",
+   "default": "New Product",
+   "reqd": 1,
+   "set_only_once": 1,
+   "allow_in_quick_entry": 1,
+   "in_standard_filter": 1,
+   "description": "Existing Product: the product is already in Ascend (or pending from another vendor) and this vendor does not carry it yet."
+  },
+  {
+   "fieldname": "ascend_product",
+   "fieldtype": "Link",
+   "label": "Ascend Product",
+   "options": "Ascend Product",
+   "allow_in_quick_entry": 1,
+   "no_copy": 1,
+   "depends_on": "eval:doc.entry_type=='Existing Product' || doc.status=='Imported'",
+   "mandatory_depends_on": "eval:doc.entry_type=='Existing Product' && !doc.base_new_product",
+   "read_only_depends_on": "eval:doc.entry_type!='Existing Product'"
+  },
+  {
+   "fieldname": "base_new_product",
+   "fieldtype": "Link",
+   "label": "Pending New Product",
+   "options": "New Product",
+   "allow_in_quick_entry": 1,
+   "no_copy": 1,
+   "depends_on": "eval:doc.entry_type=='Existing Product' && !doc.ascend_product",
+   "description": "Use when the product is not in Ascend yet because another vendor's New Product is still waiting to be imported."
+  },
   {
    "allow_in_quick_entry": 1,
    "description": "Generated on save.",
@@ -73,10 +126,11 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Description",
-   "mandatory_depends_on": "eval:!doc.description_template",
+   "mandatory_depends_on": "eval:doc.entry_type!='Existing Product' && !doc.description_template",
    "placeholder": "Auto-generated when a Description Template is chosen below; edit directly only when Description Template is left blank.",
    "read_only_depends_on": "eval:doc.description_template",
-   "unique": 0
+   "unique": 0,
+   "depends_on": "eval:doc.entry_type!='Existing Product'"
   },
   {
    "allow_in_quick_entry": 1,
@@ -84,7 +138,8 @@
    "fieldtype": "Link",
    "label": "Category",
    "options": "Product Category",
-   "reqd": 1
+   "mandatory_depends_on": "eval:doc.entry_type!='Existing Product'",
+   "depends_on": "eval:doc.entry_type!='Existing Product'"
   },
   {
    "fieldname": "column_break_swll",
@@ -93,7 +148,8 @@
   {
    "fieldname": "section_break_reim",
    "fieldtype": "Section Break",
-   "label": "Identifiers"
+   "label": "Identifiers",
+   "depends_on": "eval:doc.entry_type!='Existing Product'"
   },
   {
    "allow_in_quick_entry": 1,
@@ -108,7 +164,7 @@
    "fieldtype": "Data",
    "label": "Style (Model) Name",
    "placeholder": "Do NOT include product type (e.g., Skis, Snowboard Bindings).",
-   "reqd": 1
+   "mandatory_depends_on": "eval:doc.entry_type!='Existing Product'"
   },
   {
    "fieldname": "style_number",
@@ -167,18 +223,20 @@
   {
    "fieldname": "product_details_section",
    "fieldtype": "Section Break",
-   "label": "Product Details"
+   "label": "Product Details",
+   "depends_on": "eval:doc.entry_type!='Existing Product'"
   },
   {
    "allow_in_quick_entry": 1,
    "fieldname": "brand",
    "fieldtype": "Data",
    "label": "Brand",
-   "reqd": 1
+   "mandatory_depends_on": "eval:doc.entry_type!='Existing Product'"
   },
   {
    "fieldname": "description_section",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "depends_on": "eval:doc.entry_type!='Existing Product'"
   },
   {
    "allow_in_quick_entry": 1,
@@ -205,7 +263,7 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "MSRP",
-   "reqd": 1
+   "mandatory_depends_on": "eval:doc.entry_type!='Existing Product'"
   },
   {
    "allow_in_quick_entry": 1,
@@ -227,13 +285,13 @@
    "label": "Case MSRP"
   },
   {
-   "description": "Generated on save.",
+   "description": "Assigned by Ascend. Filled in when this product is matched after import.",
    "fieldname": "store_sku",
    "fieldtype": "Data",
    "label": "Store SKU",
-   "placeholder": "Generated on save",
+   "placeholder": "Assigned by Ascend",
    "read_only": 1,
-   "unique": 1
+   "no_copy": 1
   },
   {
    "fieldname": "vendor",
@@ -267,7 +325,8 @@
   {
    "fieldname": "pricing_section",
    "fieldtype": "Section Break",
-   "label": "Pricing"
+   "label": "Pricing",
+   "depends_on": "eval:doc.entry_type!='Existing Product'"
   },
   {
    "fieldname": "column_break_njci",
@@ -278,7 +337,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix)",
+   "depends_on": "eval:doc.category && frappe.boot.ski_category_prefix && doc.category.includes(frappe.boot.ski_category_prefix) && doc.entry_type!='Existing Product'",
    "fieldname": "ski_details_section",
    "fieldtype": "Section Break",
    "label": "Ski Details"
@@ -366,6 +425,34 @@
    "label": "Swap/Online Pricing Rule",
    "options": "Product Pricing Rule",
    "placeholder": "Leave blank to set manually"
+  },
+  {
+   "fieldname": "import_status_section",
+   "fieldtype": "Section Break",
+   "label": "Import Status",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "exported_on",
+   "fieldtype": "Datetime",
+   "label": "Exported On",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "imported_on",
+   "fieldtype": "Datetime",
+   "label": "Imported On",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "export_batch",
+   "fieldtype": "Link",
+   "label": "Export Batch",
+   "options": "Bulk Product Import",
+   "read_only": 1,
+   "no_copy": 1
   }
  ],
  "grid_page_length": 50,
@@ -375,7 +462,7 @@
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "New Product",
- "naming_rule": "By fieldname",
+ "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {
@@ -389,6 +476,15 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Warehouse Staff",
+   "write": 1
   }
  ],
  "quick_entry": 1,
@@ -398,5 +494,7 @@
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],
- "title_field": "vpn"
+ "title_field": "description",
+ "search_fields": "upc,vpn,manufacturers_part_number",
+ "track_changes": 1
 }
