@@ -10,11 +10,20 @@ from bullwheel.ascend.doctype.ascend_product.ascend_product import AscendProduct
 class SwapTagBatchItem(Document):
 	
 	def _ascend_fields(self):
+		"""Fetch and memoize this row's product details: an Ascend Product through the short-TTL
+		cache, or a New Product (not imported into Ascend yet) from Bullwheel's own database,
+		which has no average cost. Returns None when no product is set or it does not resolve."""
 		if not hasattr(self, "_ascend_field_cache"):
-			self._ascend_field_cache = (
-				AscendProduct.get_bulk_short_cached_values([self.product], ["description", "estimated_cost", "average_cost", "price"]).get(self.product)
-				if self.product else None
-			)
+			if not self.product:
+				self._ascend_field_cache = None
+			elif self.product_type == "New Product":
+				self._ascend_field_cache = frappe.db.get_value(
+					"New Product", self.product, ["description", "estimated_cost", "price"], as_dict=True
+				)
+			else:
+				self._ascend_field_cache = AscendProduct.get_bulk_short_cached_values(
+					[self.product], ["description", "estimated_cost", "average_cost", "price"]
+				).get(self.product)
 		return self._ascend_field_cache
 	
 	@property

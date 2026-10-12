@@ -10,14 +10,19 @@ from bullwheel.ascend.doctype.ascend_product.ascend_product import AscendProduct
 class LocationInventory(Document):
 
 	def _ascend_fields(self):
-		"""Fetch and memoize the linked Ascend Product's mirrored fields so both virtual
-		fields share a single SQL query per document instance. Returns None when no product
-		is linked or the linked product no longer exists in Ascend."""
+		"""Fetch and memoize the linked product's description/upc so both virtual fields share a
+		single query per document instance: an Ascend Product from Ascend, a New Product (not
+		imported yet) from Bullwheel's own database. Returns None when no product is linked or
+		the linked product no longer exists."""
 		if not hasattr(self, "_ascend_field_cache"):
-			self._ascend_field_cache = (
-				AscendProduct.get_values(self.product, ["description", "upc"])
-				if self.product else None
-			)
+			if not self.product:
+				self._ascend_field_cache = None
+			elif self.product_type == "New Product":
+				self._ascend_field_cache = frappe.db.get_value(
+					"New Product", self.product, ["description", "upc"], as_dict=True
+				)
+			else:
+				self._ascend_field_cache = AscendProduct.get_values(self.product, ["description", "upc"])
 		return self._ascend_field_cache
 
 	@property

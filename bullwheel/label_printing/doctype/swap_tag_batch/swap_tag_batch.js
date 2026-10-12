@@ -1,15 +1,16 @@
 // Copyright (c) 2026, Barrie's Ski and Sports and contributors
 // For license information, please see license.txt
 
-// Resolve a scanned identifier to an Ascend Product and add/increment its inventory row.
+// Resolve a scanned identifier to a product — an Ascend Product, or a New Product still waiting
+// to be imported into Ascend — and add/increment its row. The server prefers the Ascend Product
+// and falls back to the staged New Product (see ascend/product_lookup.py).
 function handle_scan(frm, scanned_value) {
 	frappe.call({
-		method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_values',
-		args: {name: scanned_value, fields: ['name', 'description', 'upc']},
+		method: 'bullwheel.ascend.product_lookup.resolve_scanned_product',
+		args: {identifier: scanned_value},
 		callback(response) {
 			const product = response.message;
-			// get_values returns the product record (truthy object) when found,
-			// or null when no product matches the scan.
+			// null when no product matches the scan.
 			if (!product) {
 				frappe.show_alert({
 					message: `No product found for: ${frappe.utils.escape_html(scanned_value)}`,
@@ -18,11 +19,10 @@ function handle_scan(frm, scanned_value) {
 				return;
 			}
 
-			// The Link field stores the Ascend Product's name (the ID column),
+			// The Dynamic Link stores the product's name (the Store SKU or New Product name),
 			// not the scanned barcode.
-			const store_upc = product.name;
 			const existing_row = (frm.doc.swap_tag_items || []).find(
-				row => row.product === store_upc
+				row => row.product === product.name && row.product_type === product.doctype
 			);
 
 			if (existing_row) {
@@ -31,14 +31,15 @@ function handle_scan(frm, scanned_value) {
 				frm.add_child('swap_tag_items', {
 					// Preview values for description and upc will be replaced after save by virtual field implementation.
 					print: 1,
-                    product: store_upc,
+					product_type: product.doctype,
+					product: product.name,
 					description: product.description,
 					print_quantity: 1
 				});
 			}
 			frm.refresh_field('swap_tag_items');
 			frappe.show_alert({
-				message: `Added: ${frappe.utils.escape_html(product.description || store_upc)}`,
+				message: `Added: ${frappe.utils.escape_html(product.description || product.name)}`,
 				indicator: 'green'
 			});
 		}
@@ -80,13 +81,14 @@ function setup_scan_box(frm) {
 }
 
 // Map enabled rows in swap_tag_items to the items contract expected by
-// bullwheel.printing.show_print_dialog — Ascend Product is a Native doctype for
-// label resolution, so no Vendor Product hop is needed here.
+// bullwheel.printing.show_print_dialog. Each row carries its own doctype: Ascend Product and
+// New Product are both printable by the swap tag (a New Product that has been imported hops to
+// its Ascend Product server-side), so no Vendor Product hop is needed here.
 function enabled_swap_tag_items(frm) {
 	return (frm.doc.swap_tag_items || [])
 		.filter((row) => row.print && row.product)
 		.map((row) => ({
-			doctype: 'Ascend Product',
+			doctype: row.product_type || 'Ascend Product',
 			name: row.product,
 			quantity: row.print_quantity,
 			label: row.description || row.product,
@@ -114,6 +116,7 @@ function find_swap_price_mismatches(enabled_rows, live_prices) {
 			return differs
 				? {
 						product: row.product,
+						product_type: row.product_type || 'Ascend Product',
 						description: row.description || row.product,
 						current_price: is_missing ? null : flt(live_price),
 						new_price: row_price,
@@ -187,7 +190,7 @@ async function handle_print_enabled_labels(frm) {
 		return;
 	}
 
-	const products = enabled_rows.map((row) => row.product);
+	const products = enabled_rows.map((row) => ({doctype: row.product_type || 'Ascend Product', name: row.product}));
 	const live_prices = await frappe.call({
 		method: 'bullwheel.ascend.doctype.product_price.product_price.get_swap_prices',
 		args: { products },
@@ -210,18 +213,14 @@ async function handle_print_enabled_labels(frm) {
 	let new_prices = null;
 	let original_prices_to_restore = null;
 	if (mismatches.length) {
-		new_prices = {};
-		mismatches.forEach((mismatch) => {
-			new_prices[mismatch.product] = mismatch.new_price;
-		});
+		new_prices = mismatches.map((mismatch) => ({
+			doctype: mismatch.product_type, name: mismatch.product, price: mismatch.new_price,
+		}));
 
 		if (!keep_price_changes) {
-			original_prices_to_restore = {};
-			mismatches.forEach((mismatch) => {
-				if (mismatch.current_price !== null) {
-					original_prices_to_restore[mismatch.product] = mismatch.current_price;
-				}
-			});
+			original_prices_to_restore = mismatches
+				.filter((mismatch) => mismatch.current_price !== null)
+				.map((mismatch) => ({doctype: mismatch.product_type, name: mismatch.product, price: mismatch.current_price}));
 		}
 	}
 
@@ -243,7 +242,6 @@ async function handle_print_enabled_labels(frm) {
 					method: 'bullwheel.label_printing.print_labels',
 					printer_name: printer_name,
 					slot: 'swap_tag',
-					doctype: 'Ascend Product',
 					items: printable_items,
 					label: __('Print Enabled Labels'),
 				})
@@ -251,7 +249,7 @@ async function handle_print_enabled_labels(frm) {
 					// Only now, after the server has actually finished printing (and
 					// therefore already read the live price), revert the temporary
 					// change for anything the user chose "this print only" for.
-					if (original_prices_to_restore && Object.keys(original_prices_to_restore).length) {
+					if (original_prices_to_restore && original_prices_to_restore.length) {
 						frappe.call({
 							method: 'bullwheel.ascend.doctype.product_price.product_price.set_swap_prices',
 							args: { prices: original_prices_to_restore },

@@ -511,6 +511,17 @@ frappe.ui.form.on("Order Receipt", {
 					+ '?redownload=1&docname=' + encodeURIComponent(frm.doc.name));
 			},__("Receiving"));
 
+			frm.add_custom_button(__('Check Ascend for Imports'), () => {
+				// Matches this order's exported New Products to the products Ascend created.
+				frappe.call({
+					method: 'bullwheel.ascend.new_product_reconciliation.check_ascend',
+					args: {names: (frm.doc.order_items || []).filter((row) => row.item_type === 'New Product').map((row) => row.vpn)},
+					freeze: true,
+					freeze_message: __('Checking Ascend...'),
+					callback: () => frm.reload_doc(),
+				});
+			},__("Receiving"));
+
 			frm.add_custom_button(__('Import Instructions'), () => {
 				frappe.msgprint({
 					title: __('Ascend Order Import Instructions'),

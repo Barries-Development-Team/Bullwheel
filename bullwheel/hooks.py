@@ -188,6 +188,13 @@ doc_events = {
 # Scheduled Tasks
 # ---------------
 
+scheduler_events = {
+	# Match New Products that staff have imported into Ascend (see ascend/new_product_reconciliation.py).
+	"cron": {
+		"*/15 * * * *": ["bullwheel.ascend.new_product_reconciliation.scheduled_reconciliation"],
+	},
+}
+
 # scheduler_events = {
 # 	"all": [
 # 		"bullwheel.tasks.all"

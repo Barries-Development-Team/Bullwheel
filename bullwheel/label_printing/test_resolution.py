@@ -46,6 +46,12 @@ class _DynamicLinkResolvedController:
 	LABEL_RESOLUTION_FIELD = 'linked'
 
 
+class _OptionalHopController:
+	"""New Product-shaped: hops to its Ascend Product once imported, otherwise prints itself."""
+	LABEL_RESOLUTION_FIELD = 'ascend_product'
+	LABEL_RESOLUTION_OPTIONAL = True
+
+
 class _NonLinkResolvedController:
 	"""Misconfigured: LABEL_RESOLUTION_FIELD names a Data field."""
 	LABEL_RESOLUTION_FIELD = 'description'
@@ -66,7 +72,7 @@ class _CycleControllerB:
 
 CONTROLLERS = {
 	'Ascend Product': _NativeController,
-	'New Product': _NativeController,
+	'New Product': _OptionalHopController,
 	'Vendor Product': _LinkResolvedController,
 	'Order Receipt Item': _OrderReceiptItemController,
 	'Dynamic Doctype': _DynamicLinkResolvedController,
@@ -81,6 +87,7 @@ FIELDS = {
 	('Order Receipt Item', 'vpn'): frappe._dict(fieldtype='Link', options='Vendor Product', label='VPN'),
 	('Dynamic Doctype', 'linked'): frappe._dict(fieldtype='Dynamic Link', options='linked_doctype', label='Linked'),
 	('Broken Doctype', 'description'): frappe._dict(fieldtype='Data', options=None, label='Description'),
+	('New Product', 'ascend_product'): frappe._dict(fieldtype='Link', options='Ascend Product', label='Ascend Product'),
 	('Cycle A', 'linked'): frappe._dict(fieldtype='Link', options='Cycle B', label='Linked'),
 	('Cycle B', 'linked'): frappe._dict(fieldtype='Link', options='Cycle A', label='Linked'),
 }
@@ -90,6 +97,9 @@ DOCUMENTS = {
 	('Vendor Product', 'VP-EMPTY'): {'product': None},
 	('Order Receipt Item', 'ORI-001'): {'vpn': 'VP-001'},
 	('Dynamic Doctype', 'DD-001'): {'linked': 'NP-001', 'linked_doctype': 'New Product'},
+	('New Product', 'NP-001'): {'ascend_product': None},
+	('New Product', 'NP-PENDING'): {'ascend_product': None},
+	('New Product', 'NP-IMPORTED'): {'ascend_product': 'ABC12345678Z'},
 	('Cycle A', 'a1'): {'linked': 'b1'},
 	('Cycle B', 'b1'): {'linked': 'a1'},
 }
@@ -183,6 +193,24 @@ class UnitTestResolveToNative(UnitTestCase):
 			with self.assertRaises(LabelResolutionError) as context:
 				resolve_to_native('Fieldless Doctype', 'FD-001')
 		self.assertIn('nonexistent', str(context.exception))
+
+	def test_optional_hop_with_empty_field_prints_the_document_itself(self):
+		"""A New Product still waiting for import has no Ascend Product to hop to."""
+		with _resolution_environment():
+			result = resolve_to_native('New Product', 'NP-PENDING', target_doctypes=['Ascend Product', 'New Product'])
+		self.assertEqual(result, ('New Product', 'NP-PENDING'))
+
+	def test_optional_hop_with_populated_field_hops_even_when_doctype_is_a_target(self):
+		"""An imported New Product must print from the live Ascend Product, so the hop is
+		followed before the label's target doctypes are consulted."""
+		with _resolution_environment():
+			result = resolve_to_native('New Product', 'NP-IMPORTED', target_doctypes=['Ascend Product', 'New Product'])
+		self.assertEqual(result, ('Ascend Product', 'ABC12345678Z'))
+
+	def test_order_item_dynamic_link_to_pending_new_product_resolves_to_it(self):
+		with _resolution_environment():
+			result = resolve_to_native('Dynamic Doctype', 'DD-001', target_doctypes=['Ascend Product', 'New Product'])
+		self.assertEqual(result, ('New Product', 'NP-001'))
 
 	def test_cyclic_chain_raises_instead_of_looping(self):
 		with _resolution_environment():

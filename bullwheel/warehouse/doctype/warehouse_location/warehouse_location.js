@@ -1,15 +1,15 @@
 // Copyright (c) 2026, Barrie's Ski and Sports and contributors
 // For license information, please see license.txt
 
-// Resolve a scanned identifier to an Ascend Product and add/increment its inventory row.
+// Resolve a scanned identifier to a product — an Ascend Product, or a New Product still waiting
+// to be imported into Ascend — and add/increment its inventory row.
 function handle_scan(frm, scanned_value) {
 	frappe.call({
-		method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_values',
-		args: {name: scanned_value, fields: ['name', 'description', 'upc']},
+		method: 'bullwheel.ascend.product_lookup.resolve_scanned_product',
+		args: {identifier: scanned_value},
 		callback(response) {
 			const product = response.message;
-			// get_values returns the product record (truthy object) when found,
-			// or null when no product matches the scan.
+			// null when no product matches the scan.
 			if (!product) {
 				frappe.show_alert({
 					message: `No product found for: ${frappe.utils.escape_html(scanned_value)}`,
@@ -18,11 +18,10 @@ function handle_scan(frm, scanned_value) {
 				return;
 			}
 
-			// The Link field stores the Ascend Product's name (the ID column),
+			// The Dynamic Link stores the product's name (the Store SKU or New Product name),
 			// not the scanned barcode.
-			const store_upc = product.name;
 			const existing_row = (frm.doc.location_inventory_quantities || []).find(
-				row => row.product === store_upc
+				row => row.product === product.name && row.product_type === product.doctype
 			);
 
 			if (existing_row) {
@@ -30,7 +29,8 @@ function handle_scan(frm, scanned_value) {
 			} else {
 				frm.add_child('location_inventory_quantities', {
 					// Preview values for description and upc will be replaced after save by virtual field implementation.
-					product: store_upc,
+					product_type: product.doctype,
+					product: product.name,
 					description: product.description,
 					upc: product.upc,
 					quantity: 1
@@ -38,7 +38,7 @@ function handle_scan(frm, scanned_value) {
 			}
 			frm.refresh_field('location_inventory_quantities');
 			frappe.show_alert({
-				message: `Added: ${frappe.utils.escape_html(product.description || store_upc)}`,
+				message: `Added: ${frappe.utils.escape_html(product.description || product.name)}`,
 				indicator: 'green'
 			});
 		}

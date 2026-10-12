@@ -103,4 +103,87 @@ def _format_suggested_config(config):
 	return "SCHEMA_CONFIG = {\n" + ",\n".join(lines) + "\n}"
 
 
-commands = [introspect_schema]
+@click.command("audit-bullwheel-products")
+@click.option(
+	"--output",
+	"output_path",
+	default=None,
+	type=click.Path(dir_okay=False, writable=True),
+	help="CSV file to write. Defaults to printing the CSV to the terminal.",
+)
+@pass_context
+def audit_bullwheel_products(context, output_path=None):
+	"""List Ascend Products that Bullwheel created before it stopped writing to Ascend, and what
+	is missing on them.
+
+	Until now creating a New Product also inserted its Ascend Product directly, bypassing the
+	validation Ascend runs when a product is created in Ascend itself. This report reads those
+	products back (read-only, through the Ascend Product and Vendor Product DocTypes) and flags the
+	ones whose ModifierLocationID, ConcurrencyToken or NonInventory is NULL, or that have no Vendor
+	Product, so staff can open and re-save them in Ascend to repair them.
+	"""
+	import csv
+	import sys
+
+	from bullwheel.ascend.doctype.ascend_product.ascend_product import AscendProduct
+
+	site = get_site(context)
+	frappe.init(site=site)
+	frappe.connect()
+	try:
+		# Products Bullwheel inserted itself are the Imported New Products that were never exported
+		# on an import sheet (the migration patch marked them Imported without an export date).
+		store_skus = frappe.get_all(
+			"New Product", filters={"status": "Imported", "exported_on": ["is", "not set"]}, pluck="name"
+		)
+		products = AscendProduct.get_bulk_values(
+			store_skus,
+			["description", "creator_id", "date_created", "modifier_location_id", "concurrency_token", "non_inventory"],
+		)
+
+		vendor_product_skus = set()
+		sku_list = list(products)
+		for start in range(0, len(sku_list), 500):
+			chunk = sku_list[start:start + 500]
+			vendor_product_skus.update(
+				frappe.get_all(
+					"Vendor Product", filters={"product": ["in", chunk]}, pluck="product", limit_page_length=0
+				)
+			)
+
+		rows = []
+		for store_sku, product in products.items():
+			missing = [
+				column for column, field in (
+					("ModifierLocationID", "modifier_location_id"),
+					("ConcurrencyToken", "concurrency_token"),
+					("NonInventory", "non_inventory"),
+				) if product.get(field) is None
+			]
+			if store_sku not in vendor_product_skus:
+				missing.append("Vendor Product")
+			if missing:
+				rows.append([store_sku, product.description, product.date_created, "; ".join(missing)])
+
+		stream = open(output_path, "w", newline="") if output_path else sys.stdout
+		try:
+			writer = csv.writer(stream)
+			writer.writerow(["Store SKU", "Description", "Created", "Missing"])
+			writer.writerows(rows)
+		finally:
+			if output_path:
+				stream.close()
+
+		click.echo(
+			f"{len(rows)} of {len(products)} Bullwheel-created product(s) need repair in Ascend."
+			+ (f" Written to {output_path}." if output_path else ""),
+			err=True,
+		)
+	finally:
+		frappe.destroy()
+
+	if not site:
+		raise SiteNotSpecifiedError
+
+
+commands = [introspect_schema, audit_bullwheel_products]

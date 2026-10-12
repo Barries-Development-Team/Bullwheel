@@ -8,12 +8,12 @@ import zipfile
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import cint, flt, now_datetime
+from frappe.utils import cint, flt
 
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core import get_default_ascend_database
 from bullwheel.ascend.doctype.vendor_product.vendor_product import VendorProduct
-from bullwheel.ascend.doctype.new_product.new_product import to_import_row
+from bullwheel.ascend.doctype.new_product.new_product import export_blocker, mark_exported, to_import_row
 from bullwheel.ascend.doctype.vendor.vendor import Vendor
 from bullwheel.ascend.import_sheets import build_import_sheet, serve_file_download
 
@@ -425,26 +425,12 @@ def _order_item_to_po_row(item):
 
 
 def _unexportable_reason(item):
-	"""Why an order item cannot go on this export, or None when it can. A New Product line is
-	held back when the product was cancelled, or when it is an Existing Product entry whose base
-	New Product has not been imported and matched yet — Ascend would create a duplicate product
-	instead of attaching the part number to it."""
+	"""Why an order item cannot go on this export, or None when it can (see
+	new_product.export_blocker). Vendor Product lines are always exportable."""
 
 	if item.item_type != "New Product":
 		return None
-
-	product = frappe.db.get_value(
-		"New Product", item.vpn, ["status", "entry_type", "base_new_product", "ascend_product"], as_dict=True
-	)
-	if not product:
-		return f"New Product {item.vpn} no longer exists"
-	if product.status == "Cancelled":
-		return f"New Product {item.vpn} was cancelled"
-	if product.entry_type == "Existing Product" and product.base_new_product and not product.ascend_product:
-		base = frappe.db.get_value("New Product", product.base_new_product, ["status", "ascend_product"], as_dict=True)
-		if not base or not base.ascend_product:
-			return f"it refers to pending New Product {product.base_new_product}, which is not imported into Ascend yet"
-	return None
+	return export_blocker(item.vpn)
 
 
 def _build_export_files(doc, items):
@@ -490,11 +476,7 @@ def _mark_exported(docname, row_names, new_product_names):
 	doc.save()
 
 	for name in new_product_names:
-		new_product = frappe.get_doc("New Product", name)
-		new_product.flags.ignore_lock = True
-		new_product.status = "Exported"
-		new_product.exported_on = now_datetime()
-		new_product.save()
+		mark_exported(name)
 
 	frappe.db.commit()
 
