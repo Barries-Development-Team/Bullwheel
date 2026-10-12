@@ -19,6 +19,17 @@ Native doctypes declare nothing. The resolver hops these fields until it
 reaches a doctype with no declaration — or one the label explicitly targets —
 so the client never needs a round trip to translate a selection into
 printable documents.
+
+A doctype may mark its hop *optional* when the target does not always exist yet:
+
+	class NewProduct(Document):
+		LABEL_RESOLUTION_FIELD = 'ascend_product'
+		LABEL_RESOLUTION_OPTIONAL = True
+
+While the field is empty (the New Product has not been imported into Ascend), the
+document is printed as-is, as if Native. Once the field is populated, the hop is
+followed before the label's target doctypes are consulted, so an imported New
+Product prints from the live Ascend Product instead of its stale staged copy.
 """
 
 import frappe
@@ -31,6 +42,10 @@ from bullwheel.label_printing.exceptions import LabelResolutionError
 # Dynamic Link field the server follows toward a Native doctype.
 LABEL_RESOLUTION_ATTRIBUTE = "LABEL_RESOLUTION_FIELD"
 
+# The class attribute marking a declared hop as optional: an empty resolution field means "print
+# this document itself" instead of a resolution failure.
+LABEL_RESOLUTION_OPTIONAL_ATTRIBUTE = "LABEL_RESOLUTION_OPTIONAL"
+
 # Hop ceiling: real chains are one or two hops, so anything this deep is a
 # misconfiguration rather than a legitimate resolution path.
 MAXIMUM_RESOLUTION_DEPTH = 10
@@ -40,6 +55,11 @@ def get_label_resolution_field(doctype: str) -> str | None:
 	"""Return the doctype's declared label-resolution fieldname, or None when the
 	doctype is Native (its controller declares no LABEL_RESOLUTION_FIELD)."""
 	return getattr(get_controller(doctype), LABEL_RESOLUTION_ATTRIBUTE, None)
+
+
+def is_label_resolution_optional(doctype: str) -> bool:
+	"""True when the doctype's controller marks its LABEL_RESOLUTION_FIELD hop as optional."""
+	return bool(getattr(get_controller(doctype), LABEL_RESOLUTION_OPTIONAL_ATTRIBUTE, False))
 
 
 def fetch_document_values(doctype: str, name: str, fieldnames: list) -> dict | None:
@@ -58,8 +78,10 @@ def resolve_to_native(doctype: str, name: str, target_doctypes: list | None = No
 
 	while True:
 		# A doctype the label explicitly targets is printable as-is, even if it
-		# declares a resolution field of its own.
-		if target_doctypes and doctype in target_doctypes:
+		# declares a resolution field of its own — except an optional hop, which is
+		# followed whenever it has somewhere to go (see the module docstring).
+		optional_hop = is_label_resolution_optional(doctype)
+		if not optional_hop and target_doctypes and doctype in target_doctypes:
 			return doctype, name
 
 		resolution_fieldname = get_label_resolution_field(doctype)
@@ -102,6 +124,8 @@ def resolve_to_native(doctype: str, name: str, target_doctypes: list | None = No
 			)
 
 		if not next_doctype or not next_name:
+			if optional_hop:
+				return doctype, name
 			raise LabelResolutionError(
 				f"{doctype} '{name}' has no value in its '{resolution_field.label or resolution_fieldname}' "
 				f"field, so it cannot be resolved to a printable document."

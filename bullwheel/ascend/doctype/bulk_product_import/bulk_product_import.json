@@ -1,28 +1,57 @@
 {
  "actions": [],
- "allow_rename": 1,
- "autoname": "prompt",
+ "allow_rename": 0,
+ "autoname": "BPI-.#####",
  "creation": "2026-06-22 18:25:22.356082",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "placeholder"
+  "vendor",
+  "status",
+  "get_pending_hint",
+  "new_products"
  ],
  "fields": [
   {
-   "fieldname": "placeholder",
-   "fieldtype": "Data",
-   "label": "placeholder"
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "label": "Vendor",
+   "options": "Vendor",
+   "reqd": 1,
+   "set_only_once": 1,
+   "in_list_view": 1,
+   "description": "Ascend's Vendor Products import does not name the vendor on the sheet — it is chosen while importing — so one sheet holds one vendor's products."
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nExported",
+   "default": "Draft",
+   "read_only": 1,
+   "in_list_view": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "get_pending_hint",
+   "fieldtype": "HTML",
+   "options": "<p class=\"text-muted\">Use <b>Get Pending Products</b> to add this vendor's Pending New Products, then <b>Generate Import Sheet</b>. Generating marks them Exported.</p>"
+  },
+  {
+   "fieldname": "new_products",
+   "fieldtype": "Table",
+   "label": "New Products",
+   "options": "Bulk Product Import Item"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-03 10:32:52.342443",
+ "modified": "2026-10-12 12:00:00.000000",
  "modified_by": "carterluker13@gmail.com",
  "module": "Ascend",
  "name": "Bulk Product Import",
- "naming_rule": "Set by user",
+ "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {
@@ -35,6 +64,15 @@
    "report": 1,
    "role": "System Manager",
    "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Warehouse Staff",
    "write": 1
   }
  ],

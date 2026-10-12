@@ -51,6 +51,18 @@ function add_status_action_buttons(frm) {
 		return;
 	}
 
+	if (["Pending", "Exported"].includes(frm.doc.status)) {
+		frm.add_custom_button(__("Check Ascend"), () => {
+			frappe.call({
+				method: "bullwheel.ascend.new_product_reconciliation.check_ascend",
+				args: { names: [frm.doc.name] },
+				freeze: true,
+				freeze_message: __("Checking Ascend..."),
+				callback: () => frm.reload_doc(),
+			});
+		}, __("Status"));
+	}
+
 	for (const button of STATUS_ACTION_BUTTONS) {
 		if (!button.from.includes(frm.doc.status)) {
 			continue;
@@ -63,6 +75,35 @@ function add_status_action_buttons(frm) {
 			});
 		}, __("Status"));
 	}
+}
+
+// Label printing and warehouse actions, the same ones an Ascend Product offers. A New Product
+// that has been imported prints from its Ascend Product (the server follows ascend_product, see
+// label_printing/resolution.py), and its bay rows are looked up under that Ascend Product.
+function add_product_action_buttons(frm) {
+	if (frm.is_new() || frm.doc.status === "Cancelled") {
+		return;
+	}
+
+	bullwheel.printing.add_print_button({ frm, label: "Print Swap Tag", slot: "swap_tag" });
+	bullwheel.printing.add_print_button({ frm, label: "Print Ascend Tag", slot: "ascend_tag" });
+	bullwheel.printing.add_print_button({ frm, label: "Print Online Tag", slot: "online_tag" });
+
+	frm.add_custom_button(__("Check In"), () => {
+		bullwheel.warehouse.check_in_item({ product: frm.doc.name, product_type: "New Product" });
+	}, __("Check In/Out"));
+
+	frm.add_custom_button(__("Check Out"), () => {
+		bullwheel.warehouse.check_out_item({ product: frm.doc.name, product_type: "New Product" });
+	}, __("Check In/Out"));
+
+	frm.add_custom_button(__("Find Product"), () => {
+		bullwheel.warehouse.product_location_dialog({
+			product_sku: frm.doc.name,
+			product_type: "New Product",
+			description: frm.doc.description,
+		});
+	});
 }
 
 // Re-derive Swap Price and Online Price from the selected Product Pricing Rule and the current
@@ -104,7 +145,10 @@ function toggle_vendor_visibility(frm) {
 // in the Quick Entry receiving modal alike, so no form-script visibility logic is needed here.
 const handlers = {
 	onload: toggle_vendor_visibility,
-	refresh: add_status_action_buttons,
+	refresh(frm) {
+		add_status_action_buttons(frm);
+		add_product_action_buttons(frm);
+	},
 	description_template(frm) {
 		regenerate_description(frm);
 	},

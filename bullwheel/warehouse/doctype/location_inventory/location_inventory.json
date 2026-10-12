@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "location_inventory_section",
+  "product_type",
   "product",
   "description",
   "upc",
@@ -19,11 +20,20 @@
    "label": "Location Inventory"
   },
   {
+   "fieldname": "product_type",
+   "fieldtype": "Select",
+   "label": "Product Type",
+   "options": "Ascend Product\nNew Product",
+   "default": "Ascend Product",
+   "read_only": 1,
+   "description": "New Product: not imported into Ascend yet."
+  },
+  {
    "fieldname": "product",
-   "fieldtype": "Link",
+   "fieldtype": "Dynamic Link",
    "in_list_view": 1,
    "label": "Product ID",
-   "options": "Ascend Product",
+   "options": "product_type",
    "reqd": 1
   },
   {

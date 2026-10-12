@@ -413,6 +413,37 @@ def apply_status_action(name: str, action: str):
 	return document.status
 
 
+def export_blocker(new_product_name: str) -> str | None:
+	"""Why a New Product cannot go on an import sheet right now, or None when it can. Held back:
+	a record that no longer exists or was cancelled, and an Existing Product entry whose base New
+	Product has not been imported and matched yet — Ascend would create a duplicate product
+	instead of attaching the part number to it."""
+	product = frappe.db.get_value(
+		"New Product", new_product_name, ["status", "entry_type", "base_new_product", "ascend_product"], as_dict=True
+	)
+	if not product:
+		return f"New Product {new_product_name} no longer exists"
+	if product.status == "Cancelled":
+		return f"New Product {new_product_name} was cancelled"
+	if product.entry_type == "Existing Product" and product.base_new_product and not product.ascend_product:
+		base = frappe.db.get_value("New Product", product.base_new_product, ["status", "ascend_product"], as_dict=True)
+		if not base or not base.ascend_product:
+			return f"it refers to pending New Product {product.base_new_product}, which is not imported into Ascend yet"
+	return None
+
+
+def mark_exported(new_product_name: str, export_batch: str | None = None) -> None:
+	"""Move a New Product to Exported and stamp when (and, for a Bulk Product Import, in which
+	batch) it was exported. Bypasses the edit lock — exporting is what creates it."""
+	document = frappe.get_doc("New Product", new_product_name)
+	document.flags.ignore_lock = True
+	document.status = "Exported"
+	document.exported_on = now_datetime()
+	if export_batch:
+		document.export_batch = export_batch
+	document.save()
+
+
 @frappe.whitelist()
 def generate_description(template_name, product):
 	"""Whitelisted endpoint the New Product form calls on every relevant field change to
