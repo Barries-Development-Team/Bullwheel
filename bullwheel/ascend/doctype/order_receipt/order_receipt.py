@@ -235,6 +235,7 @@ def queue_add_or_increment_item(docname, vpn, cost=None, item_type="Vendor Produ
 		docname=docname,
 		vpn=vpn,
 		cost=cost,
+		item_type=item_type,
 	)
 
 def _find_staged_new_product(identifier: str, vendor: str | None = None):
