@@ -62,7 +62,7 @@ ZPL layouts live in **`Zebra Printer Label`** records as Jinja templates (`zpl` 
 
 ### Native vs Resolved DocTypes
 
-- **Native** doctypes are the ones label templates render directly (e.g. **Ascend Product**, **Warehouse Location**).
+- **Native** doctypes are the ones label templates render directly (e.g. **Ascend Product**, **Warehouse Location**, and a **New Product** that has not been imported yet).
 - **Resolved** doctypes carry a Link or Dynamic Link field that eventually reaches a Native doctype. Their controller class declares which field to follow:
 
 ```python
@@ -78,6 +78,16 @@ Native doctypes declare nothing. The server hops these fields until it reaches a
 ```
 Order Receipt Item ── vpn (Dynamic Link via item_type) ──▶ Vendor Product ── product ──▶ Ascend Product
 ```
+
+**Optional hops.** A New Product is waiting to be imported into Ascend, so it has nothing to hop to yet. Its controller marks the hop optional:
+
+```python
+class NewProduct(Document):
+	LABEL_RESOLUTION_FIELD = 'ascend_product'
+	LABEL_RESOLUTION_OPTIONAL = True
+```
+
+While `ascend_product` is empty the New Product prints itself (the Ascend Tag, Swap Tag and Online Tag labels list **New Product** among their `target_doctypes`, and read the same field names as an Ascend Product). Once the field is set the hop is followed *before* `target_doctypes` is consulted, so an imported product prints from the live Ascend Product. A label template's barcode falls back from `doc.upc` to `doc.store_sku` to `doc.vpn`, since a pending product has no Store SKU yet.
 
 The client therefore never round-trips to translate a selection: it sends whatever identifiers are in scope and the server (`label_printing/resolution.py`) does the rest. A visited-set plus depth cap (10) turns cyclic or runaway chains into a clear error.
 

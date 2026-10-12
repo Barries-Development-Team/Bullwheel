@@ -146,7 +146,7 @@ bullwheel/
 **`MSSQLDatabase` (`database/SQLServer.py`)**
 The connection and execution primitive. Owns: connection lifecycle (`connect`, `close`, `__enter__`/`__exit__`), raw query execution (`sql`), transaction management (`commit`, `rollback`, `begin`), and health check (`test_connection`). The Virtual DocType Framework uses it directly for all Ascend queries — controllers write no SQL and do not interact with `MSSQLDatabase` directly.
 
-**Virtual DocType controllers** (e.g. `ascend_product.py`) inherit from `AbstractVirtualDocType` and declare only a `SCHEMA_CONFIG` dict plus `TABLE_NAME` (and optionally `JOIN_CONFIG`, `NAME_EXPRESSION`, `ALLOW_WRITE`, `SHOW_FIELD_WARNINGS`). The base class derives the `SELECT` clause and field→column resolution from `SCHEMA_CONFIG` and owns all query logic (`get_list`, `get_count`, `load_from_db`, `get_values`).
+**Virtual DocType controllers** (e.g. `ascend_product.py`) inherit from `AbstractVirtualDocType` and declare only a `SCHEMA_CONFIG` dict plus `TABLE_NAME` (and optionally `JOIN_CONFIG`, `NAME_EXPRESSION`, `SHOW_FIELD_WARNINGS`). The base class derives the `SELECT` clause and field→column resolution from `SCHEMA_CONFIG` and owns all query logic (`get_list`, `get_count`, `load_from_db`, `get_values`).
 
 **`_build_where_clause`** (in `virtual_doctype_base.py`) handles both dict-format and list-format Frappe filters and the operators in `OPERATOR_MAP` (`=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `NOT LIKE`, `IN`, `NOT IN`, plus `is set`/`not set` → `IS [NOT] NULL`). A condition on `name` is widened to an OR across `name` plus every field flagged `alternate_name`.
 
@@ -250,9 +250,21 @@ The **`Ascend Product`** DocType (module: `Ascend`, `is_virtual = 1`) maps a sub
 - `title_field = description`
 - `ascend_database_id` is marked `unique`
 
+## New Product lifecycle (Bullwheel never writes to Ascend)
+
+Ascend validates products and vendor products on creation in ways Bullwheel cannot replicate, so Bullwheel only **reads** Ascend. A product (or a vendor part number) Ascend does not have yet is a **New Product** document in Bullwheel's own database (`ascend/doctype/new_product/`), exported on an Ascend *Vendor Products* import sheet and imported by staff:
+
+- `entry_type`: *New Product* (Case A, the full form) or *Existing Product* (Case B: add this vendor's part number to a product already in Ascend, `ascend_product`, or pending from another vendor, `base_new_product`; Ascend attaches it by UPC).
+- `status`: Pending → Exported → Imported (+ Import Failed, Cancelled). Exported/Imported records lock their identity fields.
+- Named `NP-#####`. The Store SKU is assigned by Ascend and filled in on matching; until then labels barcode `upc or store_sku or vpn`.
+- `ascend/new_product_reconciliation.py` matches imported products (Ascend Vendor Product named `<VPN> (<vendor>)`) every 15 minutes and from *Check Ascend* buttons: it links `ascend_product`, creates Product Price / Ski with Bindings, and repoints Location Inventory and Swap Tag Batch Item rows.
+- Anything that stores a product reference stores `(product_type, product)`: **Order Receipt Item** (`item_type`/`vpn`), **Location Inventory** and **Swap Tag Batch Item** (`product_type`/`product`). Scan-driven screens use `ascend/product_lookup.py:resolve_scanned_product`; swap prices go through `product_price.get_swap_prices/set_swap_prices` (a pending New Product keeps its own `swap_price`; an Ascend Product uses Product Price).
+- Label resolution: `NewProduct.LABEL_RESOLUTION_OPTIONAL` — prints itself until `ascend_product` is set, then prints the live Ascend Product (`label_printing/resolution.py`).
+- Export: Order Receipt's *Export Received Batch* (PO + Vendor Products sheets, zipped) and per-vendor *Bulk Product Import*. The Vendor Products template has no Vendor column, so a sheet is one vendor's products. Details: `documentation/RECEIVING_FLOW.md`.
+
 ## Virtual DocType Framework
 
-A reusable framework for building read-only virtual DocTypes over Ascend SQL Server tables. It eliminates the per-controller boilerplate (`get_list`/`get_count`/`load_from_db`, hand-written `FIELD_TO_COLUMN`/`SELECT_CLAUSE`/`SEARCH_COLUMNS`, separate search hooks, and the recurring sorting bug). A new DocType needs only a `SCHEMA_CONFIG` dict and a three-attribute controller.
+A reusable framework for building read-only virtual DocTypes over Ascend SQL Server tables. **Bullwheel never writes to Ascend** (see *New Product lifecycle* below): `db_insert`/`db_update`/`delete` raise, the SQL login needs `SELECT` only, and the former write machinery (`ALLOW_WRITE`, `INSERT_DEFAULTS`, `linked_id`, Ascend edit attribution) was deleted — recover it from git history if ever needed. It eliminates the per-controller boilerplate (`get_list`/`get_count`/`load_from_db`, hand-written `FIELD_TO_COLUMN`/`SELECT_CLAUSE`/`SEARCH_COLUMNS`, separate search hooks, and the recurring sorting bug). A new DocType needs only a `SCHEMA_CONFIG` dict and a three-attribute controller.
 
 **Step-by-step guide:** `documentation/VIRTUAL_DOCTYPE_DEVELOPMENT.md`
 
@@ -260,7 +272,7 @@ A reusable framework for building read-only virtual DocTypes over Ascend SQL Ser
 
 | File | Role |
 |---|---|
-| `ascend/virtual_doctype_base.py` | `AbstractVirtualDocType` — inherit this. Derives everything from `SCHEMA_CONFIG`, inherits `load_from_db`/`get_list`/`get_count`/`get_values`, wires `order_by` through to SQL, enforces the fieldname/operator policy (below), and provides read-only guards. |
+| `ascend/virtual_doctype_base.py` | `AbstractVirtualDocType` — inherit this. Derives everything from `SCHEMA_CONFIG`, inherits `load_from_db`/`get_list`/`get_count`/`get_values`, wires `order_by` through to SQL, enforces the fieldname/operator policy (below), and refuses writes. |
 | `ascend/schema_config.py` | The `SCHEMA_CONFIG` field config contract: the valid option keys and `normalize_schema_config`, which expands each authored entry into its canonical internal form and rejects unknown/wrongly-typed keys. Imported by both the runtime base class and validation, so there is one definition of a valid config. |
 | `ascend/validate_virtual_doctypes.py` | `validate_schema_config(doctype_class, ...)` (structural + optional live column checks) and `validate_all_virtual_doctype_schemas` — wired to the `before_migrate` hook so a misconfigured controller blocks `bench migrate` with the exact problem named. |
 | `ascend/schema_introspection.py` | `introspect_table_schema` / `introspect_join_schemas` (query `INFORMATION_SCHEMA.COLUMNS` via `MSSQLDatabase`), `suggest_schema_config`, `format_schema_table`. |
@@ -277,13 +289,11 @@ SCHEMA_CONFIG = {
 }
 ```
 
-Options: `column` (required, **bare** — the framework adds the table qualifier and bracket-quotes it), `table` (defaults to `TABLE_NAME`), `alternate_name`, `cache` (declarative only — nothing caches yet), `linked_id`. An entry may be `None` to declare a field deliberately unmapped. **An unknown option key raises** on `bench migrate` naming the field, as does a bare-string entry or a `column` that still carries a `Table.` qualifier. A field config **cannot** hold raw SQL (quoting is unconditional); a computed primary key uses `NAME_EXPRESSION`, which remains a separate class attribute for that reason.
+Options: `column` (required, **bare** — the framework adds the table qualifier and bracket-quotes it), `table` (defaults to `TABLE_NAME`), `alternate_name`, `cache` (declarative only — nothing caches yet). An entry may be `None` to declare a field deliberately unmapped. **An unknown option key raises** on `bench migrate` naming the field, as does a bare-string entry or a `column` that still carries a `Table.` qualifier. A field config **cannot** hold raw SQL (quoting is unconditional); a computed primary key uses `NAME_EXPRESSION`, which remains a separate class attribute for that reason.
 
-Per-field data is read through accessors — `_column_for(field)` (the one resolution primitive), `_field_config(field)`, `alternate_name_fields()`, `linked_id_fields()`, `cache_fields()` — over a per-class memoized normalized config (`_normalized_schema()`). The memo is a dict keyed by class on the base class, deliberately not a plain class attribute, which would leak one controller's config into every other.
+Per-field data is read through accessors — `_column_for(field)` (the one resolution primitive), `_field_config(field)`, `alternate_name_fields()`, `cache_fields()` — over a per-class memoized normalized config (`_normalized_schema()`). The memo is a dict keyed by class on the base class, deliberately not a plain class attribute, which would leak one controller's config into every other.
 
 **Unmapped-fieldname policy** (the recurring invalid-SQL bug class, fixed 2026-07): SELECT fields with no mapping are skipped with a console warning (zero resolvable fields raises); WHERE filters on unmapped fields `frappe.throw` a clear error, except Frappe standard fields (`_user_tags`, `_assign`, `owner`, `docstatus`, … — `IGNORED_STANDARD_FIELDS`), which are silently dropped so desk features keep working; `order_by` falls back to `(SELECT NULL)`; `get_values` is strict and raises `ValueError` on any unmapped requested field. Filter operators are whitelisted via `OPERATOR_MAP` (plus `is set`/`not set` → `IS [NOT] NULL`).
-
-**Editing JOIN-sourced fields (`linked_id`):** A field mapped to a `JOIN_CONFIG` column (e.g. `category` → `cat.Topic`) can't be written directly — only `TABLE_NAME` columns are writable, so an unpaired joined edit silently vanishes on save. Give the display field a `linked_id` option pairing it with a writable id field that maps to the FK column on `TABLE_NAME` (e.g. `category_id` → `Products.TopicID`) plus the linked DocType used to resolve it. On save the framework resolves the display value to its id via the linked DocType's `get_values` and writes the id (`Products.TopicID`); an unresolvable value **rejects the save**. Keep the id field `hidden` but not `read_only`. Validation blocks `bench migrate` when a write-enabled DocType has an editable joined field with no pairing. See `VIRTUAL_DOCTYPE_DEVELOPMENT.md` § *Editing a JOIN-sourced field*.
 
 **GUID primary keys:** SQL Server `uniqueidentifier` columns come back from pymssql as `uuid.UUID` objects. The base class runs every record through `to_document_dict`, stringifying UUIDs so `name`, Link values, and filters work. Without this, a UUID-keyed virtual DocType raises `Unsupported filters type: UUID`.
 
@@ -291,4 +301,4 @@ Per-field data is read through accessors — `_column_for(field)` (the one resol
 
 **Sorting fix:** `AbstractVirtualDocType.get_list` parses Frappe's `order_by` (backtick-aware, so DocType names with spaces like `` `tabAscend Product` `` work), resolves the fieldname via `_column_for()`, and orders by the field's `SELECT` alias. An unmapped field (e.g. the default `creation`) falls back to `(SELECT NULL)`, which sorts harmlessly.
 
-**Tests:** `ascend/test_virtual_doctype_base.py` covers config normalization, the query builders, validation, and the write paths. All fast `UnitTestCase`s with no DB dependency (`MSSQLDatabase` is mocked where a query is needed). Run: `bench --site <site> run-tests --app bullwheel` — 162 tests app-wide as of 2026-07-30.
+**Tests:** `ascend/test_virtual_doctype_base.py` covers config normalization, the query builders, validation, and the read-only guards (including a source scan that fails if any module writes `Products`/`VendorProducts`). All fast `UnitTestCase`s with no DB dependency (`MSSQLDatabase` is mocked where a query is needed). Run: `bench --site <site> run-tests --app bullwheel`.
