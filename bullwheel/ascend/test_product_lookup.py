@@ -13,6 +13,7 @@ from frappe.tests import UnitTestCase
 
 from bullwheel.ascend import product_lookup
 from bullwheel.ascend.doctype.product_price import product_price
+from bullwheel.test_support import patch_database
 
 LOOKUP = 'bullwheel.ascend.product_lookup'
 
@@ -27,12 +28,12 @@ class UnitTestEffectiveProduct(UnitTestCase):
 		self.assertEqual(product_lookup.effective_product('Ascend Product', 'ABC'), ('Ascend Product', 'ABC'))
 
 	def test_pending_new_product_reads_as_itself(self):
-		with patch.object(frappe.local, 'db', SimpleNamespace(get_value=lambda *args, **kwargs: None), create=True):
+		with patch_database(SimpleNamespace(get_value=lambda *args, **kwargs: None)):
 			self.assertEqual(product_lookup.effective_product('New Product', 'NP-1'), ('New Product', 'NP-1'))
 
 	def test_imported_new_product_reads_as_its_ascend_product(self):
 		"""A bay row saved before the import keeps showing live Ascend data afterwards."""
-		with patch.object(frappe.local, 'db', SimpleNamespace(get_value=lambda *args, **kwargs: 'ABC12345678Z'), create=True):
+		with patch_database(SimpleNamespace(get_value=lambda *args, **kwargs: 'ABC12345678Z')):
 			self.assertEqual(product_lookup.effective_product('New Product', 'NP-1'), ('Ascend Product', 'ABC12345678Z'))
 
 
@@ -83,7 +84,7 @@ class UnitTestSwapPrices(UnitTestCase):
 			return [frappe._dict(name='NP-1', swap_price=0), frappe._dict(name='NP-2', swap_price=250.0)]
 
 		with (
-			patch.object(frappe.local, 'db', SimpleNamespace(get_value=lambda *args, **kwargs: None), create=True),
+			patch_database(SimpleNamespace(get_value=lambda *args, **kwargs: None)),
 			patch(f'{product_price.__name__}.frappe.get_all', side_effect=get_all),
 		):
 			prices = product_price.get_swap_prices([
@@ -100,7 +101,7 @@ class UnitTestSwapPrices(UnitTestCase):
 
 	def test_new_product_price_is_written_without_running_its_validation(self):
 		database = MagicMock(get_value=lambda *args, **kwargs: None)
-		with patch.object(frappe.local, 'db', database, create=True):
+		with patch_database(database):
 			product_price.set_swap_prices([{'doctype': 'New Product', 'name': 'NP-1', 'price': 125}])
 
 		database.set_value.assert_called_once_with('New Product', 'NP-1', 'swap_price', 125.0)
@@ -108,7 +109,7 @@ class UnitTestSwapPrices(UnitTestCase):
 	def test_ascend_product_price_updates_the_existing_product_price_record(self):
 		database = MagicMock(get_value=lambda *args, **kwargs: None)
 		database.exists.return_value = True
-		with patch.object(frappe.local, 'db', database, create=True):
+		with patch_database(database):
 			product_price.set_swap_prices({'ABC': 150})
 
 		database.set_value.assert_called_once_with('Product Price', 'PRICE-SWAP-ABC', 'price', 150.0)

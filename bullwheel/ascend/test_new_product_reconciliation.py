@@ -15,6 +15,7 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from bullwheel.ascend import new_product_reconciliation as reconciliation
+from bullwheel.test_support import patch_database
 
 MODULE = 'bullwheel.ascend.new_product_reconciliation'
 
@@ -42,7 +43,7 @@ def _environment(candidates, vendor_products):
 		patch(f'{MODULE}.frappe.get_doc', side_effect=get_doc),
 		patch(f'{MODULE}.repoint_references') as repoint,
 		patch(f'{MODULE}.adopt_imported_base_products', return_value=0),
-		patch.object(frappe.local, 'db', database, create=True),
+		patch_database(database),
 		patch(f'{MODULE}.frappe.log_error') as log_error,
 	):
 		yield SimpleNamespace(database=database, documents=documents, repoint=repoint, log_error=log_error)

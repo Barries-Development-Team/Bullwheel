@@ -15,9 +15,11 @@ from bullwheel.ascend.doctype.order_receipt.order_receipt import (
 	_resolve_ascend_vpn,
 	_single_line,
 	_unexportable_reason,
+	queue_add_or_increment_item,
 	scan_item,
 	stage_existing_product,
 )
+from bullwheel.test_support import patch_database
 
 
 # On IntegrationTestCase, the doctype test records and all
@@ -41,7 +43,7 @@ class IntegrationTestOrderReceipt(IntegrationTestCase):
 def fake_database(get_value):
 	"""Stand in for frappe.db with just a get_value, so code that reads Bullwheel's own database
 	can run in a unit test with no site connected."""
-	with patch.object(frappe.local, 'db', SimpleNamespace(get_value=get_value), create=True):
+	with patch_database(SimpleNamespace(get_value=get_value)):
 		yield
 
 
@@ -252,3 +254,14 @@ class UnitTestStageExistingProduct(UnitTestCase):
 			with self.subTest(kwargs=kwargs):
 				with self.assertRaises(frappe.ValidationError):
 					stage_existing_product('PO-1', 'VPN-1', 5, **kwargs)
+
+
+class UnitTestQueueAddOrIncrementItem(UnitTestCase):
+
+	def test_item_type_reaches_the_queued_job(self):
+		"""A dropped item_type queues a New Product line as a Vendor Product, which label printing
+		then fails to find."""
+		with patch('bullwheel.ascend.doctype.order_receipt.order_receipt.frappe.enqueue') as enqueue:
+			queue_add_or_increment_item('RECEIPT-1', 'NP-00001', cost=5, item_type='New Product')
+
+		self.assertEqual(enqueue.call_args.kwargs['item_type'], 'New Product')
