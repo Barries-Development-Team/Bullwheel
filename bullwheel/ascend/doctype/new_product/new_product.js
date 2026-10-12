@@ -37,6 +37,34 @@ function regenerate_description(frm) {
 	});
 }
 
+// Lifecycle buttons. Each action is only offered from the statuses the server accepts (see
+// STATUS_ACTIONS in new_product.py); the server re-checks, so this only keeps the menu tidy.
+const STATUS_ACTION_BUTTONS = [
+	{ action: "mark_import_failed", label: __("Mark Import Failed"), from: ["Exported"] },
+	{ action: "revert_to_pending", label: __("Revert to Pending (to edit)"), from: ["Exported"] },
+	{ action: "requeue", label: __("Re-queue for Export"), from: ["Import Failed"] },
+	{ action: "cancel", label: __("Cancel Product"), from: ["Pending", "Import Failed"] },
+];
+
+function add_status_action_buttons(frm) {
+	if (frm.is_new()) {
+		return;
+	}
+
+	for (const button of STATUS_ACTION_BUTTONS) {
+		if (!button.from.includes(frm.doc.status)) {
+			continue;
+		}
+		frm.add_custom_button(button.label, () => {
+			frappe.call({
+				method: "bullwheel.ascend.doctype.new_product.new_product.apply_status_action",
+				args: { name: frm.doc.name, action: button.action },
+				callback: () => frm.reload_doc(),
+			});
+		}, __("Status"));
+	}
+}
+
 // Re-derive Swap Price and Online Price from the selected Product Pricing Rule and the current
 // MSRP (the `price` field). With no rule selected the fields are left alone — the rule's
 // placeholder invites entering the prices manually — matching the server-side _compute_pricing.
@@ -76,6 +104,7 @@ function toggle_vendor_visibility(frm) {
 // in the Quick Entry receiving modal alike, so no form-script visibility logic is needed here.
 const handlers = {
 	onload: toggle_vendor_visibility,
+	refresh: add_status_action_buttons,
 	description_template(frm) {
 		regenerate_description(frm);
 	},
@@ -124,9 +153,7 @@ if (!frappe.ui.form.handlers["New Product"]?.before_save) {
 // is up, the button underneath is still clickable. A second click during that gap (plus the
 // before_insert round-trip to Ascend for VPN generation) starts a second, fully independent
 // save before the first has assigned this document a real name, so the server processes both
-// as separate inserts: two New Product records, each running its own after_insert, i.e. two
-// Ascend Product records — and only one wins the race to claim a Vendor Product, since the
-// second one's part-number match check runs after the first has already committed.
+// as separate inserts: two New Product records for one item.
 function confirm_new_product_save(frm) {
 	if (!frm.is_new()) {
 		return;

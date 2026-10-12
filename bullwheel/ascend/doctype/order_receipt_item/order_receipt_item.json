@@ -6,6 +6,7 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "item_type",
   "vpn",
   "description",
   "upc",
@@ -16,6 +17,17 @@
   "comments"
  ],
  "fields": [
+  {
+   "fieldname": "item_type",
+   "fieldtype": "Select",
+   "label": "Item Type",
+   "options": "Vendor Product\nNew Product",
+   "default": "Vendor Product",
+   "reqd": 1,
+   "allow_in_quick_entry": 1,
+   "in_list_view": 1,
+   "description": "New Product: the product is staged in Bullwheel and not in Ascend until its import sheet is imported."
+  },
   {
    "allow_in_quick_entry": 1,
    "default": "0",
@@ -60,11 +72,12 @@
   {
    "allow_in_quick_entry": 1,
    "fieldname": "vpn",
-   "fieldtype": "Link",
+   "fieldtype": "Dynamic Link",
    "in_list_view": 1,
    "label": "Vendor Part Number",
-   "options": "Vendor Product",
-   "reqd": 1
+   "options": "item_type",
+   "reqd": 1,
+   "description": "A Vendor Product, or a New Product that has not been imported into Ascend yet."
   },
   {
    "allow_in_quick_entry": 1,
