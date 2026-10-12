@@ -2,7 +2,6 @@
 # For license information, please see license.txt
 
 import frappe
-from frappe.model.base_document import get_controller
 
 from bullwheel.bullwheel_core.exceptions import *
 
@@ -24,36 +23,6 @@ def get_default_ascend_database():
 			return frappe.get_cached_doc("SQL Server", default_database)
 		except:
 			raise AscendDatabaseNotConfigured
-
-def resolve_attributed_ascend_user_id(frappe_user: str) -> str:
-	"""Resolve a Frappe User to the Ascend Users.ID of their linked Ascend User, so a
-	CreatorID/ModifierID-style FK column can be attributed to a real Ascend user instead of
-	the Frappe user's email string. Falls back to Bullwheel Settings' default_user when the
-	user has no association, or their linked Ascend User no longer resolves. Raises
-	AscendAttributionUserNotConfigured when neither resolves."""
-	ascend_user_controller = get_controller('Ascend User')
-
-	ascend_user_link = frappe.db.get_value('User', frappe_user, 'ascend_user') if frappe_user else None
-	resolved = ascend_user_controller.get_values(ascend_user_link, ['id']) if ascend_user_link else None
-
-	if not resolved:
-		default_user = frappe.db.get_single_value('Bullwheel Settings', 'default_user')
-		resolved = ascend_user_controller.get_values(default_user, ['id']) if default_user else None
-
-	if not resolved or not resolved.get('id'):
-		raise AscendAttributionUserNotConfigured
-
-	return resolved['id']
-
-def get_default_location_id():
-	"""Bullwheel Settings' configured Ascend Locations.ID, or None when unset. Ascend leaves a
-	record's ModifierLocationID NULL when it is inserted outside Ascend's own desktop client,
-	and a NULL ModifierLocationID keeps that record out of the item grid of any purchase order
-	that references it (confirmed against a real order: 220 of 243 item lines missing, one
-	confirmed cause). Returning None rather than raising lets a caller degrade to leaving the
-	column unset — same as before this existed — instead of blocking every product insert on a
-	Settings field most callers don't strictly need."""
-	return frappe.db.get_single_value('Bullwheel Settings', 'default_location') or None
 
 def get_label(slot):
 	"""Return the Zebra Printer Label configured for a Bullwheel Settings label slot

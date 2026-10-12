@@ -7,12 +7,9 @@ import uuid
 
 import frappe
 from frappe.model.document import Document
-from frappe.model.base_document import get_controller
-from frappe.utils import get_datetime, getdate
 
 from bullwheel.database.SQLServer import MSSQLDatabase
-from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning, resolve_attributed_ascend_user_id
-from bullwheel.bullwheel_core.exceptions import AscendAttributionUserNotConfigured
+from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning
 from bullwheel.ascend.schema_config import normalize_schema_config
 
 # ─── Static Helper Functions ───────────────────────────────────────
@@ -54,11 +51,6 @@ IGNORED_STANDARD_FIELDS = frozenset({
 	'parent', 'parentfield', 'parenttype',
 })
 
-# Frappe's default 'creation'/'modified' fields have a fixed Datetime fieldtype but, unlike
-# custom fields, are not listed in meta.get_field() — so db_update's type normalization can't
-# discover their fieldtype from meta and needs this fallback instead.
-STANDARD_DATETIME_FIELDS = frozenset({'creation', 'modified'})
-
 # Whitelist of filter operators and their SQL renderings. The 'is' operator ("is set" /
 # "not set" list-view filters) is handled separately since it renders as IS [NOT] NULL.
 OPERATOR_MAP = {
@@ -79,19 +71,6 @@ class AbstractVirtualDocType(Document):
 
 	# ─── Subclass Contract — override these ───────────────────────────────────
 	TABLE_NAME: str = None       		# Ascend SQL table name, e.g. "Products"
-	ALLOW_WRITE: bool = False			# If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
-	INSERT_DEFAULTS: dict = None 		# Fieldname -> value (or zero-arg callable returning a value, resolved at insert
-										# time — use this for anything that must reflect the moment of the insert, e.g. a
-										# timestamp) written by db_insert when the document carries no value of its own.
-										# For an Ascend column the DocType does not surface as a field at all, the column
-										# is simply absent from the INSERT and lands at whatever the table's default is —
-										# NULL when there isn't one. Ascend then treats that row as invisible wherever it
-										# filters on the column: a NULL Products.ModifierLocationID dropped 220 of 243
-										# lines out of an imported purchase order's item grid while the header still
-										# counted them. Declare the columns Ascend expects a real value in here. Keys must
-										# map to a TABLE_NAME column in SCHEMA_CONFIG; validation rejects anything else on
-										# migrate. A callable returning None is treated as "no default available" and
-										# skipped, same as never declaring the field.
 	JOIN_CONFIG: list = None     		# List of JOIN descriptors — see _build_join_clause for the dict shape
 	SCHEMA_CONFIG: dict = None    		# Fieldname -> dict of per-field options. Must include a "name" entry naming the
 								 		# primary key column (or set NAME_EXPRESSION instead). Every option is documented
@@ -158,18 +137,6 @@ class AbstractVirtualDocType(Document):
 			fieldname for fieldname, field_config in cls._normalized_schema().items()
 			if field_config['alternate_name']
 		]
-
-	@classmethod
-	def linked_id_fields(cls) -> dict:
-		"""Maps each editable, JOIN-sourced display field to the writable id field on
-		TABLE_NAME holding its foreign key, plus the linked virtual DocType used to resolve
-		the display value to that id on save. Declared with the field config's 'linked_id'
-		key. See _resolve_linked_id_fields."""
-		return {
-			fieldname: field_config['linked_id']
-			for fieldname, field_config in cls._normalized_schema().items()
-			if field_config['linked_id']
-		}
 
 	@classmethod
 	def cache_fields(cls) -> list:
@@ -341,16 +308,6 @@ class AbstractVirtualDocType(Document):
 			return '(' + ' OR '.join(sub_conditions) + ')'
 
 		return cls._format_condition(sql_column, operator, value, values)
-
-	@classmethod
-	def _column_belongs_to_table(cls, field: str) -> bool:
-		"""Returns True when the field's column lives on TABLE_NAME itself rather than on a
-		JOIN_CONFIG table. db_insert/db_update can only write columns on TABLE_NAME — joined
-		tables are read-only. An unmapped field belongs to no table, so it returns False."""
-		field_config = cls._field_config(field)
-		if field_config is None or field_config['table'] is None:
-			return False
-		return field_config['table'].lower() == cls.TABLE_NAME.lower()
 
 	@classmethod
 	def _build_where_clause(cls, values: list, filters=None, or_filters=None) -> str:
@@ -727,302 +684,36 @@ class AbstractVirtualDocType(Document):
 
 		return records[0].get('count')
 		  	
-	# ─── Write Methods ─────────────────────────────────────────────────────
-	
+	# ─── Existence Check ───────────────────────────────────────────────────
 
 	@classmethod
 	def _record_exists(cls, name) -> bool:
 		"""True when a record already matches `name` (or any alternate-name field, via the
-		same widening _build_where_clause already applies to name filters). Guards db_insert
-		against silently duplicating a record, since Frappe's virtual-doctype insert flow performs
-		no uniqueness check of its own before calling db_insert."""
+		same widening _build_where_clause already applies to name filters). Read-only; used by
+		callers that need to know whether Ascend already carries an identifier (e.g. a UPC)."""
 		return cls.get_count(
 			doctype=cls.__name__, filters=[(None, 'name', '=', name)], fields=[],
 			distinct=False, save_user_settings=False, strict=None,
 		) > 0
 
-	def _normalize_write_value(self, field: str, value):
-		"""Converts a document field's value to a type pymssql can bind correctly. Frappe
-		stores Datetime/Date field values as plain strings (e.g. '2026-07-17 12:36:35.321314'
-		for 'modified'), but pymssql needs a native datetime.datetime/datetime.date object to
-		encode the parameter as a SQL Server datetime type — sent as a string, SQL Server must
-		implicitly convert it and can reject the microsecond-precision format Frappe produces."""
-		if not isinstance(value, str):
-			return value
-
-		meta_field = self.meta.get_field(field)
-		fieldtype = meta_field.fieldtype if meta_field else None
-		if fieldtype is None and field in STANDARD_DATETIME_FIELDS:
-			fieldtype = 'Datetime'
-
-		if fieldtype == 'Datetime':
-			return get_datetime(value)
-		if fieldtype == 'Date':
-			return getdate(value)
-		return value
-
-	def _collect_writable_fields(self, *, include_name: bool, field_overrides: dict | None = None) -> list[tuple[str, object]]:
-		"""Resolve this document's writable (sql_column, value) pairs against SCHEMA_CONFIG,
-		shared by db_insert and db_update. A field is writable when it has a SCHEMA_CONFIG
-		mapping, that mapping's column belongs to TABLE_NAME (not a JOIN_CONFIG table), and —
-		mirroring order_receipt.py's writable_fieldnames() convention — it isn't read_only,
-		virtual, or a no-value fieldtype in the DocType's meta (read_only in particular is how
-		a server-generated column like a SQL Server IDENTITY field, e.g. AscendProduct.id, is
-		marked). 'name' is only included when include_name is True: db_update writes it into
-		the WHERE clause instead of SET, while db_insert must supply it as a normal column value.
-
-		field_overrides supplies framework-resolved values (currently just the CreatorID/
-		ModifierID attribution built by _resolve_attribution_overrides) that must reach SQL
-		regardless of the read_only/virtual/no-value gate below — that gate exists to stop a
-		user-edited value from reaching a server-managed column, which doesn't apply to a value
-		the framework itself computed. An override is considered even for a field with no entry
-		in self.as_dict() at all (e.g. a SCHEMA_CONFIG mapping with no matching declared field)."""
-		field_overrides = field_overrides or {}
-		document_values = self.as_dict()
-		writable_fields = []
-		for field in dict.fromkeys([*document_values.keys(), *field_overrides.keys()]):
-			if field in field_overrides:
-				value = field_overrides[field]
-			else:
-				if field == 'name':
-					if not include_name:
-						continue
-				else:
-					meta_field = self.meta.get_field(field)
-					if meta_field and (
-						meta_field.read_only or meta_field.is_virtual
-						or meta_field.fieldtype in frappe.model.no_value_fields
-					):
-						continue
-				value = self._normalize_write_value(field, document_values[field])
-
-			# Resolved through _field_config rather than _column_for so that NAME_EXPRESSION can
-			# never reach a write: a computed expression is not a column and must not appear in
-			# an INSERT/UPDATE column list. Do not "simplify" this to _column_for.
-			field_config = self._field_config(field)
-			if field_config is None or field_config['sql'] is None:
-				continue
-			if not self._column_belongs_to_table(field):
-				if self.SHOW_FIELD_WARNINGS:
-					print_console_warning(
-						f"Ascend Virtual Doc Warning: Skipping '{field}' for {self.doctype} — "
-						f"column '{field_config['sql']}' does not belong to {self.TABLE_NAME}."
-					)
-				continue
-			writable_fields.append((field_config['sql'], value))
-		return writable_fields
-
-	def _resolve_linked_id_fields(self) -> None:
-		"""Resolve every 'linked_id' display field to the id it references and write that id onto
-		the paired id field, so the writable foreign-key column on TABLE_NAME reflects the user's
-		edit to the (read-only, JOIN-sourced) display field.
-
-		A display field maps to a joined column that cannot be written directly (e.g. 'category'
-		-> 'cat.Topic'); its foreign key lives on TABLE_NAME as a paired id field (e.g. 'category_id'
-		-> 'Products.TopicID'). Because the display field is a Link to another virtual DocType, the
-		id is resolved through that DocType's get_values — the chosen display value is exactly the
-		linked record's primary key, and link_id_field names the column holding its id.
-
-		Resolution is change-triggered: on update, a display field whose value already matches the
-		persisted record is left untouched. This avoids a lookup on every save when nothing changed
-		and, critically, avoids clobbering the id field when a record that loaded with an empty or
-		unresolvable display value (e.g. an orphaned foreign key whose JOIN yields NULL) is saved
-		after an unrelated edit. On insert there is no prior record, so every mapping is resolved.
-
-		The resolved id is set on the document before _collect_writable_fields runs, so it is written
-		as a normal TABLE_NAME column. An empty display value clears the id field. A non-empty display
-		value aborts the save with frappe.throw when it resolves to no linked record (the user picked a
-		value the framework cannot resolve an id for — silently writing a stale or NULL id would
-		corrupt the record) or to more than one (an ambiguous name yields no single id to write)."""
-		linked_id_fields = self.linked_id_fields()
-		if not linked_id_fields:
-			return
-
-		previous = None if self.is_new() else self.get_latest()
-
-		for display_field, config in linked_id_fields.items():
-			display_value = self.get(display_field)
-			if previous is not None and previous.get(display_field) == display_value:
-				continue
-
-			id_field = config['id_field']
-			link_doctype = config['link_doctype']
-			link_id_field = config['link_id_field']
-
-			if not display_value:
-				self.set(id_field, None)
-				continue
-
-			linked_controller = get_controller(link_doctype)
-			match_count = linked_controller.get_count(
-				doctype=link_doctype, filters=[(None, 'name', '=', display_value)], fields=[],
-				distinct=False, save_user_settings=False, strict=None,
-			)
-			if match_count > 1:
-				frappe.throw(
-					f"Cannot save {self.doctype} '{self.name}': {display_field} '{display_value}' "
-					f"matches {match_count} {link_doctype} records, so its {id_field} is ambiguous. "
-					f"The {link_doctype} name must be unique to resolve a single id."
-				)
-
-			resolved = linked_controller.get_values(display_value, [link_id_field])
-			if not resolved or resolved.get(link_id_field) is None:
-				frappe.throw(
-					f"Cannot save {self.doctype} '{self.name}': {display_field} '{display_value}' "
-					f"does not resolve to a {link_doctype} record, so its {id_field} cannot be "
-					f"determined. Choose a value that exists in {link_doctype}."
-				)
-			self.set(id_field, resolved.get(link_id_field))
-
-	def _resolve_attribution_overrides(self, *, include_creator: bool) -> dict:
-		"""Build the field_overrides _collect_writable_fields needs to attribute a
-		CreatorID/ModifierID-style write to a real Ascend Users.ID rather than the Frappe
-		email string that lives in self.owner/self.modified_by. Only touches 'creator_id'/
-		'modified_by' when the subclass has actually mapped them to a writable TABLE_NAME
-		column — most virtual DocTypes don't declare either, and a JOIN-sourced mapping (e.g.
-		AscendProduct's 'modified_by' -> modifier.Initials) is read-only, so resolving it would
-		be wasted work and could needlessly block a save over an unrelated Settings gap.
-
-		self.owner and self.modified_by are never mutated here — only the values returned in
-		the override dict are affected, so Frappe's own version tracking and 'Last Modified
-		By' display keep seeing real Frappe user emails.
-
-		'creator_id' only resolves when include_creator is True (db_insert only) — CreatorID
-		is meant to be immutable after creation, so db_update omits it here, and the field
-		falls back to its normal read_only-gated (i.e. untouched) handling."""
-		overrides = {}
-		resolved_by_frappe_user = {}
-
-		def resolve(frappe_user):
-			if frappe_user not in resolved_by_frappe_user:
-				try:
-					resolved_by_frappe_user[frappe_user] = resolve_attributed_ascend_user_id(frappe_user)
-				except AscendAttributionUserNotConfigured:
-					frappe.throw(
-						f"Cannot save {self.doctype} '{self.name}': '{frappe_user}' has no linked "
-						f"Ascend User, and Bullwheel Settings' default_user does not resolve to one "
-						f"either. Link a User to an Ascend User, or configure a valid default_user."
-					)
-			return resolved_by_frappe_user[frappe_user]
-
-		if include_creator and self._column_belongs_to_table('creator_id'):
-			overrides['creator_id'] = resolve(self.owner)
-		if self._column_belongs_to_table('modified_by'):
-			overrides['modified_by'] = resolve(self.modified_by)
-
-		return overrides
-
-	def _resolve_insert_defaults(self) -> dict:
-		"""Build the field_overrides carrying this controller's INSERT_DEFAULTS, limited to the
-		fields the document has no value of its own for. A default is a floor, not an override:
-		anything the user actually entered wins, so this yields on any non-None document value
-		(and, being applied before the attribution overrides, on those too).
-
-		A field the DocType never declares is absent from self.as_dict() entirely, which is
-		precisely the case this exists for — _collect_writable_fields considers a field present
-		only in field_overrides, so the column reaches the INSERT even with no field behind it.
-
-		A callable default is invoked here, at insert time, rather than once when INSERT_DEFAULTS
-		is defined — the timestamp-style default this exists for (e.g. Products.ConcurrencyToken)
-		would otherwise carry the moment the class was imported for the life of the process. A
-		callable returning None means no default is available (e.g. a Bullwheel Settings field
-		left unconfigured); that field is left out entirely rather than writing an explicit NULL."""
-		if not self.INSERT_DEFAULTS:
-			return {}
-
-		document_values = self.as_dict()
-		overrides = {}
-		for field, default in self.INSERT_DEFAULTS.items():
-			if document_values.get(field) is not None:
-				continue
-			value = default() if callable(default) else default
-			if value is None:
-				continue
-			overrides[field] = value
-		return overrides
+	# ─── Read-Only Guards ──────────────────────────────────────────────────
+	# Bullwheel never writes to Ascend: Ascend runs backend validation on record creation
+	# that Bullwheel cannot replicate. New records are staged as New Product documents and
+	# imported into Ascend through an import sheet.
 
 	def db_insert(self, *args, **kwargs):
-		"""Insert this document as a new row in TABLE_NAME. Frappe performs no name-uniqueness
-		check for virtual doctypes before calling db_insert (unlike a real doctype, where the
-		database's own primary-key constraint catches a collision), so this method runs its own
-		pre-flight existence check and raises frappe.DuplicateEntryError rather than silently
-		creating a duplicate record."""
-		if not self.ALLOW_WRITE:
-			raise NotImplementedError(f"{self.doctype} is read-only.")
-		if self.NAME_EXPRESSION:
-			frappe.throw(
-				f"Cannot insert {self.doctype}: NAME_EXPRESSION is a computed SQL expression "
-				f"and cannot be supplied directly in an INSERT."
-			)
-		if not self.name:
-			frappe.throw(f"Cannot insert {self.doctype}: no primary key value set.")
-		if self._record_exists(self.name):
-			frappe.throw(f"{self.doctype} '{self.name}' already exists.", frappe.DuplicateEntryError)
-
-		self._resolve_linked_id_fields()
-		# Attribution last: a CreatorID/ModifierID resolved by the framework outranks a default.
-		field_overrides = {
-			**self._resolve_insert_defaults(),
-			**self._resolve_attribution_overrides(include_creator=True),
-		}
-		writable_fields = self._collect_writable_fields(include_name=True, field_overrides=field_overrides)
-		if not writable_fields:
-			frappe.throw(f"{self.doctype}: no writable SCHEMA_CONFIG columns resolve for db_insert.")
-
-		columns = ', '.join(column for column, _ in writable_fields)
-		placeholders = ', '.join(['%s'] * len(writable_fields))
-		values = [value for _, value in writable_fields]
-		query = f'INSERT INTO {self.TABLE_NAME} ({columns}) VALUES ({placeholders})'
-
-		with MSSQLDatabase(get_default_ascend_database()) as db:
-			db.sql(query=query, values=values, as_dict=False)
-			inserted_row_count = db.cursor.rowcount
-			if inserted_row_count != 1:
-				frappe.throw(
-					f"Insert into {self.TABLE_NAME} for {self.doctype} '{self.name}' affected "
-					f"{inserted_row_count} rows instead of exactly one."
-				)
-
-	def db_update(self, *args, **kwargs):
-		"""Push every SCHEMA_CONFIG-mapped field on this document back to its row in TABLE_NAME.
-		Fields are read off the document itself (SCHEMA_CONFIG entries are only a suggestion —
-		not every mapped fieldname is guaranteed to exist on the Document), and only columns
-		that belong to TABLE_NAME are writable; JOIN_CONFIG columns are read-only. The UPDATE's
-		affected-row-count is checked after execution and the whole write is rolled back unless
-		it touched exactly the one associated record."""
-		if not self.ALLOW_WRITE:
-			raise NotImplementedError(f"{self.doctype} is read-only.")
-
-		if not self.name:
-			frappe.throw(f"Cannot update {self.doctype}: no primary key value set.")
-
-		self._resolve_linked_id_fields()
-		attribution_overrides = self._resolve_attribution_overrides(include_creator=False)
-		writable_fields = self._collect_writable_fields(include_name=False, field_overrides=attribution_overrides)
-		if not writable_fields:
-			frappe.throw(f"{self.doctype}: no writable SCHEMA_CONFIG columns resolve for db_update.")
-
-		values = [value for _, value in writable_fields]
-		where_clause = self._build_where_clause(values=values, filters=[(None, 'name', '=', self.name)])
-		query = (
-			f'UPDATE {self.TABLE_NAME} SET '
-			+ ', '.join(f'{column} = %s' for column, _ in writable_fields)
-			+ ' ' + where_clause
+		"""Refuse to insert: Ascend records are read-only in Bullwheel."""
+		frappe.throw(
+			f"{self.doctype} records are read-only in Bullwheel. Create a New Product and import it into Ascend.",
+			frappe.PermissionError,
 		)
 
-		with MSSQLDatabase(get_default_ascend_database()) as db:
-			db.sql(query=query, values=values, as_dict=False)
-			updated_row_count = db.cursor.rowcount
-
-			if updated_row_count == 0:
-				raise frappe.DoesNotExistError(f"{self.doctype} '{self.name}' could not be updated: no matching record found.")
-			if updated_row_count > 1:
-				frappe.throw(
-					f"Refusing to update {self.doctype} '{self.name}': the WHERE clause matched "
-					f"{updated_row_count} records instead of exactly one. This likely indicates a "
-					f"SCHEMA_CONFIG misconfiguration (most likely an 'alternate_name' field that is "
-					f"not actually unique in Ascend)."
-				)
+	def db_update(self, *args, **kwargs):
+		"""Refuse to update: Ascend records are read-only in Bullwheel."""
+		frappe.throw(
+			f"{self.doctype} records are read-only in Bullwheel. Make changes in Ascend.",
+			frappe.PermissionError,
+		)
 
 	def delete(self, *args, **kwargs):
 		frappe.throw(f"No! Bad user! Never delete {self.doctype} records!")

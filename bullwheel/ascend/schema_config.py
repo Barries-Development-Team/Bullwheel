@@ -12,10 +12,7 @@ knows about a field lives in one place:
 		'name':        {'column': 'Store UPC', 'cache': True},
 		'upc':         {'column': 'UPC', 'alternate_name': True},
 		'description': {'column': 'Description'},
-		'category':    {'table': 'cat', 'column': 'Topic',
-		                'linked_id': {'id_field': 'category_id',
-		                              'link_doctype': 'Product Category',
-		                              'link_id_field': 'database_id'}},
+		'category':    {'table': 'cat', 'column': 'Topic'},
 	}
 
 Authored entries are expanded once per controller into a canonical internal form by
@@ -40,10 +37,6 @@ Field config keys:
 	cache           Optional bool. The value never changes for a given record (an
 	                identity column, a creation timestamp), so it is safe to cache.
 	                Declarative only for now — no caching layer reads it yet.
-	linked_id       Optional dict. Pairs an editable field whose column lives on a
-	                JOIN table with the writable foreign-key field on TABLE_NAME that
-	                stores its id. Requires 'id_field', 'link_doctype' and
-	                'link_id_field'. See _resolve_linked_id_fields.
 
 An entry may also be `None`, declaring a field as deliberately unmapped.
 
@@ -52,11 +45,9 @@ unconditional, and `[CONCAT(...)]` is not valid SQL. A computed primary key is
 declared with the controller's NAME_EXPRESSION attribute instead.
 """
 
-FIELD_CONFIG_KEYS = frozenset({'column', 'table', 'alternate_name', 'cache', 'linked_id'})
+FIELD_CONFIG_KEYS = frozenset({'column', 'table', 'alternate_name', 'cache'})
 
 BOOLEAN_FIELD_CONFIG_KEYS = ('alternate_name', 'cache')
-
-LINKED_ID_KEYS = frozenset({'id_field', 'link_doctype', 'link_id_field'})
 
 
 def quote_column(column: str) -> str:
@@ -86,7 +77,7 @@ def normalize_field_config(class_name: str, fieldname: str, field_config, table_
 	if field_config is None:
 		return {
 			'column': None, 'table': None, 'sql': None,
-			'alternate_name': False, 'cache': False, 'linked_id': None,
+			'alternate_name': False, 'cache': False,
 		}
 
 	if not isinstance(field_config, dict):
@@ -125,7 +116,6 @@ def normalize_field_config(class_name: str, fieldname: str, field_config, table_
 		'column': strip_column_quoting(column),
 		'table': table,
 		'sql': f'{table}.{quote_column(column)}',
-		'linked_id': _normalized_linked_id(class_name, fieldname, field_config.get('linked_id')),
 	}
 
 	for key in BOOLEAN_FIELD_CONFIG_KEYS:
@@ -137,38 +127,6 @@ def normalize_field_config(class_name: str, fieldname: str, field_config, table_
 		normalized[key] = value
 
 	return normalized
-
-
-def _normalized_linked_id(class_name: str, fieldname: str, linked_id) -> dict | None:
-	"""Validate a field config's optional 'linked_id' pairing, which must name exactly the
-	keys in LINKED_ID_KEYS. Returns the pairing unchanged, or None when absent."""
-	if linked_id is None:
-		return None
-
-	if not isinstance(linked_id, dict):
-		raise ValueError(
-			f"{class_name}: Field '{fieldname}' has an invalid 'linked_id' {linked_id!r}. "
-			f"Expected a dict with keys {sorted(LINKED_ID_KEYS)}."
-		)
-
-	missing_keys = LINKED_ID_KEYS - set(linked_id)
-	unknown_keys = set(linked_id) - LINKED_ID_KEYS
-	if missing_keys or unknown_keys:
-		raise ValueError(
-			f"{class_name}: Field '{fieldname}' has a malformed 'linked_id'"
-			+ (f" — missing key(s) {sorted(missing_keys)}" if missing_keys else '')
-			+ (f" — unknown key(s) {sorted(unknown_keys)}" if unknown_keys else '')
-			+ f". Expected exactly {sorted(LINKED_ID_KEYS)}."
-		)
-
-	for key in sorted(LINKED_ID_KEYS):
-		if not isinstance(linked_id[key], str) or not linked_id[key].strip():
-			raise ValueError(
-				f"{class_name}: Field '{fieldname}' has an invalid 'linked_id' "
-				f"'{key}' value {linked_id[key]!r}. Expected a non-empty string."
-			)
-
-	return dict(linked_id)
 
 
 def normalize_schema_config(doctype_class) -> dict:
