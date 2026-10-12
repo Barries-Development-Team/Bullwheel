@@ -433,10 +433,12 @@ def _unexportable_reason(item):
 	return export_blocker(item.vpn)
 
 
-def _build_export_files(doc, items):
+def _build_export_files(doc, items, statuses=("Pending",)):
 	"""Build the Ascend import sheets for these order items: the PO sheet, plus a Vendor Products
-	sheet holding every still-Pending New Product among them. Returns (po_sheet_bytes,
-	products_sheet_bytes_or_None, pending_new_product_names)."""
+	sheet holding the New Products among them whose status is in `statuses` (only the Pending ones
+	for a normal export, so a re-export never duplicates an imported product; every unfinished one
+	for a re-download). Returns (po_sheet_bytes, products_sheet_bytes_or_None,
+	included_new_product_names)."""
 
 	po_sheet = build_import_sheet(
 		_import_template_path("ascend_template_purchase_order.xlsx"),
@@ -447,7 +449,7 @@ def _build_export_files(doc, items):
 		item.vpn for item in items if item.item_type == "New Product"
 	))
 	pending_names = frappe.get_all(
-		"New Product", filters={"name": ["in", new_product_names], "status": "Pending"}, pluck="name",
+		"New Product", filters={"name": ["in", new_product_names], "status": ["in", list(statuses)]}, pluck="name",
 		order_by="creation asc",
 	) if new_product_names else []
 
@@ -505,11 +507,13 @@ def export_received_batch(docname, redownload=0):
 	if not exportable:
 		frappe.throw("There is nothing to export." + (" " + "; ".join(held_back) if held_back else ""))
 
-	po_sheet, products_sheet, pending_names = _build_export_files(doc, exportable)
+	po_sheet, products_sheet, included_names = _build_export_files(
+		doc, exportable, STAGED_NEW_PRODUCT_STATUSES if redownload else ("Pending",)
+	)
 
 	# Only mark received once the sheets have built, so a failure never silently receives the batch.
 	if not redownload:
-		_mark_exported(docname, {item.name for item in exportable}, pending_names)
+		_mark_exported(docname, {item.name for item in exportable}, included_names)
 
 	spreadsheet_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	if not products_sheet and not held_back:

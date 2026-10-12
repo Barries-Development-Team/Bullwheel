@@ -1,5 +1,12 @@
 # Caching Analysis — Virtual DocType Framework & Order Receipt
 
+> **Update (2026-10):** Bullwheel no longer writes to Ascend. `db_insert`/`db_update` now only refuse, and
+> `create_vendor_product` and `NewProduct.after_insert` no longer exist, so the write-side invalidation points
+> named below are gone. A cache over Ascend data can no longer be made stale by Bullwheel's own writes — only
+> by changes made in Ascend itself (including an import of a New Product's sheet), so a TTL is the only
+> invalidation a future cache needs. Read the references to those functions as history.
+
+
 **Date:** 2026-07-30
 **Scope:** `bullwheel/ascend/virtual_doctype_base.py`, the virtual DocType controllers, the
 Order Receipt receiving flow, and everything they call into (`MSSQLDatabase`,
