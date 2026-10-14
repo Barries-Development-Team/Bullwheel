@@ -1,0 +1,49 @@
+{
+ "app": "bullwheel",
+ "creation": "2026-10-14 15:31:25.490227",
+ "docstatus": 0,
+ "doctype": "Sidebar",
+ "header_icon": "ferris-wheel",
+ "idx": 0,
+ "items": [
+  {
+   "added": 0,
+   "child": 0,
+   "collapsible": 1,
+   "hidden": 0,
+   "icon": "ferris-wheel",
+   "indent": 0,
+   "is_default_module": 0,
+   "keep_closed": 0,
+   "label": "Bullwheel",
+   "link_to": "Bullwheel",
+   "link_type": "Workspace",
+   "open_in_new_tab": 1,
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "added": 0,
+   "child": 0,
+   "collapsible": 1,
+   "hidden": 0,
+   "icon": "settings",
+   "indent": 0,
+   "is_default_module": 0,
+   "keep_closed": 0,
+   "label": "Bullwheel Settings",
+   "link_to": "Bullwheel Settings",
+   "link_type": "DocType",
+   "open_in_new_tab": 1,
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-10-14 15:33:36.564356",
+ "modified_by": "Administrator",
+ "module": "Bullwheel Core",
+ "name": "Bullwheel Core",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "Bullwheel Core"
+}
