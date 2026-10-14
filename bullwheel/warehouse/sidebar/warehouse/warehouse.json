@@ -14,7 +14,7 @@
    "indent": 0,
    "is_default_module": 0,
    "keep_closed": 0,
-   "label": "Home",
+   "label": "Warehouse Home",
    "link_to": "Warehouse",
    "link_type": "Workspace",
    "open_in_new_tab": 1,
@@ -39,7 +39,7 @@
   }
  ],
  "merged_from": "[\"Warehouse\"]",
- "modified": "2026-10-14 15:29:08.133370",
+ "modified": "2026-10-14 15:41:02.301498",
  "modified_by": "Administrator",
  "module": "Warehouse",
  "name": "Warehouse",
