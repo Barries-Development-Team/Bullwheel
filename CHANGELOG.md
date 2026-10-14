@@ -3,8 +3,19 @@
 All notable changes to Bullwheel are recorded here. Grouped by version.
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Bullwheel no longer writes to Ascend.** Ascend validates products and vendor products when they are created, validation Bullwheel could not replicate, which caused a series of bugs (for example products invisible in purchase orders). Removed the Virtual DocType write path (`ALLOW_WRITE`, `INSERT_DEFAULTS`, `linked_id`, Ascend edit attribution), `create_vendor_product`, `bench backfill-insert-defaults`, and the *Default User* / *Default Location* settings (the Ascend User DocType and the User form's Ascend User link remain). Ascend Product, Vendor Product, Vendor and Product Category are read-only. After upgrading, revoke `INSERT`/`UPDATE` on `Products` and `VendorProducts` from the Bullwheel SQL login (see README).
+- **New Product is now a staged record.** Creating one no longer creates anything in Ascend; it is exported on an Ascend *Vendor Products* import sheet. Added a status (Pending, Exported, Imported, Import Failed, Cancelled), an *Existing Product* entry type for adding a vendor part number to a product Ascend (or another vendor's pending New Product) already has, and names `NP-#####` (the Store SKU is assigned by Ascend and filled in on matching). Existing New Products are migrated to Imported.
+
 ### Features
 
+- Order Receipt items can be a Vendor Product or a New Product. Scanning finds products staged for the vendor (or another vendor), *Export Received Batch* produces the PO sheet and a Vendor Products sheet, and completing receiving is refused while New Products are unexported.
+- New Products are matched to the Ascend Product Ascend creates from them every 15 minutes, or with *Check Ascend*; Product Price, Ski with Bindings, warehouse bay rows and swap tag batch rows then move onto the Ascend Product.
+- Pending New Products can print Ascend, Swap and Online tags (barcode falls back from UPC to VPN), be added to Swap Tag Batches and the Swap Tag scan block, and be checked in/out of Warehouse Locations. Label resolution gained optional hops (`LABEL_RESOLUTION_OPTIONAL`).
+- Bulk Product Import is rebuilt as a per-vendor export batch for New Products that are not on an order.
+- Added `bench audit-bullwheel-products`, a read-only report of the Ascend products Bullwheel created before this change and what is missing on them.
+- New Product VPNs are now unique against pending New Products as well as Ascend, and a UPC already in Ascend or on another pending New Product is refused.
 - Added a provider-agnostic third-party REST API client (`bullwheel.api_integrations`) with timeouts, rate-limit handling, typed errors and an *API Integration Settings* doctype. Authentication is left to the integrator.
 - Fixed New Product unique description bug.
 

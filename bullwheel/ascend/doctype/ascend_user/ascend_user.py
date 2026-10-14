@@ -8,7 +8,6 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 class AscendUser(AbstractVirtualDocType):
     TABLE_NAME = "Users"              # Ascend SQL table name
-    ALLOW_WRITE = False               # False by default. If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
     JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b
     SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console when a lookup on an unmapped field is skipped.
     EXCLUDE_NULL_NAME = True          # 'name' maps to EmployeeId, which is not populated for every Ascend User (e.g.

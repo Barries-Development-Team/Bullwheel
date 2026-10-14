@@ -107,7 +107,7 @@ Bullwheel authenticates to Ascend's SQL Server with a dedicated login rather tha
 
 1. Under **Security > Logins**, create a SQL Server Authentication login named `bullwheel`.
 2. Under **Databases > Ascend > Security > Users**, create a user named `bullwheel` (User Type: "SQL user with login", login name `bullwheel`).
-3. Grant `bullwheel` `UPDATE` and `INSERT` permissions on `dbo.Products` and `dbo.VendorProducts`.
+3. Grant `bullwheel` `SELECT` permission on the Ascend database (e.g. the `db_datareader` role). Bullwheel only **reads** Ascend: it never inserts or updates products or vendor products, because Ascend runs validation on those that Bullwheel cannot replicate. If an earlier install granted `INSERT`/`UPDATE` on `dbo.Products` or `dbo.VendorProducts`, revoke them (after upgrading Bullwheel — upgrading first matters, older versions need them).
 
 Store the resulting credentials in a `SQL Server` document in Bullwheel (`bullwheel/database/doctype/sql_server/`) — see [`documentation/MSSQLDatabase.md`](documentation/MSSQLDatabase.md).
 

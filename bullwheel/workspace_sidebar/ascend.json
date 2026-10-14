@@ -69,6 +69,30 @@
   {
    "child": 0,
    "collapsible": 1,
+   "icon": "package-plus",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "New Products",
+   "link_to": "New Product",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "file-spreadsheet",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Bulk Product Imports",
+   "link_to": "Bulk Product Import",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
    "icon": "store",
    "indent": 0,
    "keep_closed": 0,
@@ -103,7 +127,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-08-04 17:50:52.176089",
+ "modified": "2026-10-12 22:20:00.000000",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend",

@@ -19,7 +19,7 @@ a deployment. No `bench restart` or `migrate` is needed to add, edit, or remove 
 
 - **While editing:** changing `description_template`, or any field listed in `DESCRIPTION_SOURCE_FIELDS` at the top of `new_product.js`, calls the whitelisted `generate_description` method with the form's current (unsaved) values and writes the result into `description`. This is a `frappe.call` to a static method rather than `frm.call`, per this app's performance convention — no document instantiation on the server for what fires on every relevant field blur.
 - **`description` becomes read-only** whenever `description_template` is set (`read_only_depends_on` on the field) — it signals the value is managed by the template. Clear `description_template` to edit `description` by hand again.
-- **On save**, `NewProduct.validate()` re-renders `description` from the current template unconditionally — this is the authoritative pass. It runs whether the document was created via the form, the Bulk Product Import, or the API, and it always wins over whatever the client last previewed, so a template edited *after* the client's last preview still takes effect.
+- **On save**, `NewProduct.validate()` re-renders `description` from the current template unconditionally — this is the authoritative pass. It runs whether the document was created via the form, Quick Entry, or the API, and it always wins over whatever the client last previewed, so a template edited *after* the client's last preview still takes effect.
 - If `description_template` is blank, none of this runs — `description` is a plain, manually-entered field as before.
 
 ## Creating a template

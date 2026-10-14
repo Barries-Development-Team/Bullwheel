@@ -78,7 +78,6 @@ SCHEMA_CONFIG = {
 | `table` | no | `TABLE_NAME` | The table name or `JOIN_CONFIG` alias the column belongs to. Only joined fields need it. |
 | `alternate_name` | no | `False` | This field can also identify a record, alongside `name`. See *Step 3c*. |
 | `cache` | no | `False` | The value never changes for a given record (an identity column, a creation stamp), so it is safe to cache. Declarative only — no caching layer reads it yet. |
-| `linked_id` | no | `None` | Pairs an editable JOIN-sourced field with the writable foreign-key field that stores its id. See *Step 3d*. |
 
 The full contract lives in `bullwheel/ascend/schema_config.py`, which also owns
 normalization — the single place these options are expanded and checked.
@@ -179,15 +178,14 @@ from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
 
 class AscendThing(AbstractVirtualDocType):
     TABLE_NAME = "Things"             # Ascend SQL table name
-    ALLOW_WRITE = False               # False by default. If true, the Virtual Doctype Framework can edit the Ascend SQL table. Requires INSERT, UPDATE permissions.
     JOIN_CONFIG: list = None          # Optional config for joining multiple tables. See Step 3b
     SCHEMA_CONFIG = { ... }           # From Step 2 — must include a "name" entry
     SHOW_FIELD_WARNINGS: bool = True  # Display a warning to the console when a lookup on an unmapped field is skipped.
 
 ```
 
-Those five, plus the optional `NAME_EXPRESSION`, are the whole subclass contract.
-Everything per-field — alternate name resolution, linked-id pairing, cacheability —
+Those four, plus the optional `NAME_EXPRESSION`, are the whole subclass contract.
+Everything per-field — alternate name resolution, cacheability —
 is declared inside `SCHEMA_CONFIG` rather than as its own class attribute.
 
 That's the whole controller. `load_from_db`, `get_list`, `get_count`, sorting,
@@ -305,106 +303,31 @@ class AscendProduct(AbstractVirtualDocType):
 ```
 
 The flagged fields **must be unique** in Ascend's database — a non-unique one makes
-`load_from_db` return an arbitrary match and causes `db_update` to reject the save when
+`load_from_db` return an arbitrary match and makes Link resolution ambiguous when
 its `WHERE` clause matches more than one row. `name` itself cannot be flagged (a filter
 would widen into a meaningless self-OR); `bench migrate` rejects that.
 
-## Step 3d — Enabling writes (`ALLOW_WRITE`, optional)
+## Step 3d — Virtual DocTypes are read-only
 
-Setting `ALLOW_WRITE = True` lets Frappe's normal save flow call `db_insert`
-and `db_update`, which push the document's fields to the Ascend row on create
-and update respectively. `delete` remains unimplemented.
+Bullwheel never writes to Ascend. Ascend runs backend validation when a record is created or
+saved that Bullwheel cannot replicate, and writing around it produced records Ascend itself
+mishandled (a NULL `ModifierLocationID` hid purchase-order lines, for example). `db_insert` and
+`db_update` therefore refuse with `frappe.PermissionError`, and `delete` refuses too. The previous
+write framework (`ALLOW_WRITE`, `INSERT_DEFAULTS`, `linked_id`, the CreatorID/ModifierID
+attribution) was removed; it is recoverable from git history (the commit before "Remove
+Bullwheel's write path to Ascend").
 
-Both methods resolve which fields to write through the shared
-`_collect_writable_fields()` helper. It iterates the document's own fields
-(not `SCHEMA_CONFIG` directly, since not every mapped fieldname is guaranteed
-to exist on the Document) and writes whichever of them:
+Practical consequences when you build a controller:
 
-- have a `SCHEMA_CONFIG` mapping,
-- resolve to a column **on `TABLE_NAME` itself** — a plain `INSERT`/`UPDATE`
-  can't target a `JOIN_CONFIG` table, so joined fields are silently skipped
-  (with a console warning, per `SHOW_FIELD_WARNINGS`), and
-- aren't marked `read_only`/`is_virtual` in the DocType's meta, and aren't a
-  no-value fieldtype (Section Break, Column Break, …) — the same convention
-  `order_receipt.py`'s `writable_fieldnames()` uses. Mark a field `read_only`
-  in its JSON definition whenever its SQL column is server-generated (a SQL
-  Server `IDENTITY` column, a `rowversion`/`timestamp` column, etc.) — writing
-  to one of these directly is rejected by SQL Server. `Ascend Product.id`
-  (backed by the `Products.ID` identity column) is the reference example.
-
-`db_update` excludes the primary key (`name`) from this set, since it's the
-`WHERE` target rather than a value being written. `db_insert` includes it,
-since a new record's identifier must be supplied as a normal column value —
-except when `NAME_EXPRESSION` is set, in which case `db_insert` raises: a
-computed SQL expression has no single column to insert a literal value into.
-
-### Editing a JOIN-sourced field — `linked_id`
-
-A field sourced from a `JOIN_CONFIG` table (e.g. `category` → `cat.Topic`) **cannot be
-written** — a plain `INSERT`/`UPDATE` only targets `TABLE_NAME`, so
-`_collect_writable_fields` skips it. Left unpaired, a user's edit to such a field
-**silently vanishes** on save. The fix is a convention: pair every editable joined
-*display* field with a writable *id* field that maps to the foreign-key column on
-`TABLE_NAME`, declared with the display field's `linked_id` option.
-
-```python
-SCHEMA_CONFIG = {
-    'category': {
-        'table': 'cat', 'column': 'Topic',      # the joined display field
-        'linked_id': {
-            'id_field': 'category_id',          # writable field mapping to Products.TopicID
-            'link_doctype': 'Product Category', # the DocType 'category' links to
-            'link_id_field': 'database_id',     # field on that DocType holding the id (Categories.ID)
-        },
-    },
-    'category_id': {'column': 'TopicID'},
-}
-```
-
-Because the display field is a `Link` to another virtual DocType, the chosen value *is*
-that DocType's primary key. On every save (`db_insert`/`db_update`), the framework
-resolves the display value to its id through the linked DocType's `get_values` and writes
-that id onto the paired id field (which is then persisted as a normal `TABLE_NAME`
-column). Behavior:
-
-- **Resolved** → the id field is set and written (`Products.TopicID` is updated).
-- **Unresolvable** (the display value matches no linked record) → the save is **rejected**
-  with `frappe.throw`, rather than writing a stale or `NULL` id.
-- **Empty** display value → the id field is cleared (`NULL`).
-
-**DocType JSON.** Mark the id field `"hidden": 1` (it's machine-managed) but leave it
-**not** `read_only` — a read-only field is never written, which would re-introduce the
-silent data loss. The display field stays a normal editable `Link`.
-
-**Enforcement (`bench migrate`).** `validate_virtual_doctypes.py` checks the convention:
-each `linked_id` pairing must be structurally sound (the id field mapped with its column on
-`TABLE_NAME`, the linked DocType and its id field resolvable, the id field declared and not
-read-only), and — the coverage rule — **every editable field mapped to a JOIN column must be
-paired**. On a write-enabled DocType (`ALLOW_WRITE = True`) any violation **raises and blocks
-the migration**; on a read-only DocType it is a console warning (no data is at risk until
-`ALLOW_WRITE` is enabled). This mirrors the autoname safety check. A pairing's own key set is
-checked earlier still, during normalization.
-
-**Single-record / no-duplicate safeguards.** `db_update` scopes its `UPDATE` by
-`name` the same way `load_from_db` does (including any alternate-name widening), then checks the SQL Server driver's affected-row-count after
-executing: zero rows raises `frappe.DoesNotExistError`, and more than one row
-raises and rolls back the write entirely rather than letting an ambiguous
-`WHERE` clause silently corrupt multiple Ascend records. `db_insert` has no
-`WHERE` clause to make ambiguous, but Frappe's own virtual-doctype insert flow
-performs **no name-uniqueness check** before calling `db_insert` (unlike a real
-doctype, where the database's own primary-key constraint catches a collision) —
-so `db_insert` runs its own pre-flight existence check and raises
-`frappe.DuplicateEntryError` rather than risk silently duplicating a record,
-and also checks the affected-row-count after executing.
-
-**Datetime/Date values.** Frappe stores `Datetime`/`Date` fields (including the
-standard `modified`/`creation` fields — e.g. mapping `'modified':
-'Products.DateModified'` to keep Ascend's own timestamp in sync) as plain
-strings. Both methods convert them to native `datetime.datetime`/`datetime.date`
-objects (via each field's meta fieldtype, falling back to a fixed Datetime type
-for `creation`/`modified`) before binding, since pymssql needs the native type
-to encode a SQL Server datetime parameter correctly — sending the raw string
-can raise a datetime conversion error.
+- Mark every data field `read_only` in the DocType JSON and give the permission row only
+  `read`, `report`, `print` and `export`, so the desk shows no Save button and API edits are
+  rejected before they reach the controller.
+- New Ascend records are created by staging a **New Product** in Bullwheel and importing its
+  Vendor Products sheet into Ascend (see `RECEIVING_FLOW.md`), never by saving a virtual DocType.
+- The SQL Server login Bullwheel uses needs `SELECT` only. `get_bulk_values` creates a `#temp`
+  table in tempdb, which the public role may do without any grant on Ascend's tables.
+- Any code that must look at "does Ascend already have this identifier?" uses the read helper
+  `_record_exists(name)` (it widens to `alternate_name` fields, so a UPC counts).
 
 ## Step 4 — Create the DocType JSON
 
@@ -442,8 +365,7 @@ at the DocType autocompletes.
 whose controller inherits `AbstractVirtualDocType`:
 
 1. **Structural checks** (always): every entry normalizes cleanly (a dict or `None`,
-   no unknown option keys, a bare `column` present, boolean flags, a well-formed
-   `linked_id`), SCHEMA_CONFIG non-empty, a primary key defined (a `"name"` entry or a
+   no unknown option keys, a bare `column` present, boolean flags), SCHEMA_CONFIG non-empty, a primary key defined (a `"name"` entry or a
    `NAME_EXPRESSION`), `name` not flagged `alternate_name`, and every field's `table`
    — plus every qualifier inside `NAME_EXPRESSION` — declared in `TABLE_NAME` +
    `JOIN_CONFIG`. A failure raises `ValueError` and **blocks the migration** with the

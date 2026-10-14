@@ -272,7 +272,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-08-04 17:43:18.582354",
+ "modified": "2026-10-12 22:20:00.000000",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend User",
@@ -280,16 +280,11 @@
  "owner": "Administrator",
  "permissions": [
   {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
+   "role": "System Manager"
   }
  ],
  "row_format": "Dynamic",

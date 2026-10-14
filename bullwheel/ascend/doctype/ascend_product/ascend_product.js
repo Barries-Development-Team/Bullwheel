@@ -7,6 +7,16 @@ frappe.ui.form.on('Ascend Product', {
 		bullwheel.printing.add_print_button({ frm, label: 'Print Ascend Tag', slot: 'ascend_tag' });
 		bullwheel.printing.add_print_button({ frm, label: 'Print Online Tag', slot: 'online_tag' });
 
+		// Buttons live here rather than as Button fields: this form carries no write permission
+		// (Ascend records are read-only in Bullwheel), and the prices they edit are Bullwheel's own.
+		frm.add_custom_button(__('Edit Swap Price'), () => {
+			edit_product_price(frm, 'SWAP', 'Ski Swap Price', __('Edit Swap Price'));
+		}, __('Pricing'));
+
+		frm.add_custom_button(__('Edit Online Price'), () => {
+			edit_product_price(frm, 'ONLINE', 'Online Listing Price', __('Edit Online Price'));
+		}, __('Pricing'));
+
 		frm.add_custom_button(__('Check In'), () => {
 			bullwheel.warehouse.check_in_item({ product: frm.doc.name });
 		}, __('Check In/Out'));
@@ -21,14 +31,6 @@ frappe.ui.form.on('Ascend Product', {
 				description: frm.doc.description
 			})
 		});
-	},
-
-	edit_swap_price(frm) {
-		edit_product_price(frm, 'SWAP', 'Ski Swap Price', __('Edit Swap Price'));
-	},
-
-	edit_online_price(frm) {
-		edit_product_price(frm, 'ONLINE', 'Online Listing Price', __('Edit Online Price'));
 	},
 });
 

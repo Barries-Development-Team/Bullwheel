@@ -103,90 +103,82 @@ def _format_suggested_config(config):
 	return "SCHEMA_CONFIG = {\n" + ",\n".join(lines) + "\n}"
 
 
-@click.command("backfill-insert-defaults")
+@click.command("audit-bullwheel-products")
 @click.option(
-	"--doctype",
-	"doctype_name",
-	default="Ascend Product",
-	help="Virtual DocType whose INSERT_DEFAULTS to backfill. Defaults to Ascend Product.",
-)
-@click.option(
-	"--server",
-	"server_name",
+	"--output",
+	"output_path",
 	default=None,
-	help="SQL Server DocType record name. Defaults to Bullwheel Settings -> default_database.",
+	type=click.Path(dir_okay=False, writable=True),
+	help="CSV file to write. Defaults to printing the CSV to the terminal.",
 )
-@click.option("--apply", "apply_changes", is_flag=True, default=False, help="Perform the UPDATE. Without this, only counts are reported.")
 @pass_context
-def backfill_insert_defaults(context, doctype_name="Ascend Product", server_name=None, apply_changes=False):
-	"""Set a virtual DocType's INSERT_DEFAULTS on existing Ascend rows that are still NULL.
+def audit_bullwheel_products(context, output_path=None):
+	"""List Ascend Products that Bullwheel created before it stopped writing to Ascend, and what
+	is missing on them.
 
-	INSERT_DEFAULTS only governs rows written from here on; rows created before a default was
-	declared keep whatever the column defaulted to. This backfills those, one UPDATE per
-	declared field, touching only rows where the column IS NULL — a row that already carries a
-	value (including a deliberate non-default one) is never rewritten.
-
-	Reports the affected row count per column and does nothing else unless --apply is passed,
-	so the scope of the change can be read before any row in Ascend is modified.
+	Until now creating a New Product also inserted its Ascend Product directly, bypassing the
+	validation Ascend runs when a product is created in Ascend itself. This report reads those
+	products back (read-only, through the Ascend Product and Vendor Product DocTypes) and flags the
+	ones whose ModifierLocationID, ConcurrencyToken or NonInventory is NULL, or that have no Vendor
+	Product, so staff can open and re-save them in Ascend to repair them.
 	"""
-	from frappe.model.base_document import get_controller
+	import csv
+	import sys
 
-	from bullwheel.ascend.schema_config import quote_column
-	from bullwheel.ascend.virtual_doctype_base import get_default_ascend_database
-	from bullwheel.database.SQLServer import MSSQLDatabase
+	from bullwheel.ascend.doctype.ascend_product.ascend_product import AscendProduct
 
 	site = get_site(context)
 	frappe.init(site=site)
 	frappe.connect()
 	try:
-		controller = get_controller(doctype_name)
-		insert_defaults = controller.INSERT_DEFAULTS
-		if not insert_defaults:
-			click.echo(f"{doctype_name} declares no INSERT_DEFAULTS — nothing to backfill.")
-			return
-
-		server_document = (
-			frappe.get_doc("SQL Server", server_name) if server_name else get_default_ascend_database()
+		# Products Bullwheel inserted itself are the Imported New Products that were never exported
+		# on an import sheet (the migration patch marked them Imported without an export date).
+		store_skus = frappe.get_all(
+			"New Product", filters={"status": "Imported", "exported_on": ["is", "not set"]}, pluck="name"
 		)
+		products = AscendProduct.get_bulk_values(
+			store_skus,
+			["description", "creator_id", "date_created", "modifier_location_id", "concurrency_token", "non_inventory"],
+		)
+
+		vendor_product_skus = set()
+		sku_list = list(products)
+		for start in range(0, len(sku_list), 500):
+			chunk = sku_list[start:start + 500]
+			vendor_product_skus.update(
+				frappe.get_all(
+					"Vendor Product", filters={"product": ["in", chunk]}, pluck="product", limit_page_length=0
+				)
+			)
+
+		rows = []
+		for store_sku, product in products.items():
+			missing = [
+				column for column, field in (
+					("ModifierLocationID", "modifier_location_id"),
+					("ConcurrencyToken", "concurrency_token"),
+					("NonInventory", "non_inventory"),
+				) if product.get(field) is None
+			]
+			if store_sku not in vendor_product_skus:
+				missing.append("Vendor Product")
+			if missing:
+				rows.append([store_sku, product.description, product.date_created, "; ".join(missing)])
+
+		stream = open(output_path, "w", newline="") if output_path else sys.stdout
+		try:
+			writer = csv.writer(stream)
+			writer.writerow(["Store SKU", "Description", "Created", "Missing"])
+			writer.writerows(rows)
+		finally:
+			if output_path:
+				stream.close()
 
 		click.echo(
-			f"\n{doctype_name} -> {controller.TABLE_NAME} on '{server_document.name}'"
-			f" ({'APPLYING' if apply_changes else 'dry run — pass --apply to write'})\n"
+			f"{len(rows)} of {len(products)} Bullwheel-created product(s) need repair in Ascend."
+			+ (f" Written to {output_path}." if output_path else ""),
+			err=True,
 		)
-
-		with MSSQLDatabase(server_document) as ascend:
-			for field, default in insert_defaults.items():
-				# A callable default (e.g. a Bullwheel Settings lookup, a timestamp) is resolved
-				# once here — the same value is used for every row this backfill pass touches,
-				# same as db_insert resolves it once per document.
-				value = default() if callable(default) else default
-				if value is None:
-					click.echo(f"  {field:<28} {'':<28} {'skipped':>8} — default resolved to None")
-					continue
-
-				# Resolved through the controller so the column is the same one db_insert would
-				# write, bracket-quoted by the same helper rather than interpolated by hand.
-				column = quote_column(controller._field_config(field)['column'])
-				table = controller.TABLE_NAME
-
-				pending = ascend.sql(
-					f"SELECT COUNT(*) AS pending FROM {table} WHERE {column} IS NULL",
-					[], as_dict=True,
-				)[0]["pending"]
-
-				if not apply_changes:
-					click.echo(f"  {field:<28} {column:<28} {pending:>8} row(s) NULL -> would set {value!r}")
-					continue
-
-				ascend.sql(
-					f"UPDATE {table} SET {column} = %s WHERE {column} IS NULL",
-					[value], as_dict=False,
-				)
-				click.echo(f"  {field:<28} {column:<28} {ascend.cursor.rowcount:>8} row(s) set to {value!r}")
-
-			if apply_changes:
-				ascend.commit()
-				click.echo("\nCommitted.")
 	finally:
 		frappe.destroy()
 
@@ -194,4 +186,4 @@ def backfill_insert_defaults(context, doctype_name="Ascend Product", server_name
 		raise SiteNotSpecifiedError
 
 
-commands = [introspect_schema, backfill_insert_defaults]
+commands = [introspect_schema, audit_bullwheel_products]

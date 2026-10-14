@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "print",
+  "product_type",
   "product",
   "description",
   "estimated_cost",
@@ -18,11 +19,21 @@
  ],
  "fields": [
   {
+   "fieldname": "product_type",
+   "fieldtype": "Select",
+   "label": "Product Type",
+   "options": "Ascend Product\nNew Product",
+   "default": "Ascend Product",
+   "in_list_view": 0,
+   "read_only": 1,
+   "description": "New Product: not imported into Ascend yet."
+  },
+  {
    "fieldname": "product",
-   "fieldtype": "Link",
+   "fieldtype": "Dynamic Link",
    "in_list_view": 1,
    "label": "Product",
-   "options": "Ascend Product"
+   "options": "product_type"
   },
   {
    "default": "1",
@@ -90,7 +101,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-16 10:52:25.188802",
+ "modified": "2026-10-12 22:20:00.000000",
  "modified_by": "Administrator",
  "module": "Label Printing",
  "name": "Swap Tag Batch Item",

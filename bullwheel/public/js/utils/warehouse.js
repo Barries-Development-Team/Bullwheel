@@ -3,28 +3,33 @@
 
 frappe.provide('bullwheel.warehouse');
 
-// Dialog UI for listing Ascend Product locations
-// product_sku - Ascend SKU of the product.
-// description - Optional. Many circumstances where this function would be called already have the description, so it can be provided here to save a query.
+// Dialog UI for listing a product's locations
+// product_sku  - Ascend SKU of the product (or the New Product's name when product_type is 'New Product').
+// description  - Optional. Many circumstances where this function would be called already have the description, so it can be provided here to save a query.
+// product_type - 'Ascend Product' (default) or 'New Product' for a product not imported into Ascend yet.
 import { productLocationTable } from "./product_location_table";
 
-bullwheel.warehouse.product_location_dialog = function({ product_sku, description = null } = {}) {
+bullwheel.warehouse.product_location_dialog = function({ product_sku, description = null, product_type = 'Ascend Product' } = {}) {
 
 	// Look up the description only when the caller did not already supply one,
 	// then open the dialog — nested so the "not found" message always has the
 	// description available rather than racing an in-flight lookup.
 	if (description === null) {
-		frappe.call({
-			method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_values',
-			args: {
-				name: product_sku,
-				fields: JSON.stringify(["description"])
-			},
-			callback: function(response) {
-				description = response.message.description;
-				show_locations();
-			}
-		})
+		const lookup = product_type === 'New Product'
+			? frappe.db.get_value('New Product', product_sku, 'description').then((response) => response.message)
+			: frappe.call({
+				method: 'bullwheel.ascend.doctype.ascend_product.ascend_product.get_values',
+				args: {
+					name: product_sku,
+					fields: JSON.stringify(["description"])
+				}
+			}).then((response) => response.message);
+
+		lookup.then((record) => {
+			// The product may not exist (mistyped, or removed); show locations by SKU alone then.
+			description = (record && record.description) || product_sku;
+			show_locations();
+		});
 	} else {
 		show_locations();
 	}
@@ -32,7 +37,7 @@ bullwheel.warehouse.product_location_dialog = function({ product_sku, descriptio
 	function show_locations() {
 		frappe.call({
 			method: 'bullwheel.warehouse.stock_handler.get_product_locations',
-			args: { product: product_sku },
+			args: { product: product_sku, product_type: product_type },
 			callback: function(response) {
 				var locations = response.message || [];
 				// Return if no locations were found
@@ -72,17 +77,26 @@ bullwheel.warehouse.product_location_dialog = function({ product_sku, descriptio
 //   on_success - optional callback invoked with (product, location, quantity) once
 //                the server confirms the check-in, so callers (e.g. a page refresh)
 //                can react without polling.
-//   product    - optional Ascend Product name to pre-fill, for callers (e.g. the
-//                Ascend Product form) that already know the product being checked in.
-bullwheel.warehouse.check_in_item = function ({ on_success, product } = {}) {
+//   product    - optional product name to pre-fill, for callers (e.g. the Ascend Product
+//                form) that already know the product being checked in.
+//   product_type - 'Ascend Product' (default), or 'New Product' for a product that is not
+//                imported into Ascend yet.
+bullwheel.warehouse.check_in_item = function ({ on_success, product, product_type = 'Ascend Product' } = {}) {
 	const dialog = new frappe.ui.Dialog({
 		title: __('Check In Item'),
 		fields: [
 			{
+				label: __('Product Type'),
+				fieldname: 'product_type',
+				fieldtype: 'Select',
+				options: ['Ascend Product', 'New Product'],
+				default: product_type,
+			},
+			{
 				label: __('Product'),
 				fieldname: 'product',
-				fieldtype: 'Link',
-				options: 'Ascend Product',
+				fieldtype: 'Dynamic Link',
+				options: 'product_type',
 				reqd: 1,
 				default: product,
 			},
@@ -114,6 +128,7 @@ bullwheel.warehouse.check_in_item = function ({ on_success, product } = {}) {
 				method: 'bullwheel.warehouse.stock_handler.check_in_item',
 				args: {
 					product: values.product,
+					product_type: values.product_type,
 					location: values.location,
 					quantity: values.quantity,
 				},
@@ -138,19 +153,29 @@ bullwheel.warehouse.check_in_item = function ({ on_success, product } = {}) {
 //
 //   on_success - optional callback invoked with (product, location, quantity) once
 //                the server confirms the check-out.
-//   product    - optional Ascend Product name to pre-fill, for callers (e.g. the
-//                Ascend Product form) that already know the product being checked out.
-bullwheel.warehouse.check_out_item = function ({ on_success, product } = {}) {
+//   product    - optional product name to pre-fill, for callers (e.g. the Ascend Product
+//                form) that already know the product being checked out.
+//   product_type - 'Ascend Product' (default), or 'New Product' for a product that is not
+//                imported into Ascend yet.
+bullwheel.warehouse.check_out_item = function ({ on_success, product, product_type = 'Ascend Product' } = {}) {
 	let location_quantities = {};
 
 	const dialog = new frappe.ui.Dialog({
 		title: __('Check Out Item'),
 		fields: [
 			{
+				label: __('Product Type'),
+				fieldname: 'product_type',
+				fieldtype: 'Select',
+				options: ['Ascend Product', 'New Product'],
+				default: product_type,
+				onchange: refresh_locations,
+			},
+			{
 				label: __('Product'),
 				fieldname: 'product',
-				fieldtype: 'Link',
-				options: 'Ascend Product',
+				fieldtype: 'Dynamic Link',
+				options: 'product_type',
 				reqd: 1,
 				default: product,
 				onchange: refresh_locations,
@@ -200,6 +225,7 @@ bullwheel.warehouse.check_out_item = function ({ on_success, product } = {}) {
 				method: 'bullwheel.warehouse.stock_handler.check_out_item',
 				args: {
 					product: values.product,
+					product_type: values.product_type,
 					location: values.location,
 					quantity: values.quantity,
 				},
@@ -228,7 +254,7 @@ bullwheel.warehouse.check_out_item = function ({ on_success, product } = {}) {
 
 		frappe.call({
 			method: 'bullwheel.warehouse.stock_handler.get_product_locations',
-			args: { product: product },
+			args: { product: product, product_type: dialog.get_value('product_type') },
 			callback(response) {
 				const rows = response.message || [];
 				if (!rows.length) {
