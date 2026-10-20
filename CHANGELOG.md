@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
+
+## [1.2.1] - October 19, 2026
+
+### Changes
+
+- Swap Tags can print barcodes for strings up to 23 characters.
+- New Vendor Part Number generation algorithm.
+    - Words are now adjacent instead of seperated by dashes, and have proper capitalization.
+    - For example, REN-TECHNICA-JT3-5-25-1 would now look like REN-TechnicaJt3525-1.
+
 ## [1.2.0] - October 14, 2026
 
 ### Major Changes
