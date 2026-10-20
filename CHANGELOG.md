@@ -2,6 +2,13 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.2.2] - October 20, 2026
+
+### Bug Fixes
+
+- Fixed New Product VPN generation not checking other pending New Products for duplicates.
+- Added a new patch to fix existing duplicate VPNs.
+
 ## [1.2.1] - October 19, 2026
 
 ### Changes

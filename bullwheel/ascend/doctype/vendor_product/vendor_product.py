@@ -55,11 +55,13 @@ class VendorProduct(AbstractVirtualDocType):
     }
 	]
 
-def _part_number_match_count(ascend, vendor_id, part_number, part_number_similarity: str = 'equals') -> int:
+def _part_number_match_count(ascend, vendor_id, part_number, part_number_similarity: str = 'equals', vendor=None, exclude_new_product=None) -> int:
 	"""Count VendorProducts rows for this vendor matching part_number, either exactly or via a
 	wildcard LIKE depending on part_number_similarity. Runs on an already-open ascend connection
 	so callers that need several checks in a row (e.g. a counter-suffix search) share one
-	connection instead of opening a new one per check."""
+	connection instead of opening a new one per check. When `vendor` (the Vendor name) is given,
+	non-cancelled New Products of that vendor holding a matching VPN are counted too, except
+	`exclude_new_product` (the record being re-saved)."""
 
 	match part_number_similarity:
 		case 'equals':
@@ -70,27 +72,32 @@ def _part_number_match_count(ascend, vendor_id, part_number, part_number_similar
 			values = [vendor_id, f'%{part_number}%']
 
 	existing = ascend.sql(query=query, values=values, as_dict=True)
-	return len(existing)
+
+	if not vendor:
+		return len(existing)
+
+	return len(existing) + _new_product_match_count(vendor, part_number, part_number_similarity, exclude_new_product)
+
+
+def _new_product_match_count(vendor, part_number, part_number_similarity: str = 'equals', exclude_new_product=None) -> int:
+	"""Count non-cancelled New Products for this vendor whose VPN matches part_number. A New
+	Product waits in Bullwheel until it is imported, so its VPN is not yet in VendorProducts and
+	the Ascend check alone cannot see it."""
+	vpn_filter = ["like", f'%{part_number}%'] if part_number_similarity == 'like' else part_number
+	filters = {"vendor": vendor, "vpn": vpn_filter, "status": ["!=", "Cancelled"]}
+	if exclude_new_product:
+		filters["name"] = ["!=", exclude_new_product]
+	return frappe.db.count("New Product", filters)
 
 
 @frappe.whitelist()
-def vendor_product_match_count(vendor_id, part_number, part_number_similarity: str = 'equals') -> int:
+def vendor_product_match_count(vendor_id, part_number, part_number_similarity: str = 'equals', vendor=None, exclude_new_product=None) -> int:
 	"""Check whether a VendorProducts row already exists for this vendor, matching part_number
-	either exactly or via a wildcard LIKE depending on part_number_similarity. Returns the
-	number of matching rows."""
+	either exactly or via a wildcard LIKE depending on part_number_similarity. When `vendor` is
+	given, pending New Products of that vendor are counted too. Returns the number of matching rows."""
 
 	with MSSQLDatabase(get_default_ascend_database()) as ascend:
-		return _part_number_match_count(ascend, vendor_id, part_number, part_number_similarity)
-
-
-def _pending_new_product_uses_vpn(vendor, candidate, exclude_new_product=None) -> bool:
-	"""True when a non-cancelled New Product for this vendor already holds `candidate` as its
-	VPN. A New Product waits in Bullwheel until it is imported, so its VPN is not yet in
-	VendorProducts and the Ascend check alone cannot see it."""
-	filters = {"vendor": vendor, "vpn": candidate, "status": ["!=", "Cancelled"]}
-	if exclude_new_product:
-		filters["name"] = ["!=", exclude_new_product]
-	return bool(frappe.db.exists("New Product", filters))
+		return _part_number_match_count(ascend, vendor_id, part_number, part_number_similarity, vendor, exclude_new_product)
 
 
 PART_NUMBER_LIMIT = 23  # Inclusive bound. 23 characters is the max that fit on a 2in, 300dpi Swap Tag. Limit in the Ascend database is 50.
@@ -189,7 +196,8 @@ def generate_vpn(vendor_id, vpn_prefix, brand, model, size=None, color=None, ven
 	removed (the prefix stays uppercase); brand is capped to its first two words. If the
 	result would exceed PART_NUMBER_LIMIT, components are shortened one character at a time, always
 	the one with the highest (current length / minimum length), never below VPN_MINIMUMS. A counter
-	(1, 2, …) is then searched for, inside one Ascend connection, until no VendorProducts row matches."""
+	(1, 2, …) is then searched for, inside one Ascend connection, until no VendorProducts row (and,
+	when `vendor` is given, no other pending New Product of that vendor) matches."""
 	limited_brand = ' '.join(str(brand).strip().split()[:2])  # Keep the existing two-word brand limit.
 	parts = {
 		'vpn_prefix': _normalize_prefix(vpn_prefix),
@@ -206,6 +214,6 @@ def generate_vpn(vendor_id, vpn_prefix, brand, model, size=None, color=None, ven
 				candidate = _build_vpn(parts, counter)
 			except ValueError as error:
 				frappe.throw(str(error))
-			if not _part_number_match_count(ascend, vendor_id, candidate):
+			if not _part_number_match_count(ascend, vendor_id, candidate, vendor=vendor, exclude_new_product=exclude_new_product):
 				return candidate
 			counter += 1
