@@ -83,17 +83,6 @@ def vendor_product_match_count(vendor_id, part_number, part_number_similarity: s
 		return _part_number_match_count(ascend, vendor_id, part_number, part_number_similarity)
 
 
-def _format_vpn_component(value) -> str:
-	"""Normalize one VPN component: strip anything that isn't alphanumeric or whitespace,
-	collapse remaining whitespace to a single "-", then uppercase."""
-
-	value = re.sub(r'[^a-zA-Z0-9\s]', '', str(value).strip())
-	return re.sub(r'\s+', '-', value).upper()
-
-
-PART_NUMBER_LIMIT = 45  # Ascend's Part Number column allows 50 characters; kept as a safety margin.
-
-
 def _pending_new_product_uses_vpn(vendor, candidate, exclude_new_product=None) -> bool:
 	"""True when a non-cancelled New Product for this vendor already holds `candidate` as its
 	VPN. A New Product waits in Bullwheel until it is imported, so its VPN is not yet in
@@ -104,38 +93,119 @@ def _pending_new_product_uses_vpn(vendor, candidate, exclude_new_product=None) -
 	return bool(frappe.db.exists("New Product", filters))
 
 
+PART_NUMBER_LIMIT = 23  # Inclusive bound. 23 characters is the max that fit on a 2in, 300dpi Swap Tag. Limit in the Ascend database is 50.
+
+# VPN layout:  PREFIX-BRANDMODELCOLORSIZE-COUNTER   e.g.  BAR-SWITCRENEGABLAMED-1
+# Dashes only mark the boundaries of the prefix and the counter. The body components are run together.
+SEGMENT_SEPARATOR = '-'
+BODY_ORDER = ('brand', 'model', 'color', 'size')  # Order of the components inside the body.
+
+# Minimum characters each component is guaranteed when the VPN has to be shortened.
+# A component is never truncated below its minimum (or below its own length if it was already shorter).
+# The counter is never truncated, since that would break uniqueness; its minimum only reserves space.
+VPN_MINIMUMS = {
+	'vpn_prefix': 2,
+	'brand': 3,
+	'model': 4,
+	'color': 2,
+	'size': 2,
+	'counter': 1,
+}
+
+_COMPONENTS = ('vpn_prefix',) + BODY_ORDER + ('counter',)
+
+
+def _validate_vpn_minimums():
+	if set(VPN_MINIMUMS) != set(_COMPONENTS):
+		raise ValueError(f'VPN_MINIMUMS keys must be exactly {_COMPONENTS}, got {tuple(VPN_MINIMUMS)}.')
+	invalid = {name: value for name, value in VPN_MINIMUMS.items() if not isinstance(value, int) or value < 1}
+	if invalid:
+		raise ValueError(f'VPN_MINIMUMS values must be integers >= 1, got {invalid}.')
+	# Worst case: every component present, so both segment separators are used.
+	required = sum(VPN_MINIMUMS.values()) + 2 * len(SEGMENT_SEPARATOR)
+	if required > PART_NUMBER_LIMIT:
+		raise ValueError(
+			f'Sum of VPN_MINIMUMS ({sum(VPN_MINIMUMS.values())}) plus separators ({2 * len(SEGMENT_SEPARATOR)}) '
+			f'= {required} exceeds PART_NUMBER_LIMIT ({PART_NUMBER_LIMIT}).'
+		)
+
+
+_validate_vpn_minimums()  # Fail fast on a bad configuration.
+
+
+def _normalize_component(value) -> str:
+	"""Drop anything that isn't alphanumeric or whitespace, put each word in proper case, then join
+	the words with no separator. Input case is irrelevant: 'JP 5' / 'jp 5' -> 'Jp5',
+	'BLACK diamond' -> 'BlackDiamond'. None -> ''."""
+	if value is None:
+		return ''
+	cleaned = re.sub(r'[^a-zA-Z0-9\s]', '', str(value))
+	return ''.join(word.capitalize() for word in cleaned.split())
+
+
+def _normalize_prefix(value) -> str:
+	"""The prefix is a vendor acronym, so it stays uppercase (BAR) instead of proper case."""
+	return _normalize_component(value).upper()
+
+
+def _assemble(components: dict) -> str:
+	body = ''.join(components.get(name, '') for name in BODY_ORDER)
+	segments = [components.get('vpn_prefix', ''), body, components['counter']]
+	return SEGMENT_SEPARATOR.join(segment for segment in segments if segment)
+
+
+def _build_vpn(parts: dict, counter: int) -> str:
+	"""
+	Assemble PREFIX-BODY-COUNTER, shortening components if the result is over PART_NUMBER_LIMIT.
+
+	Each pass removes one character from the component with the highest weight, where
+	weight = current length / minimum length, until the VPN fits. Components at or below their
+	minimum are not eligible, and the counter is never eligible.
+	"""
+	components = {name: parts[name] for name in ('vpn_prefix',) + BODY_ORDER if parts.get(name)}
+	components['counter'] = str(counter)
+
+	while len(_assemble(components)) > PART_NUMBER_LIMIT:
+		candidates = [
+			name for name in components
+			if name != 'counter' and len(components[name]) > VPN_MINIMUMS[name]
+		]
+		if not candidates:
+			raise ValueError(
+				f'Cannot fit "{_assemble(components)}" within {PART_NUMBER_LIMIT} characters '
+				f'without truncating a component below its minimum.'
+			)
+		# max() returns the first of any tied candidates, so ties favor the earlier component.
+		target = max(candidates, key=lambda name: len(components[name]) / VPN_MINIMUMS[name])
+		components[target] = components[target][:-1]
+
+	return _assemble(components)
+
+
 @frappe.whitelist()
 def generate_vpn(vendor_id, vpn_prefix, brand, model, size=None, color=None, vendor=None, exclude_new_product=None) -> str:
-	"""Build a unique Ascend part number as Vendor Acronym-Brand-Model-Size-Color-Counter: brand
-	is capped to its first two words and model is truncated if needed to stay within
-	PART_NUMBER_LIMIT, then a counter suffix (-1, -2, …) is searched for, inside one Ascend
-	connection, until a part number with no existing VendorProducts match — and, when `vendor`
-	(the Vendor DocType name) is given, no pending New Product of that vendor — is found.
-	`exclude_new_product` names a New Product to ignore, so regenerating its own VPN can reuse it."""
+	"""Build a unique Ascend part number as PREFIX-BRANDMODELCOLORSIZE-COUNTER (e.g. BAR-SWITCRENEGABLAMED-1).
+	Each component is stripped of non-alphanumeric characters, put in proper case and has its whitespace
+	removed (the prefix stays uppercase); brand is capped to its first two words. If the
+	result would exceed PART_NUMBER_LIMIT, components are shortened one character at a time, always
+	the one with the highest (current length / minimum length), never below VPN_MINIMUMS. A counter
+	(1, 2, …) is then searched for, inside one Ascend connection, until no VendorProducts row matches."""
+	limited_brand = ' '.join(str(brand).strip().split()[:2])  # Keep the existing two-word brand limit.
+	parts = {
+		'vpn_prefix': _normalize_prefix(vpn_prefix),
+		'brand': _normalize_component(limited_brand),
+		'model': _normalize_component(model),
+		'color': _normalize_component(color),
+		'size': _normalize_component(size),
+	}
 
-	def build_base_vpn(model_value):
-		components = [vpn_prefix, limited_brand, model_value, size, color]
-		formatted = [_format_vpn_component(component) for component in components if component is not None and str(component).strip() != '']
-		return '-'.join(formatted)
-
-	limited_brand = ' '.join(brand.strip().split()[:2])
-	base_vpn = build_base_vpn(model)
-
-	# Still over the limit: shorten "model" by exactly the overage rather than a fixed amount,
-	# so short overages cost as little of "model" as possible.
-	if len(base_vpn) > PART_NUMBER_LIMIT:
-		overage = len(base_vpn) - PART_NUMBER_LIMIT
-		formatted_model = _format_vpn_component(model)
-		truncated_model = formatted_model[:max(0, len(formatted_model) - overage)]
-		base_vpn = build_base_vpn(truncated_model)
-
-	if len(base_vpn) > PART_NUMBER_LIMIT:
-		frappe.throw(f'Generated VPN "{base_vpn}" exceeds the {PART_NUMBER_LIMIT}-character limit even after truncating "model".')
-
-	counter = 1
 	with MSSQLDatabase(get_default_ascend_database()) as ascend:
+		counter = 1
 		while True:
-			candidate = f"{base_vpn}-{counter}"
+			try:
+				candidate = _build_vpn(parts, counter)
+			except ValueError as error:
+				frappe.throw(str(error))
 			if not _part_number_match_count(ascend, vendor_id, candidate):
 				return candidate
 			counter += 1
