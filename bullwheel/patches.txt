@@ -9,3 +9,4 @@ bullwheel.patches.drop_order_item_snapshot_columns
 bullwheel.patches.set_order_item_type
 bullwheel.patches.mark_existing_new_products_imported
 bullwheel.patches.set_product_types
+bullwheel.patches.regenerate_duplicate_pending_vpns
