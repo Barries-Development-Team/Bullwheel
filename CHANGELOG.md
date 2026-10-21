@@ -2,6 +2,12 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.2.3] - Unreleased
+
+### Bug Fixes
+
+- Adjusted Ascend Tag barcode text size to prevent printing overlap.
+
 ## [1.2.2] - October 20, 2026
 
 ### Bug Fixes
