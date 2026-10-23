@@ -1,11 +1,8 @@
 // Copyright (c) 2026, Barrie's Ski and Sports and contributors
 // For license information, please see license.txt
 
-// Route "+ Add New Product" through the full-form dialog instead of Quick Entry: Quick Entry
-// has no script_manager, so the live description regeneration handlers in new_product.js
-// cannot run there. The dialog hosts the real Form, where they work as on the full page.
-const IMPORT_OVERDUE_DAYS = 3;
-
+// No top-level const/let here: Frappe re-evaluates list scripts each time the doctype is
+// (re)loaded, e.g. by Data Export, and a redeclared global const throws a SyntaxError.
 frappe.listview_settings['New Product'] = {
 	onload(listview) {
 		// Looks for Vendor Products Ascend now holds for Exported/Pending New Products and matches
@@ -24,6 +21,7 @@ frappe.listview_settings['New Product'] = {
 	// Imported green, Import Failed red, Cancelled gray. An export that Ascend has not picked up
 	// within IMPORT_OVERDUE_DAYS shows red, since the import sheet is probably still unimported.
 	get_indicator(doc) {
+		const IMPORT_OVERDUE_DAYS = 3;
 		if (doc.status === 'Exported' && doc.exported_on
 			&& frappe.datetime.get_day_diff(frappe.datetime.now_datetime(), doc.exported_on) >= IMPORT_OVERDUE_DAYS) {
 			return [__('Import Overdue'), 'red', 'status,=,Exported'];
@@ -34,6 +32,9 @@ frappe.listview_settings['New Product'] = {
 		};
 		return [__(doc.status), colors[doc.status] || 'gray', 'status,=,' + doc.status];
 	},
+	// Route "+ Add New Product" through the full-form dialog instead of Quick Entry: Quick Entry
+	// has no script_manager, so the live description regeneration handlers in new_product.js
+	// cannot run there. The dialog hosts the real Form, where they work as on the full page.
 	primary_action() {
 		bullwheel.forms.open_form_dialog('New Product', {
 			after_insert() {

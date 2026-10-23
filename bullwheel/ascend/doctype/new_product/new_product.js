@@ -1,6 +1,9 @@
 // Copyright (c) 2026, Barrie's Ski and Sports and contributors
 // For license information, please see license.txt
 
+// Wrapped in an IIFE so reloading the doctype (e.g. Data Export) does not redeclare these consts.
+(function () {
+
 // Fields whose change should re-render the Description from the chosen Description
 // Template. Add a field here when a template starts (or stops) reading it — see
 // documentation/DESCRIPTION_TEMPLATES.md for the full authoring guide.
@@ -218,3 +221,5 @@ function confirm_new_product_save(frm) {
 		);
 	});
 }
+
+})();
