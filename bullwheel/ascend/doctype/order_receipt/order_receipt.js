@@ -1,6 +1,9 @@
 // Copyright (c) 2026, Barrie's Ski and Sports and contributors
 // For license information, please see license.txt
 
+// Wrapped in an IIFE so reloading the doctype (e.g. Data Export) does not redeclare these consts.
+(function () {
+
 // Per-table config for the Add/Edit/Remove buttons on Order Receipt child tables. Each
 // entry drives a DocType-defined dialog plus a queued, serialized update of that table.
 const TABLE_CONFIGS = {
@@ -582,3 +585,5 @@ frappe.ui.form.on("Order Receipt", {
     	}
 	},
 });
+
+})();
