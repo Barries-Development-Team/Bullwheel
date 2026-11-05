@@ -54,7 +54,7 @@ def _single_or_candidates(results: list) -> dict | None:
 def resolve_scanned_product(identifier: str) -> dict | None:
 	"""Resolve a scanned identifier to {doctype, name, description, upc}, or None when nothing
 	matches. Checks the Ascend Product first (by Store SKU, then UPC, then vendor part number),
-	then a New Product not cancelled (by UPC, then VPN); a New Product already matched to Ascend
+	then a New Product not cancelled (by its NP-##### ID, then UPC, then VPN); a New Product already matched to Ascend
 	resolves to its Ascend Product. When the identifier matches several products equally well (a
 	part number several vendors' products share, a duplicate UPC), returns {"candidates": [...]}
 	instead, each in the single-product shape, so the screen can ask which one was meant."""
@@ -68,16 +68,18 @@ def resolve_scanned_product(identifier: str) -> dict | None:
 	matches = frappe.get_all(
 		NEW_PRODUCT,
 		filters={"status": ["!=", "Cancelled"]},
-		or_filters=[["upc", "=", identifier], ["vpn", "=", identifier]],
+		or_filters=[["name", "=", identifier], ["upc", "=", identifier], ["vpn", "=", identifier]],
 		fields=["name", "description", "upc", "ascend_product"],
 		order_by="creation asc",
 	)
-	# A UPC match beats a VPN match, mirroring the Ascend Product ranking.
+	# The New Product's own ID beats a UPC match, which beats a VPN match, mirroring the Ascend
+	# Product ranking.
+	name_matches = [match for match in matches if match.name.casefold() == identifier.casefold()]
 	upc_matches = [match for match in matches if (match.upc or "").casefold() == identifier.casefold()]
 
 	results = []
 	seen = set()
-	for new_product in upc_matches or matches:
+	for new_product in name_matches or upc_matches or matches:
 		result = None
 		if new_product.ascend_product:
 			if product := AscendProduct.get_values(new_product.ascend_product, PRODUCT_FIELDS):

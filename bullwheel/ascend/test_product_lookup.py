@@ -85,6 +85,18 @@ class UnitTestResolveScannedProduct(UnitTestCase):
 			result = product_lookup.resolve_scanned_product('999')
 		self.assertEqual(result['name'], 'NP-2')
 
+	def test_new_product_id_beats_upc_and_vpn_matches(self):
+		"""The Warehouse workspace dialogs accept a New Product's own ID, as the old Dynamic Link did."""
+		by_upc = frappe._dict(name='NP-2', description='Other', upc='NP-00001', ascend_product=None)
+		by_name = frappe._dict(name='NP-00001', description='Typed ID', upc='999', ascend_product=None)
+		with (
+			patch(f'{LOOKUP}.AscendProduct.find_by_identifier', return_value=[]),
+			patch(f'{LOOKUP}.frappe.get_all', return_value=[by_upc, by_name]) as get_all,
+		):
+			result = product_lookup.resolve_scanned_product('np-00001')
+		self.assertEqual(result['name'], 'NP-00001')
+		self.assertIn(['name', '=', 'np-00001'], get_all.call_args.kwargs['or_filters'])
+
 	def test_new_products_sharing_a_vpn_are_candidates(self):
 		first = frappe._dict(name='NP-1', description='From vendor A', upc=None, ascend_product=None)
 		second = frappe._dict(name='NP-2', description='From vendor B', upc=None, ascend_product=None)
