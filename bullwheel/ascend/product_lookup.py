@@ -9,6 +9,8 @@ Scan-driven screens (Swap Tag Batch, the Swap Tag scan block, warehouse check-in
 Product) cannot know in advance which one a barcode belongs to, so they call
 `resolve_scanned_product`, which prefers the live Ascend Product and falls back to the staged
 New Product — and, once a New Product has been matched to Ascend, to its Ascend Product.
+Client-side, screens go through `bullwheel.ascend.resolve_scanned_product` (public/js/utils/
+ascend.js), which asks the user to pick when a scan matches several products.
 """
 
 import frappe
@@ -30,36 +32,61 @@ def effective_product(doctype: str, name: str) -> tuple[str, str]:
 	return doctype, name
 
 
+PRODUCT_FIELDS = ["name", "description", "upc"]
+
+
+def _product_result(doctype: str, product) -> dict:
+	"""The {doctype, name, description, upc} shape scan screens consume."""
+	return {"doctype": doctype, "name": product.name, "description": product.description, "upc": product.upc}
+
+
+def _single_or_candidates(results: list) -> dict | None:
+	"""One product resolves to itself; several equally good matches are returned as
+	{"candidates": [...]} for the scan screen to pick from; none resolves to None."""
+	if not results:
+		return None
+	if len(results) == 1:
+		return results[0]
+	return {"candidates": results}
+
+
 @frappe.whitelist()
 def resolve_scanned_product(identifier: str) -> dict | None:
 	"""Resolve a scanned identifier to {doctype, name, description, upc}, or None when nothing
-	matches. Checks the Ascend Product first (by Store SKU or UPC), then a New Product not
-	cancelled (by UPC or VPN); a New Product already matched to Ascend resolves to its Ascend
-	Product."""
+	matches. Checks the Ascend Product first (by Store SKU, then UPC, then vendor part number),
+	then a New Product not cancelled (by its NP-##### ID, then UPC, then VPN); a New Product already matched to Ascend
+	resolves to its Ascend Product. When the identifier matches several products equally well (a
+	part number several vendors' products share, a duplicate UPC), returns {"candidates": [...]}
+	instead, each in the single-product shape, so the screen can ask which one was meant."""
 	identifier = (identifier or "").strip()
 	if not identifier:
 		return None
 
-	if product := AscendProduct.get_values(identifier, ["name", "description", "upc"]):
-		return {"doctype": ASCEND_PRODUCT, "name": product.name, "description": product.description, "upc": product.upc}
+	if ascend_products := AscendProduct.find_by_identifier(identifier, PRODUCT_FIELDS):
+		return _single_or_candidates([_product_result(ASCEND_PRODUCT, product) for product in ascend_products])
 
 	matches = frappe.get_all(
 		NEW_PRODUCT,
 		filters={"status": ["!=", "Cancelled"]},
-		or_filters=[["upc", "=", identifier], ["vpn", "=", identifier]],
+		or_filters=[["name", "=", identifier], ["upc", "=", identifier], ["vpn", "=", identifier]],
 		fields=["name", "description", "upc", "ascend_product"],
 		order_by="creation asc",
-		limit=1,
 	)
-	if not matches:
-		return None
+	# The New Product's own ID beats a UPC match, which beats a VPN match, mirroring the Ascend
+	# Product ranking.
+	name_matches = [match for match in matches if match.name.casefold() == identifier.casefold()]
+	upc_matches = [match for match in matches if (match.upc or "").casefold() == identifier.casefold()]
 
-	new_product = matches[0]
-	if new_product.ascend_product:
-		if product := AscendProduct.get_values(new_product.ascend_product, ["name", "description", "upc"]):
-			return {"doctype": ASCEND_PRODUCT, "name": product.name, "description": product.description, "upc": product.upc}
+	results = []
+	seen = set()
+	for new_product in name_matches or upc_matches or matches:
+		result = None
+		if new_product.ascend_product:
+			if product := AscendProduct.get_values(new_product.ascend_product, PRODUCT_FIELDS):
+				result = _product_result(ASCEND_PRODUCT, product)
+		result = result or _product_result(NEW_PRODUCT, new_product)
+		if (result["doctype"], result["name"]) not in seen:
+			seen.add((result["doctype"], result["name"]))
+			results.append(result)
 
-	return {
-		"doctype": NEW_PRODUCT, "name": new_product.name,
-		"description": new_product.description, "upc": new_product.upc,
-	}
+	return _single_or_candidates(results)

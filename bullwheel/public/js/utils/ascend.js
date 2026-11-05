@@ -26,3 +26,47 @@ bullwheel.ascend.generate_vendor_acronym = function(vendor_name = required('vend
 
     return words.map((word) => word[0].toUpperCase()).join('');
 }
+
+// Resolve a scanned identifier to one product ({doctype, name, description, upc}) and pass it to
+// on_resolved — or null when nothing matches. When the scan matches several products equally well
+// (a vendor part number shared across products, a duplicate UPC), the user picks one first; closing
+// the picker without choosing calls nothing. See ascend/product_lookup.py:resolve_scanned_product.
+bullwheel.ascend.resolve_scanned_product = function(identifier = required('identifier'), on_resolved = required('on_resolved')) {
+    frappe.call({
+        method: 'bullwheel.ascend.product_lookup.resolve_scanned_product',
+        args: {identifier: identifier},
+        callback(response) {
+            const result = response.message || null;
+            if (result && result.candidates) {
+                bullwheel.ascend.pick_scanned_product(identifier, result.candidates, on_resolved);
+                return;
+            }
+            on_resolved(result);
+        }
+    });
+}
+
+// Show one large button per candidate (sized for warehouse tablets) and pass the chosen product to
+// on_chosen.
+bullwheel.ascend.pick_scanned_product = function(identifier = required('identifier'), candidates = required('candidates'), on_chosen = required('on_chosen')) {
+    const dialog = new frappe.ui.Dialog({
+        title: __('Which product is {0}?', [frappe.utils.escape_html(identifier)]),
+        fields: [{fieldtype: 'HTML', fieldname: 'candidates'}],
+    });
+
+    const $list = $('<div class="d-flex flex-column" style="gap: var(--margin-sm)"></div>');
+    candidates.forEach((candidate) => {
+        const details = [candidate.name, candidate.upc && __('UPC {0}', [candidate.upc])].filter(Boolean).join(' · ');
+        $(`<button type="button" class="btn btn-default btn-lg text-left">
+                <div class="bold">${frappe.utils.escape_html(candidate.description || candidate.name)}</div>
+                <div class="text-muted small">${frappe.utils.escape_html(details)}</div>
+            </button>`)
+            .on('click', () => {
+                dialog.hide();
+                on_chosen(candidate);
+            })
+            .appendTo($list);
+    });
+    dialog.fields_dict.candidates.$wrapper.append($list);
+    dialog.show();
+}

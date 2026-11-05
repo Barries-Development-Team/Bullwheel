@@ -29,8 +29,13 @@ class AscendProduct(AbstractVirtualDocType):
 	# 'category' displays the joined column cat.Topic; its foreign key is Products.TopicID
 	# (mapped to 'category_id'). Both are read-only: Bullwheel never writes to Ascend.
 	#
-	# 'upc' is marked alternate_name, so a product can be loaded and Link-resolved by UPC in
-	# addition to its Store SKU primary key.
+	# 'upc' and 'vendor_part_numbers' are marked alternate_name, so a product can be loaded and
+	# Link-resolved by UPC or by any vendor's part number in addition to its Store SKU primary
+	# key. A Store SKU match beats a UPC match, which beats a part number match.
+	#
+	# 'vendor_part_numbers' is a related field: VendorProducts holds one row per vendor of a
+	# product, so it is read through subqueries rather than JOINed (a JOIN would repeat the
+	# product once per vendor). It displays as a comma-separated list.
 	SCHEMA_CONFIG = {
 		'name':                      {'column': 'Store UPC', 'cache': False},
 		'id':                        {'column': 'ID', 'cache': True},
@@ -44,6 +49,8 @@ class AscendProduct(AbstractVirtualDocType):
 		'maximum':                   {'column': 'Maximum'},
 		'commission':                {'column': 'Commission'},
 		'upc':                       {'column': 'UPC', 'alternate_name': True},
+		'vendor_part_numbers':       {'table': 'VendorProducts', 'column': 'PartNumber',
+		                              'foreign_key': 'ProductID', 'references': 'ID', 'alternate_name': True},
 		'manufacturers_part_number': {'column': 'MfgrPartNo'},
 		'reconciled':                {'column': 'Reconciled'},
 		'store_sku':                 {'column': 'Store UPC'},

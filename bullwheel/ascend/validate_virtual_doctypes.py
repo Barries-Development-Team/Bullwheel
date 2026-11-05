@@ -43,7 +43,16 @@ def _known_table_qualifiers(doctype_class) -> set:
 	return qualifiers
 
 
-def validate_schema_config(doctype_class, discovered_columns=None, additional_discovered_columns=None) -> bool:
+def related_tables(doctype_class) -> set:
+	"""The tables a controller's related (one-to-many) fields read from, e.g. {'VendorProducts'}."""
+	return {
+		field_config['related']['table']
+		for field_config in doctype_class._normalized_schema().values()
+		if field_config['related']
+	}
+
+
+def validate_schema_config(doctype_class, discovered_columns=None, additional_discovered_columns=None, related_discovered_columns=None) -> bool:
 	"""Validate a virtual DocType class's SCHEMA_CONFIG for structural correctness.
 
 	Normalizing the config (see schema_config.py) is itself the primary structural gate: it
@@ -64,6 +73,12 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 	skipped when additional_discovered_columns is not provided. The 'name' entry is skipped
 	from column-existence checks when NAME_EXPRESSION is set, since an expression is not a
 	plain column.
+
+	A related field (one with 'foreign_key', see schema_config.py) reads its table in its own
+	subquery, so that table need not be declared in JOIN_CONFIG; 'name' cannot be one. When
+	related_discovered_columns is provided (a dict of related table name -> its column names),
+	the field's 'column' and 'foreign_key' are confirmed on its table, and its 'references' on
+	the primary table whenever discovered_columns is provided.
 
 	Returns True on success; raises ValueError describing the first problem found.
 	"""
@@ -97,11 +112,22 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 			f"other fields a record can be identified by in addition to 'name'."
 		)
 
+	# 'name' is a single value per record; a related field holds many, so it cannot be the
+	# primary key (get_bulk_values and every name lookup assume one plain value per row).
+	if (schema_config.get('name') or {}).get('related'):
+		raise ValueError(
+			f"{class_name}: the 'name' field cannot be a related field ('foreign_key'/'references') — "
+			f"a primary key must be one value per record."
+		)
+
 	# Guardrail: every table/alias a field references must be the primary table or declared in
-	# JOIN_CONFIG, otherwise the query fails at runtime with an unknown-name error.
+	# JOIN_CONFIG, otherwise the query fails at runtime with an unknown-name error. A related
+	# field's table is read in its own aliased subquery, so it is exempt.
 	known_qualifiers = _known_table_qualifiers(doctype_class)
 	for fieldname, field_config in schema_config.items():
 		table = field_config['table']
+		if field_config['related']:
+			continue
 		if table is not None and table not in known_qualifiers:
 			raise ValueError(
 				f"{class_name}: Field '{fieldname}' maps to table/alias '{table}', which is "
@@ -122,7 +148,7 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 				f"'{doctype_class.TABLE_NAME}'."
 			)
 
-	if discovered_columns is not None or additional_discovered_columns is not None:
+	if discovered_columns is not None or additional_discovered_columns is not None or related_discovered_columns is not None:
 		primary_columns = {bare_column(col) for col in discovered_columns} if discovered_columns else None
 		joined_columns = {bare_column(col) for col in additional_discovered_columns} if additional_discovered_columns else None
 
@@ -131,6 +157,12 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 				continue
 			if fieldname == 'name' and name_expression:
 				continue  # An expression-backed primary key is not a plain column.
+			if field_config['related']:
+				_validate_related_columns(
+					class_name, fieldname, field_config['related'], field_config['column'],
+					primary_columns, related_discovered_columns,
+				)
+				continue
 			# Route by table: a column on the primary table is checked against the primary
 			# schema; a column on a JOIN table or alias against the joined-table schema.
 			bare = bare_column(field_config['column'])
@@ -150,6 +182,25 @@ def validate_schema_config(doctype_class, discovered_columns=None, additional_di
 					)
 
 	return True
+
+
+def _validate_related_columns(class_name, fieldname, related, column, primary_columns, related_discovered_columns) -> None:
+	"""Confirm a related field's 'column' and 'foreign_key' exist on its related table and its
+	'references' on the primary table, against whichever introspected schemas were provided."""
+	if primary_columns is not None and bare_column(related['references']) not in primary_columns:
+		raise ValueError(
+			f"{class_name}: Field '{fieldname}' references primary-table column "
+			f"'{related['references']}', which was not found in the introspected primary table schema."
+		)
+	if related_discovered_columns is None or related['table'] not in related_discovered_columns:
+		return
+	table_columns = {bare_column(table_column) for table_column in related_discovered_columns[related['table']]}
+	for key, related_column in (('column', column), ('foreign_key', related['foreign_key'])):
+		if bare_column(related_column) not in table_columns:
+			raise ValueError(
+				f"{class_name}: Field '{fieldname}' has {key} '{related_column}', which was not "
+				f"found in the introspected schema of related table '{related['table']}'."
+			)
 
 
 def autoname_mismatch_reason(controller, autoname: str) -> str | None:
@@ -238,11 +289,16 @@ def _check_autoname_safety(doctype_name: str, controller) -> None:
 
 
 def _introspected_columns_for(controller, server_document) -> tuple:
-	"""Introspect the controller's primary table and joined tables from the live Ascend
-	database. Returns (primary column names, joined column names)."""
+	"""Introspect the controller's primary, joined, and related tables from the live Ascend
+	database. Returns (primary column names, joined column names, {related table: its column
+	names})."""
 	primary_schema = introspect_table_schema(server_document, controller.TABLE_NAME)
 	joined_schema = introspect_join_schemas(server_document, controller.JOIN_CONFIG)
-	return list(primary_schema.keys()), list(joined_schema.keys())
+	related_columns = {
+		table: list(introspect_table_schema(server_document, table).keys())
+		for table in related_tables(controller)
+	}
+	return list(primary_schema.keys()), list(joined_schema.keys()), related_columns
 
 
 def validate_all_virtual_doctype_schemas() -> None:
@@ -258,7 +314,7 @@ def validate_all_virtual_doctype_schemas() -> None:
 
 	for doctype_name, controller in controllers:
 		try:
-			primary_columns, joined_columns = _introspected_columns_for(
+			primary_columns, joined_columns, related_columns = _introspected_columns_for(
 				controller, get_default_ascend_database()
 			)
 		except Exception as error:
@@ -271,6 +327,7 @@ def validate_all_virtual_doctype_schemas() -> None:
 			controller,
 			discovered_columns=primary_columns,
 			additional_discovered_columns=joined_columns or None,
+			related_discovered_columns=related_columns or None,
 		)
 
 	if controllers:

@@ -2,46 +2,42 @@
 // For license information, please see license.txt
 
 // Resolve a scanned identifier to a product — an Ascend Product, or a New Product still waiting
-// to be imported into Ascend — and add/increment its inventory row.
+// to be imported into Ascend — and add/increment its inventory row. A scan matching several
+// products asks the user to pick one first (see bullwheel.ascend.resolve_scanned_product).
 function handle_scan(frm, scanned_value) {
-	frappe.call({
-		method: 'bullwheel.ascend.product_lookup.resolve_scanned_product',
-		args: {identifier: scanned_value},
-		callback(response) {
-			const product = response.message;
-			// null when no product matches the scan.
-			if (!product) {
-				frappe.show_alert({
-					message: `No product found for: ${frappe.utils.escape_html(scanned_value)}`,
-					indicator: 'red'
-				});
-				return;
-			}
-
-			// The Dynamic Link stores the product's name (the Store SKU or New Product name),
-			// not the scanned barcode.
-			const existing_row = (frm.doc.location_inventory_quantities || []).find(
-				row => row.product === product.name && row.product_type === product.doctype
-			);
-
-			if (existing_row) {
-				frappe.model.set_value(existing_row.doctype, existing_row.name, 'quantity', existing_row.quantity + 1);
-			} else {
-				frm.add_child('location_inventory_quantities', {
-					// Preview values for description and upc will be replaced after save by virtual field implementation.
-					product_type: product.doctype,
-					product: product.name,
-					description: product.description,
-					upc: product.upc,
-					quantity: 1
-				});
-			}
-			frm.refresh_field('location_inventory_quantities');
+	bullwheel.ascend.resolve_scanned_product(scanned_value, (product) => {
+		// null when no product matches the scan.
+		if (!product) {
 			frappe.show_alert({
-				message: `Added: ${frappe.utils.escape_html(product.description || product.name)}`,
-				indicator: 'green'
+				message: `No product found for: ${frappe.utils.escape_html(scanned_value)}`,
+				indicator: 'red'
+			});
+			return;
+		}
+
+		// The Dynamic Link stores the product's name (the Store SKU or New Product name),
+		// not the scanned barcode.
+		const existing_row = (frm.doc.location_inventory_quantities || []).find(
+			row => row.product === product.name && row.product_type === product.doctype
+		);
+
+		if (existing_row) {
+			frappe.model.set_value(existing_row.doctype, existing_row.name, 'quantity', existing_row.quantity + 1);
+		} else {
+			frm.add_child('location_inventory_quantities', {
+				// Preview values for description and upc will be replaced after save by virtual field implementation.
+				product_type: product.doctype,
+				product: product.name,
+				description: product.description,
+				upc: product.upc,
+				quantity: 1
 			});
 		}
+		frm.refresh_field('location_inventory_quantities');
+		frappe.show_alert({
+			message: `Added: ${frappe.utils.escape_html(product.description || product.name)}`,
+			indicator: 'green'
+		});
 	});
 }
 

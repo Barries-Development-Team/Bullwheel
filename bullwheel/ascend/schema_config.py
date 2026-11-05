@@ -37,6 +37,26 @@ Field config keys:
 	cache           Optional bool. The value never changes for a given record (an
 	                identity column, a creation timestamp), so it is safe to cache.
 	                Declarative only for now — no caching layer reads it yet.
+	foreign_key     Optional. Makes this a *related* field: `column` lives on a table
+	                holding many rows per record (e.g. VendorProducts.PartNumber, one
+	                row per vendor of a product), and `foreign_key` is the column on
+	                that table pointing back at the record. Requires an explicit
+	                `table` (the real table name, not a JOIN_CONFIG alias) and
+	                `references`. A related field is never JOINed, which would repeat
+	                the record once per related row; it is read through correlated
+	                subqueries instead — projected as a sorted, comma-separated list
+	                of its values, and filtered with EXISTS ("any related row
+	                matches"; negated operators become NOT EXISTS, "no related row
+	                matches").
+	references      Required with `foreign_key`. The bare column on TABLE_NAME that
+	                `foreign_key` points at (usually the primary table's ID).
+
+	SCHEMA_CONFIG = {
+		'vendor_part_numbers': {
+			'table': 'VendorProducts', 'column': 'PartNumber',
+			'foreign_key': 'ProductID', 'references': 'ID', 'alternate_name': True,
+		},
+	}
 
 An entry may also be `None`, declaring a field as deliberately unmapped.
 
@@ -45,9 +65,12 @@ unconditional, and `[CONCAT(...)]` is not valid SQL. A computed primary key is
 declared with the controller's NAME_EXPRESSION attribute instead.
 """
 
-FIELD_CONFIG_KEYS = frozenset({'column', 'table', 'alternate_name', 'cache'})
+FIELD_CONFIG_KEYS = frozenset({'column', 'table', 'alternate_name', 'cache', 'foreign_key', 'references'})
 
 BOOLEAN_FIELD_CONFIG_KEYS = ('alternate_name', 'cache')
+
+# Joins the values of a related field into one display string, e.g. 'ABC-1, XYZ-2'.
+RELATED_VALUE_SEPARATOR = ', '
 
 
 def quote_column(column: str) -> str:
@@ -77,7 +100,7 @@ def normalize_field_config(class_name: str, fieldname: str, field_config, table_
 	if field_config is None:
 		return {
 			'column': None, 'table': None, 'sql': None,
-			'alternate_name': False, 'cache': False,
+			'alternate_name': False, 'cache': False, 'related': None,
 		}
 
 	if not isinstance(field_config, dict):
@@ -116,7 +139,12 @@ def normalize_field_config(class_name: str, fieldname: str, field_config, table_
 		'column': strip_column_quoting(column),
 		'table': table,
 		'sql': f'{table}.{quote_column(column)}',
+		'related': None,
 	}
+
+	if 'foreign_key' in field_config or 'references' in field_config:
+		normalized['related'] = normalize_related_config(class_name, fieldname, field_config, table_name)
+		normalized['sql'] = normalized['related']['projection_sql']
 
 	for key in BOOLEAN_FIELD_CONFIG_KEYS:
 		value = field_config.get(key, False)
@@ -127,6 +155,58 @@ def normalize_field_config(class_name: str, fieldname: str, field_config, table_
 		normalized[key] = value
 
 	return normalized
+
+
+def normalize_related_config(class_name: str, fieldname: str, field_config: dict, table_name: str) -> dict:
+	"""Expand the 'foreign_key'/'references' options of a related field into the SQL fragments
+	the query builders splice in: the subquery's FROM, its correlation back to the outer record,
+	the qualified related column, and the aggregated projection. The related table gets its own
+	alias (related_<fieldname>), so it never collides with TABLE_NAME or a JOIN_CONFIG alias —
+	even when a controller relates a table to itself.
+
+	Raises ValueError naming the class and field when one of the pair is missing, a column is
+	not a bare name, or `table` is left to default (a related field always lives on another
+	table, so defaulting to TABLE_NAME is always a mistake)."""
+	for key in ('foreign_key', 'references'):
+		column = field_config.get(key)
+		if not isinstance(column, str) or not strip_column_quoting(column):
+			raise ValueError(
+				f"{class_name}: Field '{fieldname}' is a related field and needs both 'foreign_key' "
+				f"and 'references' as bare column names, got {key}={column!r}."
+			)
+		if '.' in column:
+			raise ValueError(
+				f"{class_name}: Field '{fieldname}' has a table-qualified '{key}' {column!r}. Give "
+				f"the bare column name; 'foreign_key' is on 'table' and 'references' on TABLE_NAME."
+			)
+	if 'table' not in field_config:
+		raise ValueError(
+			f"{class_name}: Field '{fieldname}' is a related field and must name the table its "
+			f"'column' and 'foreign_key' live on with the 'table' key."
+		)
+
+	table = field_config['table']
+	alias = f'related_{fieldname}'
+	column_sql = f'{alias}.{quote_column(field_config["column"])}'
+	from_sql = f'{table} AS {alias}'
+	correlation_sql = f'{alias}.{quote_column(field_config["foreign_key"])} = {table_name}.{quote_column(field_config["references"])}'
+	return {
+		'table': table,
+		'alias': alias,
+		'foreign_key': strip_column_quoting(field_config['foreign_key']),
+		'references': strip_column_quoting(field_config['references']),
+		'column_sql': column_sql,
+		'from_sql': from_sql,
+		'correlation_sql': correlation_sql,
+		# STRING_AGG has no DISTINCT, so values are deduplicated in a derived table first (two
+		# vendors often share a part number). CAST to NVARCHAR(MAX): STRING_AGG over a plain
+		# (N)VARCHAR errors once the joined result passes 8000 bytes.
+		'projection_sql': (
+			f"(SELECT STRING_AGG(CAST(distinct_values.[value] AS NVARCHAR(MAX)), '{RELATED_VALUE_SEPARATOR}') "
+			f"WITHIN GROUP (ORDER BY distinct_values.[value]) "
+			f"FROM (SELECT DISTINCT {column_sql} AS [value] FROM {from_sql} WHERE {correlation_sql}) AS distinct_values)"
+		),
+	}
 
 
 def normalize_schema_config(doctype_class) -> dict:

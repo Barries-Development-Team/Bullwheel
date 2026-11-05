@@ -71,6 +71,120 @@ bullwheel.warehouse.product_location_dialog = function({ product_sku, descriptio
 // namespace rather than exported, because this bundle is loaded through
 // `app_include_js` — DocType and Page scripts have no way to import from it.
 
+// Product entry for a dialog whose caller does not already know the product: a single field taking
+// any identifier (Store SKU, UPC, vendor part number, or New Product ID), resolved through
+// bullwheel.ascend.resolve_scanned_product — Ascend Products first, New Products as the fallback,
+// and a picker when several products match. The resolved product is shown under the field.
+//
+//   get_dialog - returns the dialog the field belongs to (it does not exist yet when the field
+//                definition is built).
+//   on_change  - optional callback invoked with the newly resolved product, or null.
+//
+// Returns { field, resolve }: `field` is the dialog field definition, and `resolve(callback)` passes
+// the current entry's product ({doctype, name, description, upc}) or null to callback, reusing the
+// last resolution while the entry is unchanged. Closing the picker without choosing calls nothing.
+bullwheel.warehouse.product_lookup_field = function ({ get_dialog, on_change = () => {} } = {}) {
+	const default_description = __('Scan or type a Store SKU, UPC, vendor part number, or New Product ID.');
+	let resolved = { identifier: null, product: null };
+
+	function show(identifier, product) {
+		let description = default_description;
+		if (product) {
+			description = `<span class="text-success">${frappe.utils.escape_html(product.doctype)}: `
+				+ `${frappe.utils.escape_html(product.description || product.name)} (${frappe.utils.escape_html(product.name)})</span>`;
+		} else if (identifier) {
+			description = `<span class="text-danger">${__('No Ascend Product or New Product matches {0}.', [frappe.utils.escape_html(identifier)])}</span>`;
+		}
+		get_dialog().set_df_property('product_identifier', 'description', description);
+	}
+
+	function resolve(callback) {
+		const identifier = (get_dialog().get_value('product_identifier') || '').trim();
+		if (identifier === resolved.identifier) {
+			callback(resolved.product);
+			return;
+		}
+		if (!identifier) {
+			resolved = { identifier, product: null };
+			show(identifier, null);
+			on_change(null);
+			callback(null);
+			return;
+		}
+		bullwheel.ascend.resolve_scanned_product(identifier, (product) => {
+			resolved = { identifier, product };
+			show(identifier, product);
+			on_change(product);
+			callback(product);
+		});
+	}
+
+	return {
+		field: {
+			label: __('Product'),
+			fieldname: 'product_identifier',
+			fieldtype: 'Data',
+			reqd: 1,
+			description: default_description,
+			onchange: () => resolve(() => {}),
+		},
+		resolve,
+	};
+};
+
+// Resolve a scanner's trailing Enter in the product field right away rather than on blur, then
+// move on to `next_fieldname` so the next scan or entry lands in the right place.
+function resolve_product_on_enter(dialog, lookup, next_fieldname) {
+	dialog.fields_dict.product_identifier.$input.on('keydown', (event) => {
+		if (event.key !== 'Enter') return;
+		event.preventDefault();
+		lookup.resolve((product) => {
+			if (product && next_fieldname) dialog.fields_dict[next_fieldname].$input.focus();
+		});
+	});
+}
+
+// The Product Type + Product fields used when the caller pins a product (e.g. the Ascend Product
+// or New Product form's own buttons). Both are fixed: the type is hidden and the product read-only,
+// since the dialog is about the document it was opened from.
+function pinned_product_fields(product, product_type) {
+	return [
+		{
+			label: __('Product Type'),
+			fieldname: 'product_type',
+			fieldtype: 'Select',
+			options: ['Ascend Product', 'New Product'],
+			default: product_type,
+			hidden: 1,
+		},
+		{
+			label: __(product_type),
+			fieldname: 'product',
+			fieldtype: 'Dynamic Link',
+			options: 'product_type',
+			reqd: 1,
+			default: product,
+			read_only: 1,
+		},
+	];
+}
+
+// Pass the dialog's chosen product to callback as {doctype, name, label}: the resolved entry when the
+// dialog uses product_lookup_field, otherwise the pinned Product Type + Product values.
+function with_dialog_product(lookup, values, callback) {
+	if (!lookup) {
+		callback({ doctype: values.product_type, name: values.product, label: values.product });
+		return;
+	}
+	lookup.resolve((product) => {
+		if (!product) {
+			frappe.show_alert({ message: __('Enter a product that exists in Ascend or as a New Product.'), indicator: 'orange' });
+			return;
+		}
+		callback({ doctype: product.doctype, name: product.name, label: product.description || product.name });
+	});
+}
+
 // Prompt for a product, a leaf Warehouse Location, and a quantity, then add that
 // quantity to the location's on-hand inventory.
 //
@@ -78,28 +192,19 @@ bullwheel.warehouse.product_location_dialog = function({ product_sku, descriptio
 //                the server confirms the check-in, so callers (e.g. a page refresh)
 //                can react without polling.
 //   product    - optional product name to pre-fill, for callers (e.g. the Ascend Product
-//                form) that already know the product being checked in.
+//                form) that already know the product being checked in. Without it, the
+//                dialog takes any identifier and searches Ascend Products, then New
+//                Products (see product_lookup_field).
 //   product_type - 'Ascend Product' (default), or 'New Product' for a product that is not
-//                imported into Ascend yet.
+//                imported into Ascend yet. Only used with `product`.
 bullwheel.warehouse.check_in_item = function ({ on_success, product, product_type = 'Ascend Product' } = {}) {
-	const dialog = new frappe.ui.Dialog({
+	let dialog;
+	const lookup = product ? null : bullwheel.warehouse.product_lookup_field({ get_dialog: () => dialog });
+
+	dialog = new frappe.ui.Dialog({
 		title: __('Check In Item'),
 		fields: [
-			{
-				label: __('Product Type'),
-				fieldname: 'product_type',
-				fieldtype: 'Select',
-				options: ['Ascend Product', 'New Product'],
-				default: product_type,
-			},
-			{
-				label: __('Product'),
-				fieldname: 'product',
-				fieldtype: 'Dynamic Link',
-				options: 'product_type',
-				reqd: 1,
-				default: product,
-			},
+			...(lookup ? [lookup.field] : pinned_product_fields(product, product_type)),
 			{
 				label: __('Warehouse Location'),
 				fieldname: 'location',
@@ -124,26 +229,29 @@ bullwheel.warehouse.check_in_item = function ({ on_success, product, product_typ
 				return;
 			}
 
-			frappe.call({
-				method: 'bullwheel.warehouse.stock_handler.check_in_item',
-				args: {
-					product: values.product,
-					product_type: values.product_type,
-					location: values.location,
-					quantity: values.quantity,
-				},
-				callback() {
-					dialog.hide();
-					frappe.show_alert({
-						message: __('Checked in {0} x {1} at {2}.', [values.quantity, values.product, values.location]),
-						indicator: 'green',
-					});
-					on_success && on_success(values.product, values.location, cint(values.quantity));
-				},
+			with_dialog_product(lookup, values, (chosen) => {
+				frappe.call({
+					method: 'bullwheel.warehouse.stock_handler.check_in_item',
+					args: {
+						product: chosen.name,
+						product_type: chosen.doctype,
+						location: values.location,
+						quantity: values.quantity,
+					},
+					callback() {
+						dialog.hide();
+						frappe.show_alert({
+							message: __('Checked in {0} x {1} at {2}.', [values.quantity, chosen.label, values.location]),
+							indicator: 'green',
+						});
+						on_success && on_success(chosen.name, values.location, cint(values.quantity));
+					},
+				});
 			});
 		},
 	});
 
+	if (lookup) resolve_product_on_enter(dialog, lookup, 'location');
 	dialog.show();
 };
 
@@ -154,32 +262,24 @@ bullwheel.warehouse.check_in_item = function ({ on_success, product, product_typ
 //   on_success - optional callback invoked with (product, location, quantity) once
 //                the server confirms the check-out.
 //   product    - optional product name to pre-fill, for callers (e.g. the Ascend Product
-//                form) that already know the product being checked out.
+//                form) that already know the product being checked out. Without it, the
+//                dialog takes any identifier and searches Ascend Products, then New
+//                Products (see product_lookup_field).
 //   product_type - 'Ascend Product' (default), or 'New Product' for a product that is not
-//                imported into Ascend yet.
+//                imported into Ascend yet. Only used with `product`.
 bullwheel.warehouse.check_out_item = function ({ on_success, product, product_type = 'Ascend Product' } = {}) {
 	let location_quantities = {};
+	let dialog;
+	const lookup = product ? null : bullwheel.warehouse.product_lookup_field({
+		get_dialog: () => dialog,
+		on_change: (resolved) => refresh_locations(resolved && resolved.doctype, resolved && resolved.name),
+	});
+	const refresh_pinned_locations = () => refresh_locations(dialog.get_value('product_type'), dialog.get_value('product'));
 
-	const dialog = new frappe.ui.Dialog({
+	dialog = new frappe.ui.Dialog({
 		title: __('Check Out Item'),
 		fields: [
-			{
-				label: __('Product Type'),
-				fieldname: 'product_type',
-				fieldtype: 'Select',
-				options: ['Ascend Product', 'New Product'],
-				default: product_type,
-				onchange: refresh_locations,
-			},
-			{
-				label: __('Product'),
-				fieldname: 'product',
-				fieldtype: 'Dynamic Link',
-				options: 'product_type',
-				reqd: 1,
-				default: product,
-				onchange: refresh_locations,
-			},
+			...(lookup ? [lookup.field] : pinned_product_fields(product, product_type)),
 			{
 				label: __('Warehouse Location'),
 				fieldname: 'location',
@@ -208,58 +308,60 @@ bullwheel.warehouse.check_out_item = function ({ on_success, product, product_ty
 		],
 		primary_action_label: __('Check Out'),
 		primary_action(values) {
-			const on_hand = location_quantities[values.location] || 0;
 			if (cint(values.quantity) <= 0) {
 				frappe.show_alert({ message: __('Quantity must be greater than zero.'), indicator: 'orange' });
 				return;
 			}
-			if (cint(values.quantity) > on_hand) {
-				frappe.show_alert({
-					message: __('Only {0} of {1} on hand at {2}.', [on_hand, values.product, values.location]),
-					indicator: 'orange',
-				});
-				return;
-			}
 
-			frappe.call({
-				method: 'bullwheel.warehouse.stock_handler.check_out_item',
-				args: {
-					product: values.product,
-					product_type: values.product_type,
-					location: values.location,
-					quantity: values.quantity,
-				},
-				callback() {
-					dialog.hide();
+			with_dialog_product(lookup, values, (chosen) => {
+				const on_hand = location_quantities[values.location] || 0;
+				if (cint(values.quantity) > on_hand) {
 					frappe.show_alert({
-						message: __('Checked out {0} x {1} from {2}.', [values.quantity, values.product, values.location]),
-						indicator: 'green',
+						message: __('Only {0} of {1} on hand at {2}.', [on_hand, chosen.label, values.location]),
+						indicator: 'orange',
 					});
-					on_success && on_success(values.product, values.location, cint(values.quantity));
-				},
+					return;
+				}
+
+				frappe.call({
+					method: 'bullwheel.warehouse.stock_handler.check_out_item',
+					args: {
+						product: chosen.name,
+						product_type: chosen.doctype,
+						location: values.location,
+						quantity: values.quantity,
+					},
+					callback() {
+						dialog.hide();
+						frappe.show_alert({
+							message: __('Checked out {0} x {1} from {2}.', [values.quantity, chosen.label, values.location]),
+							indicator: 'green',
+						});
+						on_success && on_success(chosen.name, values.location, cint(values.quantity));
+					},
+				});
 			});
 		},
 	});
 
 	// Re-populate the location Select each time the product changes, since only
 	// locations with on-hand quantity of this product are valid check-out targets.
-	function refresh_locations() {
-		const product = dialog.get_value('product');
+	function refresh_locations(selected_product_type, selected_product) {
 		location_quantities = {};
 		dialog.set_df_property('location', 'options', []);
 		dialog.set_value('location', '');
 		dialog.set_value('on_hand', 0);
 
-		if (!product) return;
+		if (!selected_product) return;
 
 		frappe.call({
 			method: 'bullwheel.warehouse.stock_handler.get_product_locations',
-			args: { product: product, product_type: dialog.get_value('product_type') },
+			args: { product: selected_product, product_type: selected_product_type },
 			callback(response) {
 				const rows = response.message || [];
 				if (!rows.length) {
 					frappe.show_alert({
-						message: __('No warehouse locations have {0} on hand.', [product]),
+						message: __('No warehouse locations have {0} on hand.', [selected_product]),
 						indicator: 'orange',
 					});
 					return;
@@ -273,7 +375,8 @@ bullwheel.warehouse.check_out_item = function ({ on_success, product, product_ty
 
 	// Populate the location Select right away when a product default was supplied,
 	// since the field's own onchange only fires on user interaction.
-	if (product) refresh_locations();
+	if (product) refresh_pinned_locations();
 
+	if (lookup) resolve_product_on_enter(dialog, lookup, 'location');
 	dialog.show();
 };

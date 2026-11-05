@@ -78,6 +78,8 @@ SCHEMA_CONFIG = {
 | `table` | no | `TABLE_NAME` | The table name or `JOIN_CONFIG` alias the column belongs to. Only joined fields need it. |
 | `alternate_name` | no | `False` | This field can also identify a record, alongside `name`. See *Step 3c*. |
 | `cache` | no | `False` | The value never changes for a given record (an identity column, a creation stamp), so it is safe to cache. Declarative only — no caching layer reads it yet. |
+| `foreign_key` | no | — | Makes this a *related* (one-to-many) field: the column on `table` that points back at the record. Requires an explicit `table` and `references`. See *Step 3e*. |
+| `references` | with `foreign_key` | — | The column on `TABLE_NAME` that `foreign_key` points at (usually `ID`). |
 
 The full contract lives in `bullwheel/ascend/schema_config.py`, which also owns
 normalization — the single place these options are expanded and checked.
@@ -302,10 +304,72 @@ class AscendProduct(AbstractVirtualDocType):
     }
 ```
 
-The flagged fields **must be unique** in Ascend's database — a non-unique one makes
-`load_from_db` return an arbitrary match and makes Link resolution ambiguous when
-its `WHERE` clause matches more than one row. `name` itself cannot be flagged (a filter
-would widen into a meaningless self-OR); `bench migrate` rejects that.
+`name` itself cannot be flagged (a filter would widen into a meaningless self-OR);
+`bench migrate` rejects that.
+
+### Ranking and shared identifiers
+
+Ascend's identifiers are not cleanly unique: in November 2026, 541 UPCs and 1,805 vendor
+part numbers each belonged to more than one product, and 601 part numbers equalled a
+*different* product's UPC or Store SKU. Single-record lookups (`load_from_db`, `get_values`,
+and through them Link resolution and link titles) therefore go through
+`find_by_identifier(identifier, fields=None)`, which:
+
+1. Ranks each match by the field it matched on: `name` first, then the alternate-name fields
+   **in declaration order**. For Ascend Product: Store SKU beats UPC, which beats vendor
+   part number. Declare the strongest identifiers first.
+2. Keeps only the records at the best rank, ordered by `name`.
+
+`load_from_db`/`get_values` take the first record (lowest `name`) and never raise. Code
+that should not guess calls `find_by_identifier` itself and handles several results;
+`product_lookup.resolve_scanned_product` does this, and the scan screens show a picker
+(`bullwheel.ascend.resolve_scanned_product` in `public/js/utils/ascend.js`).
+
+## Step 3e — Related (one-to-many) fields (optional)
+
+Some values live on a table holding **many rows per record**. A vendor part number, for
+example, is `VendorProducts.PartNumber`, with one row per vendor of a product. A `JOIN_CONFIG`
+entry for such a table is wrong: it repeats the record once per related row, which
+duplicates list rows, inflates `get_count`, and makes `load_from_db` pick an arbitrary row.
+
+Declare the field as *related* instead, with `foreign_key` and `references`:
+
+```python
+SCHEMA_CONFIG = {
+    'name': {'column': 'Store UPC'},
+    'vendor_part_numbers': {
+        'table': 'VendorProducts',   # the real table name; NOT declared in JOIN_CONFIG
+        'column': 'PartNumber',
+        'foreign_key': 'ProductID',  # column on VendorProducts pointing back at the record
+        'references': 'ID',          # column on TABLE_NAME it points at
+        'alternate_name': True,      # optional: a part number also identifies the product
+    },
+}
+```
+
+The framework never JOINs a related field; it reads it through correlated subqueries:
+
+| Where | What it renders |
+|---|---|
+| SELECT | The distinct values, sorted and comma-separated (`'211887, 211887-178'`), via `STRING_AGG` (SQL Server 2017+). Use a `Small Text` read-only field in the JSON. |
+| Filter `=`, `like`, `in`, `<`, … | `EXISTS (…)`: any related row matches. |
+| Filter `!=`, `not like`, `not in` | `NOT EXISTS (…)` of the positive form: **no** related row matches. |
+| `is set` / `not set` | `EXISTS` / `NOT EXISTS` of a non-null related value. |
+| `alternate_name` | `name` filters widen with the `EXISTS`; Link echo-back finds the matched value with one extra query. |
+| `order_by` | Sorts by the aggregated list. |
+
+Notes:
+- The related table gets its own alias (`related_<fieldname>`), so it never collides with
+  `TABLE_NAME` or a JOIN alias, even when relating a table to itself.
+- `name` cannot be a related field; `bench migrate` rejects that. Live validation checks
+  `column` and `foreign_key` against the related table and `references` against the primary
+  table.
+- Index `foreign_key` and `column` on the related table (Ascend has
+  `IX_VendorProducts_ProductID` and `IX_VendorProducts_PartNumber`).
+- Paged queries with an *exact* (`=`/`in`) related condition add
+  `OPTION (USE HINT ('DISABLE_OPTIMIZER_ROWGOAL'))`. Without it SQL Server scans every
+  product looking for a page of matches that holds one row (≈1.3s → ≈0.2s). Other queries
+  keep the row goal, which is faster for sorted pages and broad `LIKE` searches.
 
 ## Step 3d — Virtual DocTypes are read-only
 
