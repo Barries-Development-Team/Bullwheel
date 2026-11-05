@@ -2,11 +2,14 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
-## [1.2.3] - Unreleased
+## [1.2.3] - November 4, 2026
+
+- Item Check-In/Out now always searches both Ascend Products and New Products.
 
 ### Bug Fixes
 
 - Adjusted Ascend Tag barcode text size to prevent printing overlap.
+- Fixed Products not being searchable by VPN.
 
 ## [1.2.2] - October 20, 2026
 
