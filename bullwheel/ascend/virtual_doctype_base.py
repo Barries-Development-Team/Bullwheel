@@ -66,6 +66,17 @@ OPERATOR_MAP = {
 	'not in': 'NOT IN',
 }
 
+# A related (one-to-many) field renders a negated operator as NOT EXISTS over its positive form:
+# "!= X" means no related row equals X, not "some related row differs from X".
+NEGATED_OPERATORS = {
+	'!=': '=',
+	'not like': 'like',
+	'not in': 'in',
+}
+
+# Query hint for paged queries filtering through a related field's EXISTS; see get_list.
+DISABLE_ROW_GOAL_HINT = "OPTION (USE HINT ('DISABLE_OPTIMIZER_ROWGOAL'))"
+
 
 class AbstractVirtualDocType(Document):
 
@@ -290,6 +301,33 @@ class AbstractVirtualDocType(Document):
 		return f'{sql_column} {sql_operator} %s'
 
 	@classmethod
+	def _related_condition_sql(cls, related: dict, operator: str, value, values: list) -> str:
+		"""Render one condition on a related (one-to-many) field as a correlated EXISTS, so a
+		record matches when any of its related rows does, without a JOIN repeating the record once
+		per related row. Negated operators and 'not set' become NOT EXISTS over the positive
+		condition, i.e. no related row matches."""
+		operator_key = str(operator).lower()
+		if operator_key == 'is':
+			exists = str(value).lower() == 'set'
+			match_sql = f"{related['column_sql']} IS NOT NULL"
+		else:
+			exists = operator_key not in NEGATED_OPERATORS
+			match_sql = cls._format_condition(
+				related['column_sql'], NEGATED_OPERATORS.get(operator_key, operator), value, values
+			)
+		exists_keyword = 'EXISTS' if exists else 'NOT EXISTS'
+		return f"{exists_keyword} (SELECT 1 FROM {related['from_sql']} WHERE {related['correlation_sql']} AND {match_sql})"
+
+	@classmethod
+	def _field_condition_sql(cls, field: str, operator: str, value, values: list) -> str:
+		"""Render one condition on a mapped field, appending its bound value(s) to `values`: an
+		EXISTS subquery for a related field, a plain column comparison for everything else."""
+		field_config = cls._field_config(field)
+		if field_config and field_config['related']:
+			return cls._related_condition_sql(field_config['related'], operator, value, values)
+		return cls._format_condition(cls._column_for(field), operator, value, values)
+
+	@classmethod
 	def _condition_sql(cls, field: str, operator: str, value, values: list) -> str | None:
 		"""Build a single SQL condition fragment for one filter condition, appending its bound
 		value(s) to `values`. A condition on 'name' is widened to an OR across 'name' plus every
@@ -304,10 +342,43 @@ class AbstractVirtualDocType(Document):
 		if field == 'name' and alternate_name_fields:
 			sub_conditions = []
 			for alternate_field in ('name', *alternate_name_fields):
-				sub_conditions.append(cls._format_condition(cls._column_for(alternate_field), operator, value, values))
+				sub_conditions.append(cls._field_condition_sql(alternate_field, operator, value, values))
 			return '(' + ' OR '.join(sub_conditions) + ')'
 
-		return cls._format_condition(sql_column, operator, value, values)
+		return cls._field_condition_sql(field, operator, value, values)
+
+	@classmethod
+	def _identifier_rank_sql(cls, identifier, values: list) -> str:
+		"""Build a CASE expression ranking how strongly `identifier` identifies a row: 0 when it
+		equals 'name', then 1, 2, ... for the alternate-name fields in declaration order (for
+		Ascend Product: Store SKU, then UPC, then vendor part number). Appends the bound values to
+		`values`, so it must be built in the position its placeholders appear in the query.
+
+		Only valid alongside the widened 'name = identifier' WHERE clause: every row it ranks
+		matched one of the fields, so the last field is the ELSE branch. That keeps a trailing
+		related field's EXISTS out of the CASE, where it cost a few hundred milliseconds per lookup."""
+		identifier_fields = ('name', *cls.alternate_name_fields())
+		if len(identifier_fields) == 1:
+			return '0'  # Only 'name' can match; a CASE needs at least one WHEN.
+		when_clauses = [
+			f"WHEN {cls._field_condition_sql(field, '=', identifier, values)} THEN {rank}"
+			for rank, field in enumerate(identifier_fields[:-1])
+		]
+		return 'CASE ' + ' '.join([*when_clauses, f'ELSE {len(identifier_fields) - 1}']) + ' END'
+
+	@classmethod
+	def _has_exact_related_condition(cls, filters, or_filters) -> bool:
+		"""True when the filters render a related field's EXISTS subquery for an exact match ('='
+		or 'in') — a condition on a related field, or on 'name' when a related field is an
+		alternate name. Exact matches find few rows, which is when a row goal backfires."""
+		related_fields = {field for field, field_config in cls._normalized_schema().items() if field_config['related']}
+		if not related_fields:
+			return False
+		widens_into_related = bool(cls._related_alternate_name_fields())
+		return any(
+			str(operator).lower() in ('=', 'in') and (field in related_fields or (field == 'name' and widens_into_related))
+			for field, operator, _value in [*cls._normalize_filter_conditions(filters), *cls._normalize_filter_conditions(or_filters)]
+		)
 
 	@classmethod
 	def _build_where_clause(cls, values: list, filters=None, or_filters=None) -> str:
@@ -388,32 +459,69 @@ class AbstractVirtualDocType(Document):
 	# ─── Read Operations ──────────────────────────────────────────────────────
 
 
-	def load_from_db(self) -> None:
-		"""Load this document by primary key. When alternate-name fields are declared, self.name
-		is also matched against those additional columns (e.g. UPC as well as Store SKU for
-		Ascend Product), so a Link field can be populated with either identifier."""
-		query_clauses = []
-		values = []
+	@classmethod
+	def find_by_identifier(cls, identifier, fields: list = None) -> list:
+		"""Every record `identifier` identifies at its strongest match, as frappe dicts. The
+		identifier is matched against 'name' and every alternate-name field, and only the records
+		at the best rank (see _identifier_rank_sql) are kept, so a Store SKU always beats another
+		product's UPC, which beats a vendor part number. Several records come back when the
+		identifier is shared at that rank (one part number used for several products, a duplicate
+		UPC), ordered by name so the first is always the same record.
 
-		query_clauses.append(self._build_select_clause())
-		query_clauses.append(f'FROM {self.TABLE_NAME}')
-		if self.JOIN_CONFIG is not None:
-			query_clauses.append(self._build_join_clause())
-		query_clauses.append(self._build_where_clause(values=values, filters=[(None, 'name', '=', self.name)]))
+		Selects every mapped field when `fields` is empty, otherwise exactly `fields` (strict, as
+		in get_values). Returns an empty list when nothing matches."""
+		values = []
+		select_fields = list(dict.fromkeys(['name', *fields])) if fields else []
+
+		query_clauses = []
+		# SELECT, with the rank first so its placeholders bind ahead of the WHERE clause's.
+		query_clauses.append(
+			cls._build_select_clause(select_fields, strict=bool(fields))
+			+ f', {cls._identifier_rank_sql(identifier, values)} AS _identifier_rank'
+		)
+		# FROM
+		query_clauses.append(f'FROM {cls.TABLE_NAME}')
+		# JOIN
+		if cls.JOIN_CONFIG is not None:
+			query_clauses.append(cls._build_join_clause())
+		# WHERE
+		query_clauses.append(cls._build_where_clause(values=values, filters=[(None, 'name', '=', identifier)]))
+		# ORDER BY
+		query_clauses.append('ORDER BY _identifier_rank, name')
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(query=' '.join(query_clauses), values=values, as_dict=True)
 
-		if not records:
+		candidates = []
+		seen_names = set()
+		for record in map(to_document_dict, records):
+			if record._identifier_rank != records[0]['_identifier_rank']:
+				break
+			if record.name in seen_names:
+				continue
+			seen_names.add(record.name)
+			del record['_identifier_rank']
+			candidates.append(frappe._dict({field: record.get(field) for field in fields}) if fields else record)
+		return candidates
+
+	def load_from_db(self) -> None:
+		"""Load this document by primary key. When alternate-name fields are declared, self.name
+		is also matched against those additional fields (e.g. UPC and vendor part number as well
+		as Store SKU for Ascend Product), so a Link field can be populated with any identifier. An
+		identifier shared by several records loads the first from find_by_identifier."""
+		candidates = self.find_by_identifier(self.name)
+		if not candidates:
 			raise frappe.DoesNotExistError(f"{self.doctype} '{self.name}' not found.")
 
-		super(Document, self).__init__(to_document_dict(records[0]))
-	
+		super(Document, self).__init__(candidates[0])
+
 	@classmethod
 	def get_values(cls, name, fields: list) -> frappe._dict | None:
 		"""Fetch a subset of mapped fields for a single record by primary key, in one query.
 		Column names are resolved from SCHEMA_CONFIG so they stay single-sourced. Returns a
-		frappe dict of the requested fields, or None when no matching record exists.
+		frappe dict of the requested fields, or None when no matching record exists. Like
+		load_from_db, `name` may be any identifier, and a shared one returns the first record from
+		find_by_identifier.
 
 		Intended for cheap cross-references (e.g. a child table's virtual fields mirroring a
 		few columns of the linked record) where loading the full document is unnecessary.
@@ -422,26 +530,8 @@ class AbstractVirtualDocType(Document):
 		if not isinstance(fields, (list, tuple)) or len(fields) == 0:
 			raise ValueError(f"{cls.__name__}.get_values requires a non-empty list of fieldnames, got {fields!r}.")
 
-		query_clauses = []
-		values=[]
-		# SELECT
-		query_clauses.append(cls._build_select_clause(list(fields), strict=True))
-		# FROM
-		query_clauses.append(f'FROM {cls.TABLE_NAME}')
-		# JOIN
-		if cls.JOIN_CONFIG is not None:
-			query_clauses.append(cls._build_join_clause())
-		# WHERE
-		query_clauses.append(cls._build_where_clause(values=values, filters=[(None, 'name', '=', name)]))
-
-		with MSSQLDatabase(get_default_ascend_database()) as db:
-			records = db.sql(
-				query=' '.join(query_clauses),
-				values=values,
-				as_dict=True
-			)
-
-		return to_document_dict(records[0]) if records else None
+		candidates = cls.find_by_identifier(name, list(fields))
+		return candidates[0] if candidates else None
 
 	@classmethod
 	def get_bulk_values(cls, names: list, fields: list) -> dict:
@@ -582,21 +672,79 @@ class AbstractVirtualDocType(Document):
 		batched Link-existence check (Column.validate_values) compares returned names against the
 		raw input strings via set membership, so a record found only via an alternate field (e.g.
 		UPC) must echo that value back as 'name' or it is reported as missing even though a match
-		was found."""
-		candidate_fields = ['name', *cls.alternate_name_fields()]
+		was found. In-row fields are checked from the record itself; a related field's values are
+		not in the row, so records still unmatched are looked up with one query per related field."""
+		in_row_fields = ['name', *cls._in_row_alternate_name_fields()]
 		echoed = []
+		unmatched = []
 		for record in records:
 			record = dict(record)
-			record['name'] = next(
+			matched_value = next(
 				(
 					record[field]
-					for field in candidate_fields
+					for field in in_row_fields
 					if (value := str(record.get(field))) in search_values or value.lower() in search_values # Search values may sometimes be normalized to all lower-case.
 				),
-				record.get('name'),
+				None,
 			)
+			if matched_value is not None:
+				record['name'] = matched_value
+			else:
+				unmatched.append(record)
 			echoed.append(record)
+
+		for field in cls._related_alternate_name_fields():
+			if not unmatched:
+				break
+			matched_values = cls._related_matches(field, [record['name'] for record in unmatched], search_values)
+			still_unmatched = []
+			for record in unmatched:
+				if (matched_value := matched_values.get(str(record['name']))) is not None:
+					record['name'] = matched_value
+				else:
+					still_unmatched.append(record)
+			unmatched = still_unmatched
+
 		return echoed
+
+	@classmethod
+	def _in_row_alternate_name_fields(cls) -> list:
+		"""Alternate-name fields whose value is a column of the record's own row."""
+		return [field for field in cls.alternate_name_fields() if not cls._field_config(field)['related']]
+
+	@classmethod
+	def _related_alternate_name_fields(cls) -> list:
+		"""Alternate-name fields read from a one-to-many related table (see schema_config.py)."""
+		return [field for field in cls.alternate_name_fields() if cls._field_config(field)['related']]
+
+	@classmethod
+	def _related_matches(cls, field: str, names: list, search_values: set) -> dict:
+		"""Map each of `names` to the value of related field `field` that equals one of
+		`search_values`, for the records found through that field. Names with no matching related
+		value are absent. One query for the whole batch, joining the related table only here
+		where one row per match is exactly what is wanted."""
+		related = cls._field_config(field)['related']
+		name_column = cls._column_for('name')
+		query_clauses = [
+			f"SELECT {name_column} AS name, {related['column_sql']} AS matched_value",
+			f'FROM {cls.TABLE_NAME}',
+		]
+		if cls.JOIN_CONFIG is not None:
+			query_clauses.append(cls._build_join_clause())
+		query_clauses.append(f"INNER JOIN {related['from_sql']} ON {related['correlation_sql']}")
+		query_clauses.append(f"WHERE {name_column} IN %s AND {related['column_sql']} IN %s")
+
+		with MSSQLDatabase(get_default_ascend_database()) as db:
+			records = db.sql(
+				query=' '.join(query_clauses),
+				values=[tuple(names), tuple(search_values)],
+				as_dict=True
+			)
+
+		matched_values = {}
+		for record in map(to_document_dict, records):
+			matched_values.setdefault(str(record.name), record.matched_value)
+		return matched_values
 
 	@classmethod
 	def get_list(cls, doctype: str, fields: list, filters: list, start: int, page_length: int, with_comment_count: str, save_user_settings: bool, or_filters: list = [], as_list: bool = False, group_by: str = None, order_by: str = None, strict = None, **args):
@@ -614,7 +762,8 @@ class AbstractVirtualDocType(Document):
 		search_values = cls._search_values_for_name_condition(filters, or_filters) if alternate_name_fields else None
 		select_fields = fields
 		if search_values:
-			select_fields = list(dict.fromkeys([*fields, 'name', *alternate_name_fields]))
+			# Related alternate fields stay out: _echo_matched_identifier looks them up separately.
+			select_fields = list(dict.fromkeys([*fields, 'name', *cls._in_row_alternate_name_fields()]))
 
 		query_clauses = []
 		values = []
@@ -633,6 +782,12 @@ class AbstractVirtualDocType(Document):
 		query_clauses.append(cls._build_order_by_clause(order_by) if order_by else 'ORDER BY (SELECT NULL)')
 		# OFFSET/FETCH
 		query_clauses.append(cls._build_pagination_clause(start, page_length))
+		# With a row goal, SQL Server walks TABLE_NAME in arbitrary order running the EXISTS per
+		# row until the page fills — a full scan (~1.3s on Products) when only one row matches.
+		# Not applied otherwise: it makes an ORDER BY page roughly 10x slower, and a broad LIKE
+		# search (Link autocomplete) fills its page sooner with the row goal than without.
+		if cls._has_exact_related_condition(filters, or_filters):
+			query_clauses.append(DISABLE_ROW_GOAL_HINT)
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
 			records = db.sql(

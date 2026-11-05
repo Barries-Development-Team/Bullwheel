@@ -39,6 +39,7 @@
   "store_sku",
   "column_break_xrdr",
   "manufacturers_part_number",
+  "vendor_part_numbers",
   "column_break_bvyk",
   "style_number",
   "database_identifiers_section",
@@ -57,8 +58,8 @@
    "in_global_search": 1,
    "in_list_view": 1,
    "label": "Description",
-   "unique": 1,
-   "read_only": 1
+   "read_only": 1,
+   "unique": 1
   },
   {
    "fieldname": "keyword",
@@ -115,6 +116,13 @@
    "fieldtype": "Data",
    "in_global_search": 1,
    "label": "Manufacturer's Part Number",
+   "read_only": 1
+  },
+  {
+   "description": "Every vendor's part number for this product. Scanning or entering any of them finds the product.",
+   "fieldname": "vendor_part_numbers",
+   "fieldtype": "Small Text",
+   "label": "Vendor Part Numbers",
    "read_only": 1
   },
   {
@@ -223,15 +231,15 @@
    "button_color": "Info",
    "fieldname": "edit_swap_price",
    "fieldtype": "Button",
-   "label": "Edit Swap Price",
-   "hidden": 1
+   "hidden": 1,
+   "label": "Edit Swap Price"
   },
   {
    "button_color": "Info",
    "fieldname": "edit_online_price",
    "fieldtype": "Button",
-   "label": "Edit Online Price",
-   "hidden": 1
+   "hidden": 1,
+   "label": "Edit Online Price"
   },
   {
    "collapsible": 1,
@@ -281,7 +289,7 @@
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2026-10-12 22:20:00.000000",
+ "modified": "2026-11-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Ascend Product",

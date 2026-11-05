@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import frappe
 from frappe.tests import UnitTestCase
 
-from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType
+from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType, DISABLE_ROW_GOAL_HINT
 from bullwheel.ascend.schema_config import normalize_schema_config, quote_column
 from bullwheel.ascend.validate_virtual_doctypes import (
 	validate_schema_config,
@@ -1072,3 +1072,305 @@ class UnitTestReadOnlyGuards(UnitTestCase):
 			if pattern.search(path.read_text()):
 				offenders.append(str(path.relative_to(root)))
 		self.assertEqual(offenders, [])
+
+
+# ─── related (one-to-many) fields ─────────────────────────────────────────────
+
+
+class _RelatedFieldVirtualDocType(AbstractVirtualDocType):
+	"""A product identified by Store SKU, then UPC, then any vendor's part number — the part
+	numbers living one-per-vendor on VendorProducts."""
+	TABLE_NAME = "Products"
+	SHOW_FIELD_WARNINGS = False
+	SCHEMA_CONFIG = {
+		'name':                {'column': 'Store UPC'},
+		'upc':                 {'column': 'UPC', 'alternate_name': True},
+		'vendor_part_numbers': {
+			'table': 'VendorProducts', 'column': 'PartNumber',
+			'foreign_key': 'ProductID', 'references': 'ID', 'alternate_name': True,
+		},
+		'description':         {'column': 'Description'},
+	}
+
+
+VENDOR_PART_NUMBER_EXISTS = (
+	'EXISTS (SELECT 1 FROM VendorProducts AS related_vendor_part_numbers '
+	'WHERE related_vendor_part_numbers.[ProductID] = Products.[ID] AND related_vendor_part_numbers.[PartNumber] {})'
+)
+
+
+def _fake_database(results):
+	"""A mocked MSSQLDatabase whose sql() returns each of `results` in turn, recording every
+	(query, values) it was called with."""
+	fake_database = MagicMock()
+	fake_database.__enter__.return_value = fake_database
+	fake_database.calls = []
+	responses = iter(results)
+
+	def fake_sql(query=None, values=None, as_dict=True):
+		fake_database.calls.append((query, values))
+		return next(responses)
+
+	fake_database.sql.side_effect = fake_sql
+	return fake_database
+
+
+def _patched_database(fake_database):
+	return (
+		patch('bullwheel.ascend.virtual_doctype_base.MSSQLDatabase', return_value=fake_database),
+		patch('bullwheel.ascend.virtual_doctype_base.get_default_ascend_database', return_value=None),
+	)
+
+
+class UnitTestNormalizeRelatedField(UnitTestCase):
+
+	def _normalize(self, field_config):
+		fixture = type('_Fixture', (AbstractVirtualDocType,), {
+			'TABLE_NAME': 'Products', 'SCHEMA_CONFIG': {'vendor_part_numbers': field_config},
+		})
+		return normalize_schema_config(fixture)['vendor_part_numbers']
+
+	def test_related_field_projects_a_sorted_aggregate_subquery(self):
+		"""A related field is never JOINed, so selecting it cannot repeat the record per row."""
+		normalized = self._normalize({
+			'table': 'VendorProducts', 'column': 'PartNumber', 'foreign_key': 'ProductID', 'references': 'ID',
+		})
+		self.assertEqual(
+			normalized['sql'],
+			"(SELECT STRING_AGG(CAST(distinct_values.[value] AS NVARCHAR(MAX)), ', ') "
+			"WITHIN GROUP (ORDER BY distinct_values.[value]) "
+			"FROM (SELECT DISTINCT related_vendor_part_numbers.[PartNumber] AS [value] "
+			"FROM VendorProducts AS related_vendor_part_numbers "
+			"WHERE related_vendor_part_numbers.[ProductID] = Products.[ID]) AS distinct_values)"
+		)
+		self.assertEqual(normalized['related']['table'], 'VendorProducts')
+
+	def test_plain_field_is_not_related(self):
+		self.assertIsNone(self._normalize({'column': 'Description'})['related'])
+
+	def test_half_declared_relationship_raises(self):
+		for field_config in (
+			{'table': 'VendorProducts', 'column': 'PartNumber', 'foreign_key': 'ProductID'},
+			{'table': 'VendorProducts', 'column': 'PartNumber', 'references': 'ID'},
+		):
+			with self.subTest(field_config=field_config):
+				with self.assertRaises(ValueError):
+					self._normalize(field_config)
+
+	def test_related_field_without_explicit_table_raises(self):
+		with self.assertRaises(ValueError) as context:
+			self._normalize({'column': 'PartNumber', 'foreign_key': 'ProductID', 'references': 'ID'})
+		self.assertIn("'table'", str(context.exception))
+
+	def test_qualified_foreign_key_raises(self):
+		with self.assertRaises(ValueError):
+			self._normalize({
+				'table': 'VendorProducts', 'column': 'PartNumber',
+				'foreign_key': 'VendorProducts.ProductID', 'references': 'ID',
+			})
+
+
+class UnitTestRelatedFieldWhereClause(UnitTestCase):
+
+	def _where(self, filters):
+		values = []
+		return _RelatedFieldVirtualDocType._build_where_clause(values, filters, []), values
+
+	def test_filter_matches_any_related_row(self):
+		result, values = self._where([('Product', 'vendor_part_numbers', '=', 'ABC-1')])
+		self.assertEqual(result, f"WHERE ({VENDOR_PART_NUMBER_EXISTS.format('= %s')})")
+		self.assertEqual(values, ['ABC-1'])
+
+	def test_negated_operators_become_not_exists(self):
+		"""'!= X' means no part number equals X, not that some part number differs from X."""
+		for operator, positive in (('!=', '= %s'), ('not like', 'LIKE %s'), ('not in', 'IN %s')):
+			with self.subTest(operator=operator):
+				result, _values = self._where([('Product', 'vendor_part_numbers', operator, 'ABC-1')])
+				self.assertEqual(result, f"WHERE (NOT {VENDOR_PART_NUMBER_EXISTS.format(positive)})")
+
+	def test_is_set_and_not_set(self):
+		result, values = self._where([('Product', 'vendor_part_numbers', 'is', 'set')])
+		self.assertEqual(result, f"WHERE ({VENDOR_PART_NUMBER_EXISTS.format('IS NOT NULL')})")
+		self.assertEqual(values, [])
+		result, _values = self._where([('Product', 'vendor_part_numbers', 'is', 'not set')])
+		self.assertEqual(result, f"WHERE (NOT {VENDOR_PART_NUMBER_EXISTS.format('IS NOT NULL')})")
+
+	def test_unsupported_operator_still_raises(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._where([('Product', 'vendor_part_numbers', 'between', 'ABC-1')])
+
+	def test_name_filter_widens_into_related_field_with_exists(self):
+		result, values = self._where([('Product', 'name', '=', 'ABC-1')])
+		self.assertEqual(
+			result,
+			f"WHERE ((Products.[Store UPC] = %s OR Products.[UPC] = %s OR {VENDOR_PART_NUMBER_EXISTS.format('= %s')}))"
+		)
+		self.assertEqual(values, ['ABC-1', 'ABC-1', 'ABC-1'])
+
+	def test_count_query_never_joins_the_related_table(self):
+		"""The whole point: no JOIN, so a product with three vendors still counts once."""
+		fake_database = _fake_database([[{'count': 1}]])
+		database_patch, server_patch = _patched_database(fake_database)
+		with database_patch, server_patch:
+			_RelatedFieldVirtualDocType.get_count(
+				doctype='Product', filters=[('Product', 'name', '=', 'ABC-1')], fields=[],
+				distinct=False, save_user_settings=False, strict=None,
+			)
+		query, _values = fake_database.calls[0]
+		self.assertNotIn('JOIN', query)
+		self.assertIn('EXISTS (SELECT 1 FROM VendorProducts', query)
+
+	def _list_query(self, filters, order_by=None):
+		fake_database = _fake_database([[]])
+		database_patch, server_patch = _patched_database(fake_database)
+		with database_patch, server_patch:
+			_RelatedFieldVirtualDocType.get_list(
+				doctype='Product', fields=['name'], filters=filters, start=0, page_length=20,
+				with_comment_count=False, save_user_settings=False, order_by=order_by,
+			)
+		return fake_database.calls[0][0]
+
+	def test_paged_query_through_related_field_disables_the_row_goal(self):
+		"""Without the hint a one-match lookup scans every product (measured ~1.3s on Ascend)."""
+		for filters in ([('Product', 'name', '=', 'ABC-1')], [('Product', 'vendor_part_numbers', 'in', ['ABC-1', 'XYZ-2'])]):
+			with self.subTest(filters=filters):
+				self.assertTrue(self._list_query(filters).endswith(DISABLE_ROW_GOAL_HINT))
+
+	def test_other_paged_queries_keep_the_row_goal(self):
+		"""The hint slows an ORDER BY page roughly tenfold and a broad Link-search LIKE threefold,
+		so it is only applied to exact related lookups."""
+		for filters in ([('Product', 'description', 'like', '%ski%')], [('Product', 'name', 'like', '%ski%')]):
+			with self.subTest(filters=filters):
+				self.assertNotIn('USE HINT', self._list_query(filters, order_by='description asc'))
+
+
+class UnitTestFindByIdentifier(UnitTestCase):
+
+	def _find(self, records, fields=None):
+		fake_database = _fake_database([records])
+		database_patch, server_patch = _patched_database(fake_database)
+		with database_patch, server_patch:
+			result = _RelatedFieldVirtualDocType.find_by_identifier('ABC-1', fields)
+		return result, fake_database.calls[0]
+
+	def test_rank_orders_name_then_alternates_in_declaration_order(self):
+		"""The WHERE guarantees a match, so the last field is the ELSE — keeping the part number
+		EXISTS out of the CASE, where it was slow."""
+		_result, (query, values) = self._find([])
+		self.assertIn(
+			"CASE WHEN Products.[Store UPC] = %s THEN 0 WHEN Products.[UPC] = %s THEN 1 "
+			"ELSE 2 END AS _identifier_rank",
+			query,
+		)
+		self.assertTrue(query.endswith('ORDER BY _identifier_rank, name'))
+		# Two for the rank in SELECT, then three for the WHERE — in placeholder order.
+		self.assertEqual(values, ['ABC-1'] * 5)
+
+	def test_rank_without_alternate_names_is_constant(self):
+		self.assertEqual(_SimpleVirtualDocType._identifier_rank_sql('SKU-1', []), '0')
+
+	def test_only_the_best_rank_is_returned(self):
+		"""A Store SKU match beats another product's part number match."""
+		result, _call = self._find([
+			{'name': 'SKU-B', 'description': 'By SKU', '_identifier_rank': 0},
+			{'name': 'SKU-A', 'description': 'By part number', '_identifier_rank': 2},
+		], ['description'])
+		self.assertEqual(result, [{'description': 'By SKU'}])
+
+	def test_shared_identifier_returns_every_record_at_that_rank(self):
+		result, _call = self._find([
+			{'name': 'SKU-A', 'description': 'Ski A', '_identifier_rank': 2},
+			{'name': 'SKU-B', 'description': 'Ski B', '_identifier_rank': 2},
+		])
+		self.assertEqual([record.name for record in result], ['SKU-A', 'SKU-B'])
+		self.assertNotIn('_identifier_rank', result[0])
+
+	def test_duplicate_rows_collapse_by_name(self):
+		result, _call = self._find([
+			{'name': 'SKU-A', '_identifier_rank': 2},
+			{'name': 'SKU-A', '_identifier_rank': 2},
+		])
+		self.assertEqual(len(result), 1)
+
+	def test_requested_fields_are_strict(self):
+		with self.assertRaises(ValueError):
+			_RelatedFieldVirtualDocType.find_by_identifier('ABC-1', ['not_a_field'])
+
+	def test_get_values_returns_the_first_candidate(self):
+		fake_database = _fake_database([[
+			{'name': 'SKU-A', 'description': 'Ski A', '_identifier_rank': 2},
+			{'name': 'SKU-B', 'description': 'Ski B', '_identifier_rank': 2},
+		]])
+		database_patch, server_patch = _patched_database(fake_database)
+		with database_patch, server_patch:
+			result = _RelatedFieldVirtualDocType.get_values('ABC-1', ['description'])
+		self.assertEqual(result, {'description': 'Ski A'})
+
+
+class UnitTestRelatedEchoMatchedIdentifier(UnitTestCase):
+
+	def test_record_found_by_part_number_echoes_the_part_number(self):
+		"""Frappe's Link check compares returned names with the typed value, so a product found by
+		part number must come back named by that part number."""
+		fake_database = _fake_database([[{'name': 'SKU-A', 'matched_value': 'ABC-1'}]])
+		database_patch, server_patch = _patched_database(fake_database)
+		with database_patch, server_patch:
+			echoed = _RelatedFieldVirtualDocType._echo_matched_identifier(
+				[{'name': 'SKU-A', 'upc': '111'}], {'ABC-1'}
+			)
+		self.assertEqual(echoed[0]['name'], 'ABC-1')
+		query, values = fake_database.calls[0]
+		self.assertIn('INNER JOIN VendorProducts AS related_vendor_part_numbers', query)
+		self.assertEqual(values, [('SKU-A',), ('ABC-1',)])
+
+	def test_in_row_match_needs_no_related_query(self):
+		fake_database = _fake_database([])
+		database_patch, server_patch = _patched_database(fake_database)
+		with database_patch, server_patch:
+			echoed = _RelatedFieldVirtualDocType._echo_matched_identifier(
+				[{'name': 'SKU-A', 'upc': '111'}], {'111'}
+			)
+		self.assertEqual(echoed[0]['name'], '111')
+		self.assertEqual(fake_database.calls, [])
+
+	def test_unmatched_record_keeps_its_name(self):
+		fake_database = _fake_database([[]])
+		database_patch, server_patch = _patched_database(fake_database)
+		with database_patch, server_patch:
+			echoed = _RelatedFieldVirtualDocType._echo_matched_identifier(
+				[{'name': 'SKU-A', 'upc': '111'}], {'%ski%'}
+			)
+		self.assertEqual(echoed[0]['name'], 'SKU-A')
+
+
+class UnitTestValidateRelatedField(UnitTestCase):
+
+	def test_related_table_need_not_be_declared_in_join_config(self):
+		self.assertTrue(validate_schema_config(_RelatedFieldVirtualDocType))
+
+	def test_related_name_field_raises(self):
+		class _RelatedName(AbstractVirtualDocType):
+			TABLE_NAME = "Products"
+			SCHEMA_CONFIG = {
+				'name': {'table': 'VendorProducts', 'column': 'PartNumber', 'foreign_key': 'ProductID', 'references': 'ID'},
+			}
+		with self.assertRaises(ValueError):
+			validate_schema_config(_RelatedName)
+
+	def test_live_columns_are_checked_against_the_related_table(self):
+		primary = ['Store UPC', 'UPC', 'ID', 'Description']
+		self.assertTrue(validate_schema_config(
+			_RelatedFieldVirtualDocType, discovered_columns=primary,
+			related_discovered_columns={'VendorProducts': ['ID', 'ProductID', 'PartNumber']},
+		))
+		with self.assertRaises(ValueError) as context:
+			validate_schema_config(
+				_RelatedFieldVirtualDocType, discovered_columns=primary,
+				related_discovered_columns={'VendorProducts': ['ID', 'ProductID']},
+			)
+		self.assertIn('PartNumber', str(context.exception))
+
+	def test_missing_references_column_on_primary_table_raises(self):
+		with self.assertRaises(ValueError) as context:
+			validate_schema_config(_RelatedFieldVirtualDocType, discovered_columns=['Store UPC', 'UPC', 'Description'])
+		self.assertIn("'ID'", str(context.exception))
