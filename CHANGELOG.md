@@ -4,6 +4,10 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ## [1.2.4] - November 6, 2024
 
+### Changes
+
+- Warehouse Location List View now displays ID, Parent Location, and Group status.
+
 ### Bug Fixes
 
 - Fixed issue where some return characters from scanners would clear the Product ID field in the item Check-In/Out.
