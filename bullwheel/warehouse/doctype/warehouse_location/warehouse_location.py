@@ -4,7 +4,17 @@
 import frappe
 from frappe.utils.nestedset import NestedSet
 
+from bullwheel.warehouse.doctype.location_inventory.location_inventory import find_invalid_inventory_products
+
 class WarehouseLocation(NestedSet):
+
+	def get_invalid_links(self, is_submittable=False):
+		"""Frappe's link check for this location, plus a bulk check of its inventory rows' products
+		(Location Inventory skips its own per-row check, which loaded every row's Ascend Product on
+		every save). Invalid products are reported through Frappe's usual "Could not find" error."""
+		invalid_links, cancelled_links = super().get_invalid_links(is_submittable)
+		invalid_links.extend(find_invalid_inventory_products(self.location_inventory_quantities))
+		return invalid_links, cancelled_links
 
 	@property
 	def total_inventory(self):

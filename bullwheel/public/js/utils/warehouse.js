@@ -86,16 +86,31 @@ bullwheel.warehouse.product_location_dialog = function({ product_sku, descriptio
 bullwheel.warehouse.product_lookup_field = function ({ get_dialog, on_change = () => {} } = {}) {
 	const default_description = __('Scan or type a Store SKU, UPC, vendor part number, or New Product ID.');
 	let resolved = { identifier: null, product: null };
+	// The lookup in flight: its identifier and the callbacks waiting on it. A scanner's Enter, the
+	// field's debounced change event, its blur, and the primary action can all ask for the same
+	// identifier while the server (or the ambiguity picker) is still answering; they share this one
+	// lookup instead of starting more, so a second picker can never open on top of the first.
+	let pending = null;
 
 	function show(identifier, product) {
 		let description = default_description;
 		if (product) {
-			description = `<span class="text-success">${frappe.utils.escape_html(product.doctype)}: `
+			description = `<span style="color: #0ea5e9">${frappe.utils.escape_html(product.doctype)}: `
 				+ `${frappe.utils.escape_html(product.description || product.name)} (${frappe.utils.escape_html(product.name)})</span>`;
 		} else if (identifier) {
 			description = `<span class="text-danger">${__('No Ascend Product or New Product matches {0}.', [frappe.utils.escape_html(identifier)])}</span>`;
 		}
-		get_dialog().set_df_property('product_identifier', 'description', description);
+		// set_description rewrites only the help text. set_df_property would refresh the whole
+		// control, which writes the control's stored value back into the input — and that value lags
+		// a scanner's Enter by up to 500 ms (it is only synced on change), so the box would be blanked.
+		get_dialog().fields_dict.product_identifier.set_description(description);
+	}
+
+	function settle(identifier, product, callbacks) {
+		resolved = { identifier, product };
+		show(identifier, product);
+		on_change(product);
+		callbacks.forEach((callback) => callback(product));
 	}
 
 	function resolve(callback) {
@@ -104,19 +119,29 @@ bullwheel.warehouse.product_lookup_field = function ({ get_dialog, on_change = (
 			callback(resolved.product);
 			return;
 		}
-		if (!identifier) {
-			resolved = { identifier, product: null };
-			show(identifier, null);
-			on_change(null);
-			callback(null);
+		if (pending && pending.identifier === identifier) {
+			pending.callbacks.push(callback);
 			return;
 		}
-		bullwheel.ascend.resolve_scanned_product(identifier, (product) => {
-			resolved = { identifier, product };
-			show(identifier, product);
-			on_change(product);
-			callback(product);
-		});
+		if (!identifier) {
+			pending = null;
+			settle(identifier, null, [callback]);
+			return;
+		}
+
+		const lookup = { identifier, callbacks: [callback] };
+		pending = lookup;
+		bullwheel.ascend.resolve_scanned_product(
+			identifier,
+			(product) => {
+				if (pending !== lookup) return;  // The box was edited while this was in flight.
+				pending = null;
+				settle(identifier, product, lookup.callbacks);
+			},
+			// Picker closed without a choice, or the request failed: release the lookup so the next
+			// attempt at this identifier starts fresh.
+			() => { if (pending === lookup) pending = null; },
+		);
 	}
 
 	return {
@@ -132,14 +157,22 @@ bullwheel.warehouse.product_lookup_field = function ({ get_dialog, on_change = (
 	};
 };
 
-// Resolve a scanner's trailing Enter in the product field right away rather than on blur, then
-// move on to `next_fieldname` so the next scan or entry lands in the right place.
+// Resolve a scanner's trailing Enter in the product field right away rather than on blur. A
+// found product keeps its text in the box and moves focus on to `next_fieldname`, so the next scan
+// or entry lands in the right place; an unknown one keeps focus here with its text selected, so the
+// next scan replaces it instead of being appended to it.
 function resolve_product_on_enter(dialog, lookup, next_fieldname) {
-	dialog.fields_dict.product_identifier.$input.on('keydown', (event) => {
+	const product_input = dialog.fields_dict.product_identifier.$input;
+	product_input.on('keydown', (event) => {
 		if (event.key !== 'Enter') return;
 		event.preventDefault();
 		lookup.resolve((product) => {
-			if (product && next_fieldname) dialog.fields_dict[next_fieldname].$input.focus();
+			if (!product) {
+				product_input.select();
+				return;
+			}
+			// Deferred so the ambiguity picker's teardown cannot hand focus back to this box.
+			if (next_fieldname) setTimeout(() => dialog.get_field(next_fieldname).set_focus(), 0);
 		});
 	});
 }

@@ -29,29 +29,34 @@ bullwheel.ascend.generate_vendor_acronym = function(vendor_name = required('vend
 
 // Resolve a scanned identifier to one product ({doctype, name, description, upc}) and pass it to
 // on_resolved — or null when nothing matches. When the scan matches several products equally well
-// (a vendor part number shared across products, a duplicate UPC), the user picks one first; closing
-// the picker without choosing calls nothing. See ascend/product_lookup.py:resolve_scanned_product.
-bullwheel.ascend.resolve_scanned_product = function(identifier = required('identifier'), on_resolved = required('on_resolved')) {
+// (a vendor part number shared across products, a duplicate UPC), the user picks one first. Closing
+// the picker without choosing, or a failed request, calls on_cancel (optional) instead of
+// on_resolved, so callers tracking an in-flight lookup can release it.
+// See ascend/product_lookup.py:resolve_scanned_product.
+bullwheel.ascend.resolve_scanned_product = function(identifier = required('identifier'), on_resolved = required('on_resolved'), on_cancel = () => {}) {
     frappe.call({
         method: 'bullwheel.ascend.product_lookup.resolve_scanned_product',
         args: {identifier: identifier},
         callback(response) {
             const result = response.message || null;
             if (result && result.candidates) {
-                bullwheel.ascend.pick_scanned_product(identifier, result.candidates, on_resolved);
+                bullwheel.ascend.pick_scanned_product(identifier, result.candidates, on_resolved, on_cancel);
                 return;
             }
             on_resolved(result);
-        }
+        },
+        error: () => on_cancel(),
     });
 }
 
 // Show one large button per candidate (sized for warehouse tablets) and pass the chosen product to
-// on_chosen.
-bullwheel.ascend.pick_scanned_product = function(identifier = required('identifier'), candidates = required('candidates'), on_chosen = required('on_chosen')) {
+// on_chosen. Closing the dialog without choosing calls on_cancel (optional) once it has hidden.
+bullwheel.ascend.pick_scanned_product = function(identifier = required('identifier'), candidates = required('candidates'), on_chosen = required('on_chosen'), on_cancel = () => {}) {
+    let chosen = false;
     const dialog = new frappe.ui.Dialog({
         title: __('Which product is {0}?', [frappe.utils.escape_html(identifier)]),
         fields: [{fieldtype: 'HTML', fieldname: 'candidates'}],
+        onhide: () => { if (!chosen) on_cancel(); },
     });
 
     const $list = $('<div class="d-flex flex-column" style="gap: var(--margin-sm)"></div>');
@@ -62,6 +67,7 @@ bullwheel.ascend.pick_scanned_product = function(identifier = required('identifi
                 <div class="text-muted small">${frappe.utils.escape_html(details)}</div>
             </button>`)
             .on('click', () => {
+                chosen = true;  // Set before hide(): onhide runs after the hide animation.
                 dialog.hide();
                 on_chosen(candidate);
             })
