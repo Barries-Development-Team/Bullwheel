@@ -2,6 +2,16 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.2.4] - November 6, 2024
+
+### Bug Fixes
+
+- Fixed issue where some return characters from scanners would clear the Product ID field in the item Check-In/Out.
+
+### Performance
+
+- Significantly improved Ascend Product loading and Check-In time.
+
 ## [1.2.3] - November 4, 2026
 
 - Item Check-In/Out now always searches both Ascend Products and New Products.
