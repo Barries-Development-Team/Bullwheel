@@ -351,7 +351,7 @@ The framework never JOINs a related field; it reads it through correlated subque
 
 | Where | What it renders |
 |---|---|
-| SELECT | The distinct values, sorted and comma-separated (`'211887, 211887-178'`), via `STRING_AGG` (SQL Server 2017+). Use a `Small Text` read-only field in the JSON. |
+| SELECT | The distinct values, sorted and comma-separated (`'211887, 211887-178'`). SQL joins the raw values with `STRING_AGG` (SQL Server 2017+) on an internal `NCHAR(31)` delimiter; the framework drops duplicates (case-insensitively) and rejoins them with `', '` on every read path (`_collapse_related_values`). Use a `Small Text` read-only field in the JSON. |
 | Filter `=`, `like`, `in`, `<`, … | `EXISTS (…)`: any related row matches. |
 | Filter `!=`, `not like`, `not in` | `NOT EXISTS (…)` of the positive form: **no** related row matches. |
 | `is set` / `not set` | `EXISTS` / `NOT EXISTS` of a non-null related value. |
@@ -523,6 +523,23 @@ Notes:
 ---
 
 ## Gotchas & Known Limitations
+
+**Link validation loads the whole virtual record, per row, on every save.** For a Link or
+Dynamic Link to a virtual DocType, Frappe's `get_invalid_links` calls
+`frappe.get_doc(doctype, name).as_dict()`, one full Ascend load and connection for every row
+of every child table each time the parent saves, whether or not the row changed. A Warehouse
+Location holding 20 products took ~18s to save for a one-unit check-in. A child table with many
+rows linking to a virtual DocType should skip that check and validate in bulk from the parent,
+as Location Inventory does: `LocationInventory.get_invalid_links` returns nothing, and
+`WarehouseLocation.get_invalid_links` adds `find_invalid_inventory_products(rows)`. That function
+checks only new or changed rows (via each row's `_doc_before_save`), uses one `get_bulk_values`
+query, and resolves the rare UPC or part number entry to its Store SKU as Frappe's own check did.
+
+**Never dedupe a related field in SQL.** A `DISTINCT`/`GROUP BY` derived table (or
+`NOT EXISTS` against duplicates) inside a related field's projection, combined with the
+alternate-name `WHERE`, makes SQL Server aggregate the whole related table: ~0.7s per load
+instead of ~0.004s. Keep the projection a plain correlated `STRING_AGG` and dedupe in Python
+(see *Step 3e*).
 
 **GUID / `uniqueidentifier` primary keys — handled automatically.** Many Ascend
 tables key on a SQL Server `uniqueidentifier` (e.g. `Categories.ID`). pymssql

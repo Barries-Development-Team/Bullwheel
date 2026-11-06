@@ -10,7 +10,7 @@ from frappe.model.document import Document
 
 from bullwheel.database.SQLServer import MSSQLDatabase
 from bullwheel.bullwheel_core import get_default_ascend_database, print_console_warning
-from bullwheel.ascend.schema_config import normalize_schema_config
+from bullwheel.ascend.schema_config import collapse_related_value, normalize_schema_config
 
 # ─── Static Helper Functions ───────────────────────────────────────
 
@@ -137,6 +137,20 @@ class AbstractVirtualDocType(Document):
 		"""Return the normalized field config for a fieldname, or None when the field has no
 		SCHEMA_CONFIG entry."""
 		return cls._normalized_schema().get(field)
+
+	@classmethod
+	def _collapse_related_values(cls, records: list) -> list:
+		"""Turn every related field's raw projection in `records` (as returned by SQL) into its
+		display string, removing duplicate values (see schema_config.collapse_related_value).
+		Every read path that selects mapped fields runs its rows through this. Records are
+		updated in place and returned."""
+		related_fields = [field for field, field_config in cls._normalized_schema().items() if field_config['related']]
+		if related_fields:
+			for record in records:
+				for field in related_fields:
+					if field in record:
+						record[field] = collapse_related_value(record[field])
+		return records
 
 	@classmethod
 	def alternate_name_fields(cls) -> list:
@@ -490,7 +504,7 @@ class AbstractVirtualDocType(Document):
 		query_clauses.append('ORDER BY _identifier_rank, name')
 
 		with MSSQLDatabase(get_default_ascend_database()) as db:
-			records = db.sql(query=' '.join(query_clauses), values=values, as_dict=True)
+			records = cls._collapse_related_values(db.sql(query=' '.join(query_clauses), values=values, as_dict=True))
 
 		candidates = []
 		seen_names = set()
@@ -581,7 +595,7 @@ class AbstractVirtualDocType(Document):
 				query_clauses.append(cls._build_join_clause())
 			query_clauses.append(f'INNER JOIN #lookup_names ON {name_column} = #lookup_names.lookup_name')
 
-			records = db.sql(query=' '.join(query_clauses), as_dict=True)
+			records = cls._collapse_related_values(db.sql(query=' '.join(query_clauses), as_dict=True))
 
 		for raw_record in records:
 			record = to_document_dict(raw_record)
@@ -795,6 +809,7 @@ class AbstractVirtualDocType(Document):
 				values=values,
 				as_dict=True
 			)
+		cls._collapse_related_values(records)
 
 		# Check for duplicate records resulting from bad JOIN configs.
 		if has_duplicates(records):

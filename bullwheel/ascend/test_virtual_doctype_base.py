@@ -17,7 +17,7 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from bullwheel.ascend.virtual_doctype_base import AbstractVirtualDocType, DISABLE_ROW_GOAL_HINT
-from bullwheel.ascend.schema_config import normalize_schema_config, quote_column
+from bullwheel.ascend.schema_config import collapse_related_value, normalize_schema_config, quote_column
 from bullwheel.ascend.validate_virtual_doctypes import (
 	validate_schema_config,
 	autoname_mismatch_reason,
@@ -1137,12 +1137,14 @@ class UnitTestNormalizeRelatedField(UnitTestCase):
 		})
 		self.assertEqual(
 			normalized['sql'],
-			"(SELECT STRING_AGG(CAST(distinct_values.[value] AS NVARCHAR(MAX)), ', ') "
-			"WITHIN GROUP (ORDER BY distinct_values.[value]) "
-			"FROM (SELECT DISTINCT related_vendor_part_numbers.[PartNumber] AS [value] "
+			"(SELECT STRING_AGG(CAST(related_vendor_part_numbers.[PartNumber] AS NVARCHAR(MAX)), NCHAR(31)) "
+			"WITHIN GROUP (ORDER BY related_vendor_part_numbers.[PartNumber]) "
 			"FROM VendorProducts AS related_vendor_part_numbers "
-			"WHERE related_vendor_part_numbers.[ProductID] = Products.[ID]) AS distinct_values)"
+			"WHERE related_vendor_part_numbers.[ProductID] = Products.[ID])"
 		)
+		# No DISTINCT/derived table: combined with an alternate-name WHERE it made SQL Server
+		# aggregate all of VendorProducts (~0.7s per load). Duplicates are removed in Python.
+		self.assertNotIn('DISTINCT', normalized['sql'])
 		self.assertEqual(normalized['related']['table'], 'VendorProducts')
 
 	def test_plain_field_is_not_related(self):
@@ -1374,3 +1376,44 @@ class UnitTestValidateRelatedField(UnitTestCase):
 		with self.assertRaises(ValueError) as context:
 			validate_schema_config(_RelatedFieldVirtualDocType, discovered_columns=['Store UPC', 'UPC', 'Description'])
 		self.assertIn("'ID'", str(context.exception))
+
+
+class UnitTestCollapseRelatedValues(UnitTestCase):
+	"""Related values arrive joined by the unit separator, duplicates included; the framework turns
+	them into the display string."""
+
+	def test_duplicates_are_removed_case_insensitively_keeping_sql_order(self):
+		self.assertEqual(collapse_related_value('A-1\x1fa-1\x1fB-2\x1fB-2'), 'A-1, B-2')
+
+	def test_value_containing_the_display_separator_is_kept_whole(self):
+		self.assertEqual(collapse_related_value('ABC, 1\x1fXYZ'), 'ABC, 1, XYZ')
+		self.assertEqual(collapse_related_value('ABC, 1'), 'ABC, 1')
+
+	def test_no_related_rows_stays_none(self):
+		self.assertIsNone(collapse_related_value(None))
+
+	def test_every_read_path_collapses(self):
+		raw = 'PN-1\x1fPN-1\x1fPN-2'
+		cases = {
+			'find_by_identifier': (
+				[[{'name': 'SKU-A', 'vendor_part_numbers': raw, '_identifier_rank': 0}]],
+				lambda: _RelatedFieldVirtualDocType.find_by_identifier('SKU-A')[0].vendor_part_numbers,
+			),
+			'get_list': (
+				[[{'name': 'SKU-A', 'vendor_part_numbers': raw}]],
+				lambda: _RelatedFieldVirtualDocType.get_list(
+					doctype='Product', fields=['name', 'vendor_part_numbers'], filters=[], start=0,
+					page_length=20, with_comment_count=False, save_user_settings=False,
+				)[0].vendor_part_numbers,
+			),
+			'get_bulk_values': (
+				[[], [], [{'name': 'SKU-A', 'vendor_part_numbers': raw}]],
+				lambda: _RelatedFieldVirtualDocType.get_bulk_values(['SKU-A'], ['vendor_part_numbers'])['SKU-A'].vendor_part_numbers,
+			),
+		}
+		for label, (responses, read) in cases.items():
+			with self.subTest(path=label):
+				fake_database = _fake_database(responses)
+				database_patch, server_patch = _patched_database(fake_database)
+				with database_patch, server_patch:
+					self.assertEqual(read(), 'PN-1, PN-2')

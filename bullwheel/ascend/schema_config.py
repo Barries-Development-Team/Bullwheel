@@ -72,6 +72,28 @@ BOOLEAN_FIELD_CONFIG_KEYS = ('alternate_name', 'cache')
 # Joins the values of a related field into one display string, e.g. 'ABC-1, XYZ-2'.
 RELATED_VALUE_SEPARATOR = ', '
 
+# The delimiter SQL joins a related field's raw values with, before the framework removes duplicates
+# and rejoins them with RELATED_VALUE_SEPARATOR (see collapse_related_value). The ASCII unit
+# separator never appears in a real value, so splitting on it cannot break a value apart.
+RELATED_VALUE_DELIMITER = '\x1f'
+RELATED_VALUE_DELIMITER_SQL = 'NCHAR(31)'
+
+
+def collapse_related_value(value):
+	"""Turn a related field's raw projection (values joined by RELATED_VALUE_DELIMITER, sorted by
+	SQL) into its display string: duplicates removed — compared case-insensitively, as SQL Server's
+	collation compares them — and the rest joined with RELATED_VALUE_SEPARATOR. Two vendors often
+	list the same part number for one product. None (no related rows) stays None."""
+	if not isinstance(value, str):
+		return value
+	seen = set()
+	distinct_values = []
+	for part in value.split(RELATED_VALUE_DELIMITER):
+		if part.casefold() not in seen:
+			seen.add(part.casefold())
+			distinct_values.append(part)
+	return RELATED_VALUE_SEPARATOR.join(distinct_values)
+
 
 def quote_column(column: str) -> str:
 	"""Bracket-quote a bare SQL Server column name so names containing spaces ('Store UPC')
@@ -198,13 +220,13 @@ def normalize_related_config(class_name: str, fieldname: str, field_config: dict
 		'column_sql': column_sql,
 		'from_sql': from_sql,
 		'correlation_sql': correlation_sql,
-		# STRING_AGG has no DISTINCT, so values are deduplicated in a derived table first (two
-		# vendors often share a part number). CAST to NVARCHAR(MAX): STRING_AGG over a plain
-		# (N)VARCHAR errors once the joined result passes 8000 bytes.
+		# Duplicates are removed in Python (collapse_related_value), not here: a DISTINCT or GROUP BY
+		# derived table, combined with an alternate-name WHERE, makes SQL Server aggregate the whole
+		# related table (~0.7s per Ascend Product load, against ~0.004s for this plain form). CAST to
+		# NVARCHAR(MAX): STRING_AGG over a plain (N)VARCHAR errors once the result passes 8000 bytes.
 		'projection_sql': (
-			f"(SELECT STRING_AGG(CAST(distinct_values.[value] AS NVARCHAR(MAX)), '{RELATED_VALUE_SEPARATOR}') "
-			f"WITHIN GROUP (ORDER BY distinct_values.[value]) "
-			f"FROM (SELECT DISTINCT {column_sql} AS [value] FROM {from_sql} WHERE {correlation_sql}) AS distinct_values)"
+			f"(SELECT STRING_AGG(CAST({column_sql} AS NVARCHAR(MAX)), {RELATED_VALUE_DELIMITER_SQL}) "
+			f"WITHIN GROUP (ORDER BY {column_sql}) FROM {from_sql} WHERE {correlation_sql})"
 		),
 	}
 
