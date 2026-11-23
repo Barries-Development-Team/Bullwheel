@@ -19,7 +19,7 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 - Fixed a server error when a Product Pricing Rule was selected on a New Product before its MSRP was filled in. (#73)
 - Fixed a server error when saving a Product Pricing Rule with an empty Swap or Online percentage.
 
-## [1.2.4] - November 6, 2024
+## [1.2.4] - November 6, 2026
 
 ### Changes
 
