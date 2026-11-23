@@ -6,16 +6,18 @@ All notable changes to Bullwheel are recorded here. Grouped by version.
 
 ### Changes
 
-- Product Pricing Rules have a **Charm Price** setting: computed Swap and Online prices can end in .95 (the previous behavior, and the default), .99, or .00. (#88)
-- New Products are validated so their Swap and Online prices are above the Estimated Cost, by at least the new **Minimum Price Margin Over Cost** in Bullwheel Settings (default 0: just above cost). (#89)
-- New Product UPCs and Case UPCs may no longer contain spaces or other whitespace. (#48)
-- Zebra Printer Label templates must contain `^XA`, `^XZ` and `^PQ{{ quantity }}` to save. (#35)
-- The Description Template field now links to the Description Templates documentation. (#128)
-- Saving Bullwheel Settings clears the cached Default Ascend Database right away; the cache now lasts an hour instead of 30 seconds. (#105)
+- Added a Charm Price option (.95, .99, or .00) to Product Pricing Rules that sets the ending of computed Swap and Online prices, defaulting to .95 for new and existing rules. (#88)
+- Added a Minimum Price Margin Over Cost setting to Bullwheel Settings, and New Products now refuse to save when a Swap or Online price is not above the Estimated Cost by at least that margin. (#89)
+- New Products now refuse to save when the UPC or Case UPC contains spaces, tabs, or other whitespace. (#48)
+- Zebra Printer Label templates now refuse to save unless they contain the `^XA`, `^XZ`, and `^PQ{{ quantity }}` commands outside of Jinja comments. (#35)
+- The Description Template field description now links to the Description Templates documentation on GitHub instead of naming the file path. (#128)
+- Saving Bullwheel Settings now immediately clears the cached Default Ascend Database, which is now cached for one hour instead of 30 seconds. (#105)
+- The new New Product price and UPC checks only run on new or changed values, so older records can still be re-saved during import reconciliation.
 
 ### Bug Fixes
 
 - Fixed a server error when a Product Pricing Rule was selected on a New Product before its MSRP was filled in. (#73)
+- Fixed a server error when saving a Product Pricing Rule with an empty Swap or Online percentage.
 
 ## [1.2.4] - November 6, 2024
 
