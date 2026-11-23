@@ -20,3 +20,21 @@ class IntegrationTestBullwheelSettings(IntegrationTestCase):
 	"""
 
 	pass
+
+
+from unittest.mock import MagicMock, patch
+
+import frappe
+from frappe.tests import UnitTestCase
+
+from bullwheel.bullwheel_core import DEFAULT_ASCEND_DATABASE_CACHE_KEY
+from bullwheel.bullwheel_core.doctype.bullwheel_settings.bullwheel_settings import BullwheelSettings
+
+
+class UnitTestBullwheelSettingsCache(UnitTestCase):
+
+	def test_saving_settings_clears_the_cached_default_database(self):
+		cache = MagicMock()
+		with patch.object(frappe, "cache", cache):
+			BullwheelSettings.on_update(MagicMock())
+		cache.delete_value.assert_called_once_with(DEFAULT_ASCEND_DATABASE_CACHE_KEY)

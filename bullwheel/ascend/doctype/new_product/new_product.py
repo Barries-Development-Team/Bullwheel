@@ -131,6 +131,9 @@ class NewProduct(Document):
 		if self.upc and len(self.upc) > 20:
 			frappe.throw('Max length for UPC is 20 characters.')
 
+		if self.entry_type == "New Product":
+			self._validate_upcs_have_no_whitespace()
+
 		if self.entry_type == "Existing Product":
 			self._fill_from_existing_product()
 		else:
@@ -138,6 +141,9 @@ class NewProduct(Document):
 			self._compute_pricing()
 
 		self._validate_unique_identifiers()
+
+		if self.entry_type == "New Product":
+			self._validate_prices_above_cost()
 
 		if self.is_new() and self.entry_type == "Existing Product":
 			self._validate_vendor_does_not_carry_part_number()
@@ -239,6 +245,39 @@ class NewProduct(Document):
 				f'Ascend already has a Vendor Product "{self.vpn}" for {self.vendor}. '
 				f'Add it to the order from the Vendor Product instead.'
 			)
+
+	def _validate_upcs_have_no_whitespace(self):
+		"""Reject a UPC or Case UPC containing any whitespace: Ascend matches products by UPC, so
+		a stray space (often pasted along with the number) would never match the scanned barcode.
+		Checked only when the value is new or changed, so a legacy record still saves (e.g. when
+		new_product_reconciliation marks it Imported)."""
+		for fieldname, label in (("upc", "UPC"), ("case_upc", "Case UPC")):
+			value = self.get(fieldname)
+			if not value or not (self.is_new() or self.has_value_changed(fieldname)):
+				continue
+			if any(character.isspace() for character in value):
+				frappe.throw(f'{label} "{value}" must not contain spaces or other whitespace.')
+
+	def _validate_prices_above_cost(self):
+		"""Require the Swap Price and Online Price to sit above the Estimated Cost by at least the
+		Minimum Price Margin in Bullwheel Settings (a fraction of cost; at 0 a price only has to
+		exceed cost). Empty prices and an empty cost are not checked. Runs only when a price or
+		the cost is new or changed, so saving an unrelated field on a legacy record still works."""
+		if not self.estimated_cost:
+			return
+
+		watched_fields = ("swap_price", "online_price", "estimated_cost")
+		if not (self.is_new() or any(self.has_value_changed(field) for field in watched_fields)):
+			return
+
+		minimum_margin = frappe.db.get_single_value("Bullwheel Settings", "minimum_price_margin") or 0
+		problems = prices_below_minimum_margin(
+			self.estimated_cost,
+			{"Swap Price": self.swap_price, "Online Price": self.online_price},
+			minimum_margin,
+		)
+		if problems:
+			frappe.throw("<br>".join(problems), title="Price Too Close to Cost")
 
 	def _validate_unique_identifiers(self):
 		"""Block a UPC another record already holds. A UPC Ascend carries belongs to an existing
@@ -474,18 +513,67 @@ def to_import_row(product):
 	return row
 
 
+# Product Pricing Rule `charm_price` option -> amount taken off the rounded dollar price.
+# An unset rule (saved before the field existed) keeps the original .95 ending.
+CHARM_PRICE_OFFSETS = {
+	".95": 0.05,
+	".99": 0.01,
+	".00": 0.0,
+}
+DEFAULT_CHARM_PRICE = ".95"
+
+
+def apply_charm_price(price: float, charm_price: str | None = None) -> float:
+	"""Round `price` to the nearest dollar, then give it the chosen charm ending (.95, .99, or
+	.00 for a whole-dollar price). A result that is not above zero becomes 0, so a tiny or
+	fully discounted price never goes negative."""
+	offset = CHARM_PRICE_OFFSETS.get(charm_price or DEFAULT_CHARM_PRICE)
+	if offset is None:
+		frappe.throw(f'Unknown Charm Price "{charm_price}".')
+
+	charmed_price = round(round(price) - offset, 2)
+	return charmed_price if charmed_price > 0 else 0
+
+
+def prices_below_minimum_margin(cost: float, prices: dict, minimum_margin: float = 0) -> list[str]:
+	"""Return a message for each entry of `prices` ({label: price}) that is set but not
+	sufficiently above `cost`: not above cost at all, or below cost * (1 + minimum_margin).
+	An empty list means every price passes. Free of document and database access so it can be
+	unit tested directly."""
+	minimum_margin = minimum_margin or 0
+	minimum_price = cost * (1 + minimum_margin)
+	problems = []
+	for label, price in prices.items():
+		if not price:
+			continue
+		if minimum_margin and price < minimum_price:
+			problems.append(
+				f"{label} ${price:,.2f} must be at least ${minimum_price:,.2f} "
+				f"({minimum_margin * 100:g}% above the Estimated Cost of ${cost:,.2f})."
+			)
+		elif price <= cost:
+			problems.append(f"{label} ${price:,.2f} must be above the Estimated Cost of ${cost:,.2f}.")
+	return problems
+
+
 @frappe.whitelist()
-def compute_swap_and_online_price(msrp: float, product_pricing_rule_name: str) -> dict:
+def compute_swap_and_online_price(msrp: float | None = None, product_pricing_rule_name: str | None = None) -> dict:
+	"""Compute the Swap Price and Online Price for an MSRP under a Product Pricing Rule: each
+	rule percentage is a discount off MSRP, and the result gets the rule's charm ending. With no
+	MSRP or no rule both prices are 0. Both arguments are optional because the New Product form
+	calls this as soon as a rule is picked, often before the MSRP is filled in."""
 	computed_prices = {
 		'swap_price': 0.0,
 		'online_price': 0.0
 	}
-	if not msrp:
+	if not msrp or not product_pricing_rule_name:
 		return computed_prices
 
+	msrp = float(msrp)
 	product_pricing_rule = frappe.get_cached_doc('Product Pricing Rule', product_pricing_rule_name)
+	charm_price = product_pricing_rule.get("charm_price")
 
-	computed_prices["swap_price"] = swap_price if (swap_price := round(msrp * (1 - product_pricing_rule.swap_percentage)) - 0.05) > 0 else 0
-	computed_prices["online_price"] = online_price if (online_price := round(msrp * (1 - product_pricing_rule.online_percentage)) - 0.05) > 0 else 0
+	computed_prices["swap_price"] = apply_charm_price(msrp * (1 - (product_pricing_rule.swap_percentage or 0)), charm_price)
+	computed_prices["online_price"] = apply_charm_price(msrp * (1 - (product_pricing_rule.online_percentage or 0)), charm_price)
 
 	return computed_prices

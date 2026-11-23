@@ -1,5 +1,6 @@
 [
  {
+  "charm_price": ".95",
   "docstatus": 0,
   "doctype": "Product Pricing Rule",
   "modified": "2026-07-24 11:28:09.035517",
@@ -8,6 +9,7 @@
   "swap_percentage": 0.6
  },
  {
+  "charm_price": ".95",
   "docstatus": 0,
   "doctype": "Product Pricing Rule",
   "modified": "2026-07-24 12:06:46.105081",
