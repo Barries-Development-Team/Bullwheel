@@ -9,7 +9,8 @@
  "field_order": [
   "pricing_rules__of_msrp_section",
   "swap_percentage",
-  "online_percentage"
+  "online_percentage",
+  "charm_price"
  ],
  "fields": [
   {
@@ -30,12 +31,20 @@
    "label": "Online Price (Decimal)",
    "non_negative": 1,
    "placeholder": "e.g. 0.6"
+  },
+  {
+   "default": ".95",
+   "description": "Ending applied to the computed Swap and Online prices after rounding to the nearest dollar.",
+   "fieldname": "charm_price",
+   "fieldtype": "Select",
+   "label": "Charm Price",
+   "options": ".95\n.99\n.00"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-24 11:27:38.199161",
+ "modified": "2026-11-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Product Pricing Rule",

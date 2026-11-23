@@ -120,7 +120,7 @@ function regenerate_pricing(frm) {
 	frappe.call({
 		method: "bullwheel.ascend.doctype.new_product.new_product.compute_swap_and_online_price",
 		args: {
-			msrp: frm.doc.price,
+			msrp: frm.doc.price || 0,
 			product_pricing_rule_name: frm.doc.product_pricing_rule,
 		},
 		callback(response) {

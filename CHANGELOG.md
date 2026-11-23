@@ -2,6 +2,21 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [Unreleased]
+
+### Changes
+
+- Product Pricing Rules have a **Charm Price** setting: computed Swap and Online prices can end in .95 (the previous behavior, and the default), .99, or .00. (#88)
+- New Products are validated so their Swap and Online prices are above the Estimated Cost, by at least the new **Minimum Price Margin Over Cost** in Bullwheel Settings (default 0: just above cost). (#89)
+- New Product UPCs and Case UPCs may no longer contain spaces or other whitespace. (#48)
+- Zebra Printer Label templates must contain `^XA`, `^XZ` and `^PQ{{ quantity }}` to save. (#35)
+- The Description Template field now links to the Description Templates documentation. (#128)
+- Saving Bullwheel Settings clears the cached Default Ascend Database right away; the cache now lasts an hour instead of 30 seconds. (#105)
+
+### Bug Fixes
+
+- Fixed a server error when a Product Pricing Rule was selected on a New Product before its MSRP was filled in. (#73)
+
 ## [1.2.4] - November 6, 2024
 
 ### Changes

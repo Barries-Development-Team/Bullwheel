@@ -10,6 +10,7 @@
   "default_database",
   "receiving_section",
   "ski_category_prefix",
+  "minimum_price_margin",
   "tab_2_tab",
   "labels_section",
   "ascend_tag",
@@ -40,6 +41,15 @@
    "fieldname": "ski_category_prefix",
    "fieldtype": "Data",
    "label": "Ski Category Prefix"
+  },
+  {
+   "default": "0",
+   "description": "Fraction of a New Product's Estimated Cost that its Swap Price and Online Price must exceed it by (e.g. 0.2 requires prices at least 20% above cost). At 0, prices only need to be above cost. Empty prices and costs are not checked.",
+   "fieldname": "minimum_price_margin",
+   "fieldtype": "Float",
+   "label": "Minimum Price Margin Over Cost (Decimal)",
+   "non_negative": 1,
+   "placeholder": "e.g. 0.2"
   },
   {
    "fieldname": "ascend_configuration_tab",
@@ -85,7 +95,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-12 22:20:00.000000",
+ "modified": "2026-11-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Bullwheel Core",
  "name": "Bullwheel Settings",
