@@ -43,7 +43,7 @@ fixtures = [
     "Description Template",
     {
         "doctype": "Role",
-        "filters": [["name", "=", "Warehouse Staff"]]
+        "filters": [["name", "in", ["Warehouse Staff", "Warehouse Manager"]]]
     },
     "Product Pricing Rule",
     {
