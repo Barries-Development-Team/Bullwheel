@@ -49,6 +49,17 @@ class OrderReceipt(Document):
 		import sheet would never reach Ascend."""
 		_resolve_vendor_id(self.vendor)
 
+		# A received row has already gone out on a PO export; changing what it says would make
+		# the receipt disagree with what Ascend was given.
+		if not self.is_new() and not self.flags.from_restore:
+			changed = _changed_received_rows(self, self.get_doc_before_save())
+			if changed:
+				frappe.throw(
+					"These order items have already been received and exported, so their quantity, "
+					"cost and part number can't be changed. Scan again to add a new line: "
+					+ ", ".join(changed)
+				)
+
 		# A Deleted Document restore re-inserts an already-Received order; that isn't a
 		# transition into Received, so the export guard doesn't apply.
 		if (
@@ -86,6 +97,41 @@ class OrderReceipt(Document):
 # New Product statuses that can still be matched on a scan: the product is staged in Bullwheel
 # (or exported and awaiting import). Imported products are in Ascend, so Ascend finds them.
 STAGED_NEW_PRODUCT_STATUSES = ["Pending", "Exported", "Import Failed"]
+
+
+# Order item fields written to the PO export; frozen once a row is received.
+RECEIVED_LOCKED_FIELDS = ("quantity", "cost", "vpn", "item_type")
+
+
+def _changed_received_rows(doc, before) -> list[str]:
+	"""Describe the order items that were received before this save, are still received, and
+	have had an exported field (RECEIVED_LOCKED_FIELDS) changed. Marking a row received in the
+	same save (the export) and unticking Rec'd are both allowed."""
+
+	if not before:
+		return []
+
+	previous = {row.name: row for row in before.order_items if row.received}
+	changed = []
+	for row in doc.order_items:
+		old = previous.get(row.name)
+		if not old or not row.received:
+			continue
+		if any(_locked_value(row, field) != _locked_value(old, field) for field in RECEIVED_LOCKED_FIELDS):
+			changed.append(f"Row {old.idx} ({old.vpn})")
+	return changed
+
+
+def _locked_value(row, field):
+	"""A locked field's value normalized for comparison, so an edit that re-sends the same number
+	as a string or float ("5", 5.0) isn't mistaken for a change."""
+
+	value = row.get(field)
+	if field == "quantity":
+		return cint(value)
+	if field == "cost":
+		return flt(value, 6)
+	return value or None
 
 
 def _unexported_new_products(doc) -> list[str]:
@@ -479,14 +525,12 @@ def _build_export_files(doc, items, statuses=("Pending",)):
 	return po_sheet, products_sheet, pending_names
 
 
-def _mark_exported(docname, row_names, new_product_names):
-	"""Flag the exported order items as received and their Pending New Products as Exported, inside
-	a row lock so it serializes with concurrent receiving edits. Called once the export files have
-	built successfully."""
+def _mark_exported(doc, row_names, new_product_names):
+	"""Flag the exported order items as received and their Pending New Products as Exported. `doc`
+	must be the same row-locked document the export files were built from, so the rows marked
+	received carry exactly the quantities on the sheet — re-reading it here would pick up scans
+	that ran in between. Called once the export files have built successfully."""
 
-	lock_row(docname)
-
-	doc = frappe.get_doc("Order Receipt", docname)
 	for item in doc.order_items:
 		if item.name in row_names:
 			item.received = 1
@@ -510,6 +554,11 @@ def export_received_batch(docname, redownload=0):
 	failed in the browser."""
 
 	redownload = cint(redownload)
+	# Hold the receipt's row lock from the read through the commit in _mark_exported, so queued
+	# scans/edits wait for the export and then see these rows as received (appending new rows)
+	# instead of incrementing a row after its quantity was written to the sheet.
+	if not redownload:
+		lock_row(docname)
 	doc = frappe.get_doc("Order Receipt", docname)
 
 	candidates = [item for item in doc.order_items if redownload or not item.received]
@@ -530,7 +579,7 @@ def export_received_batch(docname, redownload=0):
 
 	# Only mark received once the sheets have built, so a failure never silently receives the batch.
 	if not redownload:
-		_mark_exported(docname, {item.name for item in exportable}, included_names)
+		_mark_exported(doc, {item.name for item in exportable}, included_names)
 
 	spreadsheet_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	if not products_sheet and not held_back:

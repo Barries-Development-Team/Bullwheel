@@ -2,6 +2,12 @@
 
 All notable changes to Bullwheel are recorded here. Grouped by version.
 
+## [1.2.6] - November 25, 2026
+
+## Bug Fix
+
+- Received (exported) Order Receipt rows are now immutable.
+
 ## [1.2.5] - November 25, 2026
 
 ### Changes

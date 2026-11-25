@@ -10,11 +10,14 @@ from frappe.tests import IntegrationTestCase, UnitTestCase
 
 from bullwheel.ascend.doctype.order_receipt.order_receipt import (
 	STAGED_NEW_PRODUCT_STATUSES,
+	_changed_received_rows,
 	_find_staged_new_product,
 	_order_item_to_po_row,
 	_resolve_ascend_vpn,
 	_single_line,
 	_unexportable_reason,
+	add_or_increment_item,
+	export_received_batch,
 	queue_add_or_increment_item,
 	scan_item,
 	stage_existing_product,
@@ -265,3 +268,128 @@ class UnitTestQueueAddOrIncrementItem(UnitTestCase):
 			queue_add_or_increment_item('RECEIPT-1', 'NP-00001', cost=5, item_type='New Product')
 
 		self.assertEqual(enqueue.call_args.kwargs['item_type'], 'New Product')
+
+
+# ─── Received rows are locked ─────────────────────────────────────────────────
+
+MODULE = 'bullwheel.ascend.doctype.order_receipt.order_receipt'
+
+
+def receipt_row(name='ROW-1', idx=1, received=0, **values):
+	"""An Order Receipt Item stand-in: a frappe._dict so .get() works like on a Document."""
+	values.setdefault('item_type', 'Vendor Product')
+	values.setdefault('vpn', 'PART-1 (Acme)')
+	values.setdefault('quantity', 3)
+	values.setdefault('cost', 5.0)
+	return frappe._dict(name=name, idx=idx, received=received, **values)
+
+
+def receipt(*rows):
+	return SimpleNamespace(order_items=list(rows))
+
+
+class UnitTestChangedReceivedRows(UnitTestCase):
+
+	def test_quantity_change_on_a_received_row_is_reported(self):
+		changed = _changed_received_rows(
+			receipt(receipt_row(received=1, quantity=4)), receipt(receipt_row(received=1, quantity=3))
+		)
+		self.assertEqual(changed, ['Row 1 (PART-1 (Acme))'])
+
+	def test_cost_and_part_number_changes_are_reported(self):
+		for values in ({'cost': 6.0}, {'vpn': 'PART-2 (Acme)'}, {'item_type': 'New Product'}):
+			with self.subTest(values=values):
+				before = receipt(receipt_row(received=1))
+				after = receipt(receipt_row(received=1, **values))
+				self.assertTrue(_changed_received_rows(after, before))
+
+	def test_unreceived_rows_may_change(self):
+		self.assertEqual(
+			_changed_received_rows(receipt(receipt_row(quantity=4)), receipt(receipt_row(quantity=3))), []
+		)
+
+	def test_marking_received_in_the_same_save_is_allowed(self):
+		"""The export flips received 0 -> 1; the row was not locked before that save."""
+		self.assertEqual(
+			_changed_received_rows(receipt(receipt_row(received=1, quantity=4)), receipt(receipt_row(quantity=3))), []
+		)
+
+	def test_unticking_received_is_allowed(self):
+		self.assertEqual(
+			_changed_received_rows(receipt(receipt_row(quantity=4)), receipt(receipt_row(received=1, quantity=3))), []
+		)
+
+	def test_same_values_in_another_type_are_not_a_change(self):
+		"""The Edit dialog re-sends every field; "3" / 5 must match the stored 3 / 5.0."""
+		self.assertEqual(
+			_changed_received_rows(
+				receipt(receipt_row(received=1, quantity='3', cost=5)), receipt(receipt_row(received=1))
+			),
+			[],
+		)
+
+	def test_new_document_has_nothing_to_compare(self):
+		self.assertEqual(_changed_received_rows(receipt(receipt_row(received=1)), None), [])
+
+
+class UnitTestAddOrIncrementItem(UnitTestCase):
+
+	def _scan(self, *rows):
+		doc = MagicMock()
+		doc.order_items = list(rows)
+		with patch(f'{MODULE}.lock_row'), patch(f'{MODULE}.frappe.get_doc', return_value=doc), \
+				patch(f'{MODULE}.frappe.db'):
+			add_or_increment_item('RECEIPT-1', 'PART-1 (Acme)', cost=5)
+		return doc
+
+	def test_received_row_is_never_incremented(self):
+		received = receipt_row(received=1, quantity=3)
+		doc = self._scan(received)
+
+		self.assertEqual(received.quantity, 3)
+		doc.append.assert_called_once()
+		self.assertEqual(doc.append.call_args.args[1]['quantity'], 1)
+
+	def test_unreceived_match_is_incremented(self):
+		received = receipt_row(name='ROW-1', received=1, quantity=3)
+		open_row = receipt_row(name='ROW-2', idx=2, quantity=2)
+		doc = self._scan(received, open_row)
+
+		self.assertEqual((received.quantity, open_row.quantity), (3, 3))
+		doc.append.assert_not_called()
+
+
+class UnitTestExportReceivedBatchLocking(UnitTestCase):
+
+	def _export(self, redownload=0):
+		order = MagicMock()
+		doc = MagicMock()
+		doc.order_items = [receipt_row()]
+		order.get_doc.return_value = doc
+		with (
+			patch(f'{MODULE}.lock_row', order.lock_row),
+			patch(f'{MODULE}.frappe.get_doc', order.get_doc),
+			patch(f'{MODULE}.frappe.db'),
+			patch(f'{MODULE}._unexportable_reason', return_value=None),
+			patch(f'{MODULE}._build_export_files', return_value=(b'po', None, [])),
+			patch(f'{MODULE}.serve_file_download'),
+		):
+			export_received_batch('RECEIPT-1', redownload=redownload)
+		return order, doc
+
+	def test_receipt_is_locked_before_it_is_read(self):
+		"""Reading first lets a queued scan increment a row between the sheet build and the mark."""
+		order, _ = self._export()
+		names = [call[0] for call in order.mock_calls]
+		self.assertLess(names.index('lock_row'), names.index('get_doc'))
+
+	def test_the_rows_marked_received_are_the_ones_read_for_the_sheet(self):
+		order, doc = self._export()
+		order.get_doc.assert_called_once()
+		self.assertEqual(doc.order_items[0].received, 1)
+		doc.save.assert_called_once()
+
+	def test_redownload_neither_locks_nor_marks(self):
+		order, doc = self._export(redownload=1)
+		order.lock_row.assert_not_called()
+		doc.save.assert_not_called()

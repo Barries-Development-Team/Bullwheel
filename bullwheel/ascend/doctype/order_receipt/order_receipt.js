@@ -11,8 +11,13 @@ const TABLE_CONFIGS = {
 		table: 'order_items',
 		child_doctype: 'Order Receipt Item',
 		noun: 'Order Item',
-		customize_field: (frm, field, job) => {
+		customize_field: (frm, field, job, row) => {
 			if (['vpn', 'item_type'].includes(field.fieldname) && job === 'edit') field.read_only = 1;
+			// A received row has already been exported on a PO; the server rejects changes to
+			// these fields (see RECEIVED_LOCKED_FIELDS in order_receipt.py).
+			if (job === 'edit' && row && row.received && RECEIVED_LOCKED_FIELDS.includes(field.fieldname)) {
+				field.read_only = 1;
+			}
 			if (field.fieldname === 'received' && job === 'add') {
 				field.hidden = 1;
 			}
@@ -40,6 +45,9 @@ const TABLE_CONFIGS = {
 // New Product statuses a receipt can still add to an order: staged in Bullwheel, or exported and
 // waiting for Ascend. Imported products are Vendor Products by then.
 const STAGED_STATUSES = ['Pending', 'Exported', 'Import Failed'];
+
+// Order item fields frozen once the row is received. Mirrors RECEIVED_LOCKED_FIELDS in order_receipt.py.
+const RECEIVED_LOCKED_FIELDS = ['quantity', 'cost', 'vpn', 'item_type'];
 
 // A child field is editable through the dialog/queue when it is writable, non-virtual, and
 // value-bearing. Mirrors writable_fieldnames() in order_receipt.py.
@@ -71,7 +79,7 @@ function queue_update(frm, config, job, doc, row_name = null) {
 // Build the Add/Edit dialog field list from the child DocType so the form stays driven by
 // the DocType definition rather than a hardcoded list. Per-table customize_field hooks can
 // adjust individual fields (e.g. the vpn vendor filter for order items).
-function dialog_fields(frm, config, job) {
+function dialog_fields(frm, config, job, row = null) {
 	return frappe.get_meta(config.child_doctype).fields
 		.filter(is_editable_field)
 		.map((df) => {
@@ -86,7 +94,7 @@ function dialog_fields(frm, config, job) {
 				mandatory_depends_on: df.mandatory_depends_on,
 				description: df.description
 			};
-			if (config.customize_field) config.customize_field(frm, field, job);
+			if (config.customize_field) config.customize_field(frm, field, job, row);
 			return field;
 		});
 }
@@ -99,7 +107,7 @@ function open_dialog(frm, config, {job, row = null, prefill = null, on_submit = 
 	frappe.model.with_doctype(config.child_doctype, () => {
 		const dialog = new frappe.ui.Dialog({
 			title: job === 'add' ? __('Add {0}', [config.noun]) : __('Edit {0}', [config.noun]),
-			fields: dialog_fields(frm, config, job),
+			fields: dialog_fields(frm, config, job, row),
 			primary_action_label: job === 'add' ? __('Add') : __('Save'),
 			primary_action: (values) => {
 				// get_values() returns null when a required field is missing; it has
