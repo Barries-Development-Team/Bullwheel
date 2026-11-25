@@ -11,18 +11,35 @@ def print_console_warning(message: str):
     print(f"\033[33m{message}\033[0m")
 
 
+DEFAULT_ASCEND_DATABASE_CACHE_KEY = 'default_ascend_database'
+
+# Bullwheel Settings.on_update clears the cache on every change, so the expiry is only a safety
+# net (e.g. a value changed with frappe.db.set_single_value, which skips on_update).
+DEFAULT_ASCEND_DATABASE_CACHE_SECONDS = 60 * 60
+
+
 def get_default_ascend_database():
-		default_database_key = 'default_ascend_database'
+		"""Return the SQL Server document selected as Bullwheel Settings' Default Ascend Database,
+		raising AscendDatabaseNotConfigured when none is set. The setting's value is cached in Redis
+		(cleared whenever Bullwheel Settings is saved) since every Ascend query looks it up."""
 		try:
-			if cached_default_database := frappe.cache.get_value(default_database_key):
+			if cached_default_database := frappe.cache.get_value(DEFAULT_ASCEND_DATABASE_CACHE_KEY):
 				default_database = cached_default_database
 			else:
 				default_database = frappe.db.get_single_value('Bullwheel Settings', 'default_database')
-				frappe.cache.set_value(default_database_key, default_database, expires_in_sec=30) # Ensures that default database changes are applied quickly.
+				frappe.cache.set_value(
+					DEFAULT_ASCEND_DATABASE_CACHE_KEY, default_database,
+					expires_in_sec=DEFAULT_ASCEND_DATABASE_CACHE_SECONDS,
+				)
 
 			return frappe.get_cached_doc("SQL Server", default_database)
 		except:
 			raise AscendDatabaseNotConfigured
+
+def clear_bullwheel_settings_cache():
+	"""Delete every value Bullwheel caches from Bullwheel Settings. Called from
+	BullwheelSettings.on_update; add a key here when caching another setting."""
+	frappe.cache.delete_value(DEFAULT_ASCEND_DATABASE_CACHE_KEY)
 
 def get_label(slot):
 	"""Return the Zebra Printer Label configured for a Bullwheel Settings label slot

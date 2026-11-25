@@ -19,7 +19,7 @@
    "unique": 1
   },
   {
-   "description": "Jinja template rendered against the New Product being edited (available as `doc`). See documentation/DESCRIPTION_TEMPLATES.md.",
+   "description": "Jinja template rendered against the New Product being edited (available as `doc`). See the <a href=\"https://github.com/Barries-Development-Team/Bullwheel/blob/main/documentation/DESCRIPTION_TEMPLATES.md\" target=\"_blank\" rel=\"noopener noreferrer\">Description Templates documentation</a>.",
    "fieldname": "template",
    "fieldtype": "Code",
    "label": "Template",
@@ -29,7 +29,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-20 00:00:00.000000",
+ "modified": "2026-11-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Ascend",
  "name": "Description Template",
