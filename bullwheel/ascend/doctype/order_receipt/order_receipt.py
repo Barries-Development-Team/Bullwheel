@@ -32,6 +32,16 @@ class OrderReceipt(Document):
 		if vpns:
 			VendorProduct.get_bulk_short_cached_values(vpns, ["description", "upc"])
 
+	def validate_workflow(self):
+		"""Skip workflow validation when restoring from Deleted Document. A restore re-inserts
+		the doc with its saved order_status (e.g. Received) and no _doc_before_save, which
+		frappe.model.workflow.validate_workflow rejects as a direct jump from the first state
+		("Workflow State transition not allowed"). The state was reached legitimately before
+		deletion, so the restored doc keeps it as-is."""
+		if self.flags.from_restore:
+			return
+		super().validate_workflow()
+
 	def validate(self):
 		"""Confirm the seeded vendor resolves in Ascend, warming Vendor.get_cached_value's cache
 		for the receiving flow's later scan_item/stage_existing_product lookups, and refuse to
@@ -39,7 +49,13 @@ class OrderReceipt(Document):
 		import sheet would never reach Ascend."""
 		_resolve_vendor_id(self.vendor)
 
-		if self.order_status == "Received" and self.has_value_changed("order_status"):
+		# A Deleted Document restore re-inserts an already-Received order; that isn't a
+		# transition into Received, so the export guard doesn't apply.
+		if (
+			self.order_status == "Received"
+			and self.has_value_changed("order_status")
+			and not self.flags.from_restore
+		):
 			unexported = _unexported_new_products(self)
 			if unexported:
 				frappe.throw(

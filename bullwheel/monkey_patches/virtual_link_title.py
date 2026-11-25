@@ -52,6 +52,11 @@ def _is_virtual_link_doctype(doctype):
 	_guard.active = True
 	try:
 		return is_virtual_doctype(doctype)
+	except frappe.DoesNotExistError:
+		# DocType not in the database (e.g. new core DocType before `bench migrate`).
+		# Fall back to the original implementation, which tolerates missing tables.
+		frappe.clear_last_message()
+		return False
 	finally:
 		_guard.active = False
 

@@ -36,10 +36,14 @@ fixtures = [
         "filters": [["name", "=", "Order Receipt Receiving"]]
     },
     "Workflow State",
+    {
+        "doctype": "Workflow Action Master",
+        "filters": [["name", "in", ["Mark Arrived", "Complete Receiving"]]]
+    },
     "Description Template",
     {
         "doctype": "Role",
-        "filters": [["name", "=", "Warehouse Staff"]]
+        "filters": [["name", "in", ["Warehouse Staff", "Warehouse Manager"]]]
     },
     "Product Pricing Rule",
     {
