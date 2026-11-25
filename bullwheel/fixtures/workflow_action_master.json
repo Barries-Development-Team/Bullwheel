@@ -1,0 +1,16 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-11-25 12:00:00",
+  "name": "Mark Arrived",
+  "workflow_action_name": "Mark Arrived"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-11-25 12:00:00",
+  "name": "Complete Receiving",
+  "workflow_action_name": "Complete Receiving"
+ }
+]
